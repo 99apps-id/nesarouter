@@ -134,10 +134,10 @@ export const providerPresets: ProviderConfig[] = [
     tier: "cheap",
     baseUrl: "https://api.xiaomimimo.com/v1",
     model: "mimo-v2.5",
-    models: ["mimo-v2.5-pro", "mimo-v2.5", "mimo-v2-omni", "mimo-v2-flash"],
+    models: ["mimo-v2.5-pro", "mimo-v2.5"],
     priority: 23,
-    inputCostPerMTok: 0,
-    outputCostPerMTok: 0
+    inputCostPerMTok: 0.14,
+    outputCostPerMTok: 0.28
   }),
   preset({
     id: "moonshot",
@@ -580,6 +580,18 @@ export const providerPresets: ProviderConfig[] = [
     outputCostPerMTok: 0
   }),
   preset({
+    id: "xiaomi-tokenplan-cn",
+    name: "Xiaomi MiMo (Token Plan CN)",
+    type: "openai_compatible",
+    tier: "cheap",
+    baseUrl: "https://token-plan-cn.xiaomimimo.com/v1",
+    model: "mimo-v2.5",
+    models: ["mimo-v2.5", "mimo-v2.5-pro"],
+    priority: 28,
+    inputCostPerMTok: 0,
+    outputCostPerMTok: 0
+  }),
+  preset({
     id: "fireworks",
     name: "Fireworks",
     type: "openai_compatible",
@@ -796,6 +808,7 @@ export const providerPresetGroups: Array<{ label: string; ids: string[] }> = [
       "alibaba-coding-intl",
       "xiaomi-mimo",
       "xiaomi-tokenplan",
+      "xiaomi-tokenplan-cn",
       "moonshot",
       "kimi-coding",
       "zhipu-glm",

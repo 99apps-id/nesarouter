@@ -156,6 +156,36 @@ export function openRouterHeaders(provider: ProviderConfig): Record<string, stri
   };
 }
 
+export function isXiaomiMimoHost(baseUrl: string) {
+  return /xiaomimimo\.com/i.test(baseUrl);
+}
+
+export function isXiaomiTokenPlanHost(baseUrl: string) {
+  return /token-plan-/i.test(baseUrl) && /xiaomimimo\.com/i.test(baseUrl);
+}
+
+/**
+ * Xiaomi docs show curl with `api-key` while the OpenAI SDK uses Bearer.
+ * Send both so pay-as-you-go and Token Plan keys work through either path.
+ */
+export function xiaomiMimoAuthHeaders(token: string, provider: ProviderConfig): Record<string, string> {
+  if (!token || !isXiaomiMimoHost(provider.baseUrl)) return {};
+  return { "api-key": token };
+}
+
+/** Catch sk-/tp- key mixups against the wrong Xiaomi base URL before upstream 401s. */
+export function xiaomiMimoCredentialHint(provider: ProviderConfig, token: string): string | undefined {
+  if (!token || !isXiaomiMimoHost(provider.baseUrl)) return undefined;
+  const tokenPlanHost = isXiaomiTokenPlanHost(provider.baseUrl);
+  if (/^tp[-_]/i.test(token) && !tokenPlanHost) {
+    return "This looks like a Token Plan key (tp-…). Use Xiaomi MiMo (Token Plan) with base URL https://token-plan-sgp.xiaomimimo.com/v1 (or -cn / -ams), not api.xiaomimimo.com.";
+  }
+  if (/^sk[-_]/i.test(token) && tokenPlanHost) {
+    return "This looks like a pay-as-you-go key (sk-…). Use Xiaomi MiMo with base URL https://api.xiaomimimo.com/v1, not the Token Plan host.";
+  }
+  return undefined;
+}
+
 export async function upstreamError(provider: ProviderConfig, response: Response) {
   const errorText = await response.text();
   let providerCode: string | undefined;

@@ -6,7 +6,7 @@ All notable changes to NesaRouter are documented in this file.
 
 ### Added
 
-- `npm run unlock-admin` clears an accidental dashboard login lock without resetting the admin password, sessions, provider credentials, or router data.
+- `npm run unlock-admin` clears an accidental dashboard login lock without resetting the admin password, sessions, provider credentials, or router data. The script prints the absolute data directory so a polluted `DATA_DIR` (e.g. smoke test folder) is obvious.
 
 ## 0.1.13 - 2026-07-14
 
@@ -23,6 +23,7 @@ All notable changes to NesaRouter are documented in this file.
 - **OpenCode Free** executor (`type: "opencode"`) talks to OpenCode Zen with keyless `Bearer public` (replacing the broken Kiro-bound preset path). Model prefixes: `oc/`, `opencode/`.
 - Keyless providers are treated as credentialed for routing / Test when no API key is required.
 - Usage **live map** layout: NesaRouter hub centered, providers spaced on a growing ellipse (9router-style), including dual-ring for large catalogs.
+- Xiaomi MiMo auth: send both `Authorization: Bearer` and `api-key` headers; clear error when `sk-` / `tp-` keys are paired with the wrong base URL; Token Plan CN preset + `mimo`/`xmtp` prefixes.
 - The live map now polls real usage logs and animates only the provider that handled a recent request; idle connections stay still.
 
 ### Fixes
@@ -31,6 +32,7 @@ All notable changes to NesaRouter are documented in this file.
 - Live map no longer collapses provider nodes into a pile or leaves the hub in the corner after CSS/positioning regressions.
 - Standalone startup now copies the Next server manifests required by middleware, preventing production endpoints from returning `500` after a successful start.
 - Smoke cleanup closes mock-provider keep-alive connections, so CI completes after end-to-end routing checks.
+- Routing **Manual provider** is selectable without first flipping Mode (picking a provider enables Manual); budget heuristics no longer override Manual mode.
 
 ## 0.1.11
 

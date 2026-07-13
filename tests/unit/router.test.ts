@@ -201,4 +201,50 @@ describe("router", () => {
     const decision = chooseProvider(store, { model: "rr-combo", messages: [{ role: "user", content: "hi" }] }, [], combo);
     expect(decision.provider.id).toBe("b");
   });
+
+  it("pins the manual provider and ignores budget prefer_cheaper override", () => {
+    const store = storeWith([
+      provider({ id: "cheap", name: "Cheap", tier: "cheap", model: "c", priority: 1 }),
+      provider({ id: "premium", name: "Premium", tier: "premium", model: "p", priority: 2 })
+    ]);
+    store.router = { ...store.router, routingMode: "manual", manualProviderId: "premium", preferFreeTier: true };
+    store.budget = { ...store.budget, dailyBudgetUsd: 1, onWarning: "prefer_cheaper" };
+    store.usage = [{
+      id: "u1",
+      createdAt: new Date().toISOString(),
+      providerId: "cheap",
+      providerName: "Cheap",
+      model: "c",
+      tier: "cheap",
+      taskType: "chat",
+      inputTokens: 1,
+      outputTokens: 1,
+      totalCostUsd: 0.6,
+      costSource: "estimated",
+      cacheStatus: "skipped",
+      budgetStatus: "warning",
+      routingReason: "auto",
+      status: "success"
+    }];
+    const decision = chooseProvider(store, { model: "auto", messages: [{ role: "user", content: "hi" }] });
+    expect(decision.provider.id).toBe("premium");
+  });
+
+  it("does not pin manualProviderId when mode is not manual", () => {
+    const store = storeWith([
+      provider({ id: "cheap", name: "Cheap", tier: "free", model: "c", priority: 5 }),
+      provider({ id: "premium", name: "Premium", tier: "premium", model: "p", priority: 1 })
+    ]);
+    store.router = { ...store.router, routingMode: "auto", manualProviderId: "premium", preferFreeTier: true };
+    const decision = chooseProvider(store, { model: "auto", messages: [{ role: "user", content: "hi" }] });
+    expect(decision.provider.id).toBe("cheap");
+  });
+
+  it("throws when manual provider is inactive", () => {
+    const store = storeWith([
+      provider({ id: "premium", name: "Premium", tier: "premium", model: "p", status: "disabled" })
+    ]);
+    store.router = { ...store.router, routingMode: "manual", manualProviderId: "premium" };
+    expect(() => chooseProvider(store, { model: "auto", messages: [{ role: "user", content: "hi" }] })).toThrow(/not active/i);
+  });
 });

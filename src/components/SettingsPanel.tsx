@@ -121,7 +121,12 @@ export default function SettingsPanel({
           Mode
           <select
             value={routerDraft.routingMode}
-            onChange={(event) => setRouterDraft({ ...routerDraft, routingMode: event.target.value as RouterSettings["routingMode"] })}
+            onChange={(event) =>
+              setRouterDraft({
+                ...routerDraft,
+                routingMode: event.target.value as RouterSettings["routingMode"]
+              })
+            }
           >
             <option value="auto">Auto</option>
             <option value="free_first">Free</option>
@@ -134,17 +139,52 @@ export default function SettingsPanel({
           Manual provider
           <select
             value={routerDraft.manualProviderId ?? ""}
-            onChange={(event) => setRouterDraft({ ...routerDraft, manualProviderId: event.target.value || undefined })}
-            disabled={routerDraft.routingMode !== "manual"}
+            onChange={(event) => {
+              const manualProviderId = event.target.value || undefined;
+              setRouterDraft({
+                ...routerDraft,
+                manualProviderId,
+                // Picking a provider implies Manual mode (select used to stay disabled otherwise).
+                routingMode: manualProviderId ? "manual" : routerDraft.routingMode
+              });
+            }}
           >
             <option value="">Select provider</option>
-            {providers.map((provider) => (
-              <option value={provider.id} key={provider.id}>
-                {provider.name}
-              </option>
-            ))}
+            {providers.filter((provider) => provider.status === "active").length > 0 ? (
+              <optgroup label="Active">
+                {providers
+                  .filter((provider) => provider.status === "active")
+                  .map((provider) => (
+                    <option value={provider.id} key={`active-${provider.id}`}>
+                      {provider.name}
+                    </option>
+                  ))}
+              </optgroup>
+            ) : null}
+            {providers.filter((provider) => provider.status !== "active").length > 0 ? (
+              <optgroup label="Inactive (activate under Providers first)">
+                {providers
+                  .filter((provider) => provider.status !== "active")
+                  .map((provider) => (
+                    <option value={provider.id} key={`inactive-${provider.id}`}>
+                      {provider.name} ({provider.status})
+                    </option>
+                  ))}
+              </optgroup>
+            ) : null}
           </select>
         </label>
+        {routerDraft.routingMode === "manual" && !routerDraft.manualProviderId ? (
+          <p className="subtle" style={{ gridColumn: "1 / -1", margin: 0 }}>
+            Pick an active provider above, then Save. Manual mode will not route until a provider is selected.
+          </p>
+        ) : null}
+        {routerDraft.manualProviderId &&
+        providers.find((provider) => provider.id === routerDraft.manualProviderId)?.status !== "active" ? (
+          <p className="subtle" style={{ gridColumn: "1 / -1", margin: 0 }}>
+            Selected provider is not active — activate it under Providers or choose another one.
+          </p>
+        ) : null}
         <label>
           Provider strategy
           <select
