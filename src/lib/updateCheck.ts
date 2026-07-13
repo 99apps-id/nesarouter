@@ -1,6 +1,4 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import packageJson from "../../package.json";
+import { readAppVersion } from "@/lib/appVersion";
 
 export interface UpdateCheckResult {
   enabled: boolean;
@@ -15,7 +13,6 @@ export interface UpdateCheckResult {
 
 const DEFAULT_REPO = "99apps-id/nesarouter";
 const CACHE_MS = 6 * 60 * 60 * 1000;
-const BUILD_VERSION = typeof packageJson?.version === "string" ? packageJson.version : undefined;
 
 let cache: { expiresAt: number; result: UpdateCheckResult } | null = null;
 
@@ -23,36 +20,8 @@ function githubRepo() {
   return (process.env.NESA_GITHUB_REPO?.trim() || DEFAULT_REPO).replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/i, "");
 }
 
-function versionFromPackageFile(filePath: string) {
-  try {
-    const pkg = JSON.parse(readFileSync(filePath, "utf8")) as { name?: string; version?: string };
-    if (!pkg.version) return undefined;
-    if (!pkg.name || pkg.name === "nesa-router" || pkg.name === "nesarouter") return pkg.version;
-    return undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 export function readPackageVersion() {
-  // next.config.mjs bakes NESA_APP_VERSION at build time (critical for standalone/Docker).
-  const fromEnv = process.env.NESA_APP_VERSION?.trim() || process.env.npm_package_version?.trim();
-  if (fromEnv) return fromEnv;
-  if (BUILD_VERSION) return BUILD_VERSION;
-
-  const candidates = [
-    path.join(process.cwd(), "package.json"),
-    path.join(process.cwd(), "..", "package.json"),
-    path.join(process.cwd(), "..", "..", "package.json"),
-    path.join(process.cwd(), "..", "..", "..", "package.json")
-  ];
-
-  for (const candidate of candidates) {
-    const version = versionFromPackageFile(candidate);
-    if (version) return version;
-  }
-
-  return "0.0.0";
+  return readAppVersion();
 }
 
 /** Compare dotted semver-ish tags. Returns 1 if a>b, -1 if a<b, 0 if equal/unknown. */

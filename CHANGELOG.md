@@ -2,6 +2,13 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.11
+
+### Fixes
+
+- Sidebar and update banner no longer show `v0.0.0` on Docker/standalone installs: version is baked via webpack `DefinePlugin`, runtime `NESA_APP_VERSION`, and broader `package.json` discovery from the standalone server path.
+- Docker releases now pass the release version into the image and refresh the `latest` tag on each tagged release.
+
 ## 0.1.10
 
 ### Fixes

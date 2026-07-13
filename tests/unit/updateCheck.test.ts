@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
+import { readAppVersion } from "@/lib/appVersion";
 import { compareVersions, readPackageVersion } from "@/lib/updateCheck";
 
-describe("updateCheck", () => {
+describe("appVersion", () => {
   it("reads a real version from package.json (not 0.0.0)", () => {
-    const version = readPackageVersion();
+    const version = readAppVersion();
     expect(version).not.toBe("0.0.0");
     expect(version).toMatch(/^\d+\.\d+\.\d+/);
+  });
+});
+
+describe("updateCheck", () => {
+  it("delegates readPackageVersion to readAppVersion", () => {
+    expect(readPackageVersion()).toBe(readAppVersion());
   });
 
   it("compares semver tags", () => {

@@ -11,15 +11,19 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 FROM deps AS builder
 WORKDIR /app
 COPY . .
+ARG NESA_APP_VERSION
+ENV NESA_APP_VERSION=${NESA_APP_VERSION}
 RUN npm run build
 
 FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
+ARG NESA_APP_VERSION
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=20129
 ENV HOSTNAME=0.0.0.0
 ENV DATA_DIR=/app/data
+ENV NESA_APP_VERSION=${NESA_APP_VERSION}
 
 RUN groupadd --system --gid 1001 nesa && useradd --system --uid 1001 --gid nesa nesa
 

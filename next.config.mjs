@@ -22,6 +22,9 @@ const nextConfig = {
     config.plugins.push(
       new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
         resource.request = resource.request.replace(/^node:/, "");
+      }),
+      new webpack.DefinePlugin({
+        "process.env.NESA_APP_VERSION": JSON.stringify(packageJson.version)
       })
     );
     return config;
