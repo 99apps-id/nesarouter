@@ -39,13 +39,21 @@ export async function adminPasswordMustChange() {
 }
 
 /**
- * Show the well-known local bootstrap password on /login only while no hash
- * exists and the operator is still on the default (not a custom NESA_ADMIN_PASSWORD).
+ * Login hint mode while no password hash exists yet.
+ * - default: show well-known local bootstrap password
+ * - env: custom NESA_ADMIN_PASSWORD is set (do not echo it; point at .env)
+ * - null: password already changed (hash stored)
  */
-export async function shouldShowBootstrapPasswordHint() {
-  if (await readAdminPasswordHash()) return false;
+export async function adminLoginPasswordHint(): Promise<"default" | "env" | null> {
+  if (await readAdminPasswordHash()) return null;
   const fromEnv = process.env.NESA_ADMIN_PASSWORD?.trim();
-  return !fromEnv || fromEnv === defaultAdminPassword;
+  if (!fromEnv || fromEnv === defaultAdminPassword) return "default";
+  return "env";
+}
+
+/** @deprecated use adminLoginPasswordHint */
+export async function shouldShowBootstrapPasswordHint() {
+  return (await adminLoginPasswordHint()) === "default";
 }
 
 export async function readLoginLock() {
