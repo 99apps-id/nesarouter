@@ -6,7 +6,9 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, KeyRound, Layers, ListRestart, PlugZap, Plus, Save, Star, Trash2 } from "lucide-react";
 import { ProviderConfig } from "@/core/types";
 import ProviderIcon from "@/components/ProviderIcon";
-import { adminFetch } from "@/lib/adminFetch";
+import NoAutofillInput from "@/components/NoAutofillInput";
+import { adminFetch, ADMIN_SESSION_EXPIRED, isAdminUnauthorized, scheduleLoginRedirect } from "@/lib/adminFetch";
+import { parseOAuthCallbackPaste } from "@/core/oauthCallbackPaste";
 
 export default function ProviderDetail({
   provider,
@@ -50,6 +52,17 @@ export default function ProviderDetail({
   const [devicePolling, setDevicePolling] = useState(false);
   const [cursorImporting, setCursorImporting] = useState(false);
   const [error, setError] = useState("");
+
+  function handleSessionExpired(setMessage: (value: string) => void) {
+    setMessage(ADMIN_SESSION_EXPIRED);
+    scheduleLoginRedirect();
+  }
+
+  function guardAdminResponse(response: Response, setMessage: (value: string) => void) {
+    if (!isAdminUnauthorized(response)) return false;
+    handleSessionExpired(setMessage);
+    return true;
+  }
 
   useEffect(() => {
     return () => {
@@ -163,6 +176,7 @@ export default function ProviderDetail({
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload)
     });
+    if (guardAdminResponse(response, setError)) return;
     if (response.ok) {
       setSaved(true);
       setTimeout(() => setSaved(false), 1500);
@@ -180,6 +194,10 @@ export default function ProviderDetail({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ providerId: draft.id, allAccounts })
     });
+    if (guardAdminResponse(response, setTestMessage)) {
+      setTestResult("error");
+      return;
+    }
     const result = await response.json().catch(() => ({}));
     setTestResult(result.ok ? "ok" : "error");
     const accountSummary = Array.isArray(result.accounts)
@@ -225,16 +243,37 @@ export default function ProviderDetail({
     setOauthPaste(null);
     setOauthCode("");
     stopOauthPoll();
+
+    // This must happen while handling the click. Opening after an await makes
+    // browsers classify it as an unsolicited popup.
+    const popup = window.open("", "nesa-oauth", "popup=yes,width=560,height=720");
+    if (!popup) {
+      setError("Pop-up blocked. Allow pop-ups for this site, then click Connect again.");
+      setOauthMessage("");
+      return;
+    }
+
     const response = await adminFetch(`/api/providers/${draft.id}/oauth/start`, { method: "POST" });
+    if (guardAdminResponse(response, setError)) {
+      popup.close();
+      setOauthMessage("");
+      return;
+    }
     const result = await response.json().catch(() => ({}));
     if (!result.authorizeUrl) {
+      popup.close();
       setOauthMessage(result.error ?? "Failed to start OAuth flow.");
       return;
     }
 
-    const popup = window.open(result.authorizeUrl, "_blank", "noopener,noreferrer");
-    if (!popup) {
-      setError("Pop-up blocked. Allow pop-ups for this site, then click Connect again.");
+    try {
+      // `noopener` deliberately returns null in several browsers, which made
+      // the previous implementation report a blocked popup even when it opened.
+      popup.opener = null;
+      popup.location.assign(result.authorizeUrl);
+    } catch {
+      popup.close();
+      setError("Could not open provider authorization. Click Connect again.");
       setOauthMessage("");
       return;
     }
@@ -271,12 +310,18 @@ export default function ProviderDetail({
 
   async function submitOAuthCode() {
     setError("");
-    if (!oauthPaste || !oauthCode.trim()) {
+    const raw = oauthCode.trim();
+    if (!raw) {
       setError(
-        oauthPaste?.mode === "callbackUrl"
+        oauthPasteMode === "callbackUrl"
           ? "Paste the full callback URL from the browser address bar."
           : "Paste the authorization code first."
       );
+      return;
+    }
+    const parsed = parseOAuthCallbackPaste(raw, oauthPaste?.state);
+    if (!parsed.code) {
+      setError("Could not find ?code= in the pasted value. Paste the full localhost callback URL.");
       return;
     }
     setOauthMessage("Exchanging code…");
@@ -284,9 +329,9 @@ export default function ProviderDetail({
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        callbackUrl: oauthCode.trim(),
-        code: oauthCode.trim(),
-        state: oauthPaste.state
+        callbackUrl: raw,
+        code: raw,
+        state: parsed.state ?? oauthPaste?.state
       })
     });
     const result = await response.json().catch(() => ({}));
@@ -346,8 +391,9 @@ export default function ProviderDetail({
     setCursorImporting(true);
     try {
       const detect = await adminFetch(`/api/providers/${draft.id}/oauth/cursor/auto-import`);
+      if (guardAdminResponse(detect, setError)) return;
       const found = await detect.json().catch(() => ({}));
-      if (!detect.ok || !found.found || !found.imported) {
+      if (!detect.ok || !found.imported) {
         setShowImport(true);
         setError(found.error ?? "Could not auto-import from Cursor IDE. Paste tokens manually.");
         return;
@@ -363,6 +409,7 @@ export default function ProviderDetail({
     setError("");
     setOauthMessage("");
     const response = await adminFetch(`/api/providers/${draft.id}/oauth/device/start`, { method: "POST" });
+    if (guardAdminResponse(response, setError)) return;
     const result = await response.json().catch(() => ({}));
     if (response.ok && result.user_code) {
       setDevice({ userCode: result.user_code, verificationUri: result.verification_uri, interval: result.interval ?? 5 });
@@ -375,6 +422,10 @@ export default function ProviderDetail({
     if (!device) return;
     setDevicePolling(true);
     const response = await adminFetch(`/api/providers/${draft.id}/oauth/device/poll`, { method: "POST" });
+    if (guardAdminResponse(response, setError)) {
+      setDevicePolling(false);
+      return;
+    }
     const result = await response.json().catch(() => ({}));
     if (response.ok && result.status === "ok") {
       setDevice(null);
@@ -396,6 +447,9 @@ export default function ProviderDetail({
   const isAccountProvider = Boolean(draft.oauthProfile);
   const usesDeviceFlow = draft.oauthProfile === "github_copilot" || draft.oauthProfile === "kiro";
   const usesCursorImport = draft.oauthProfile === "cursor";
+  const usesLoopbackCallbackPaste = draft.oauthProfile === "openai_codex";
+  const showOauthPastePanel = Boolean(oauthPaste) || usesLoopbackCallbackPaste;
+  const oauthPasteMode = oauthPaste?.mode ?? (usesLoopbackCallbackPaste ? "callbackUrl" : "code");
   const deviceVendorLabel = draft.oauthProfile === "kiro" ? "AWS Builder ID" : "GitHub";
 
   return (
@@ -431,7 +485,7 @@ export default function ProviderDetail({
         <div className="provider-fields">
           <label>
             Name
-            <input suppressHydrationWarning value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+            <NoAutofillInput suppressHydrationWarning value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
           </label>
           <label>
             Adapter
@@ -457,7 +511,7 @@ export default function ProviderDetail({
           </label>
           <label>
             Base URL
-            <input suppressHydrationWarning value={draft.baseUrl} onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })} />
+            <NoAutofillInput suppressHydrationWarning value={draft.baseUrl} onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })} />
           </label>
           <label>
             Priority
@@ -524,8 +578,9 @@ export default function ProviderDetail({
           ))}
         </div>
         <div className="key-add">
-          <input
+          <NoAutofillInput
             suppressHydrationWarning
+            sensitive
             type="password"
             placeholder="Paste API key or access token"
             value={newKey}
@@ -589,7 +644,7 @@ export default function ProviderDetail({
               : usesDeviceFlow
                 ? `Not connected — start the device flow, then authorize NesaRouter with ${deviceVendorLabel} in a browser.`
                 : usesCursorImport
-                  ? "Not connected — import the token from this machine's Cursor IDE (state.vscdb), or paste access token + machine id."
+                  ? "Not connected — auto-import reads Cursor on the same machine as NesaRouter (not from your browser PC when using VPS). Or paste access token + machine id manually."
                   : draft.oauthProfile === "openai_codex"
                     ? "Not connected — Connect opens ChatGPT. After redirect to localhost (page may error), copy the FULL URL from the address bar (…?code=…&state=…) and paste it here, then Save — same as 9router."
                     : "Not connected — Connect opens the vendor login in a new tab. Claude / Gemini: paste the code. ChatGPT: paste the full localhost callback URL."}
@@ -674,29 +729,43 @@ export default function ProviderDetail({
                   </button>
                 ) : null}
               </div>
-              {oauthPaste ? (
+              {showOauthPastePanel ? (
                 <div className="oauth-import">
                   <p className="subtle">
-                    {oauthPaste.hint ??
-                      (oauthPaste.mode === "callbackUrl"
-                        ? "Paste the full callback URL from the browser address bar."
+                    {oauthPaste?.hint ??
+                      (oauthPasteMode === "callbackUrl"
+                        ? "After ChatGPT redirects to localhost:1455 (page may error), copy the FULL URL from the address bar and paste below — including ?code=…&state=…. Click Connect first in this tab, then authorize within ~30 minutes."
                         : "Paste the authorization code from the other tab (Claude may use code#state).")}
                     {oauthWaiting ? " Waiting for automatic completion…" : ""}
                   </p>
-                  <input
+                  <textarea
                     suppressHydrationWarning
+                    className="oauth-callback-paste"
+                    rows={3}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck={false}
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    name="nesa-oauth-callback"
                     placeholder={
-                      oauthPaste.mode === "callbackUrl"
+                      oauthPasteMode === "callbackUrl"
                         ? "http://localhost:1455/auth/callback?code=...&state=..."
                         : "Authorization code (from the other tab)"
                     }
                     value={oauthCode}
                     onChange={(e) => setOauthCode(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submitOAuthCode(); } }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        void submitOAuthCode();
+                      }
+                    }}
                   />
                   <div className="button-row">
                     <button className="button primary" type="button" onClick={submitOAuthCode} disabled={!oauthCode.trim()}>
-                      <Save size={14} /> {oauthPaste.mode === "callbackUrl" ? "Save callback URL" : "Submit code"}
+                      <Save size={14} /> {oauthPasteMode === "callbackUrl" ? "Save callback URL" : "Submit code"}
                     </button>
                     {oauthWaiting ? (
                       <button className="button" type="button" onClick={stopOauthPoll}>

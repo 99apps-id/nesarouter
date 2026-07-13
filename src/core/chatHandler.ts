@@ -22,6 +22,11 @@ function requestId() {
   return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
+function loggedModel(body: any, fallback: string) {
+  const requested = typeof body?.model === "string" ? body.model.trim() : "";
+  return requested && requested !== "auto" ? requested : fallback;
+}
+
 function isQuotaError(error: UpstreamProviderError) {
   const text = `${error.message} ${error.providerCode ?? ""} ${error.providerType ?? ""}`.toLowerCase();
   return error.status === 429 && /insufficient[_\s-]?quota|quota|billing|exceeded your current quota/.test(text);
@@ -212,10 +217,10 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
         providerFailed = false;
 
         if (upstream instanceof ReadableStream) {
-          return finalizeStream(store, decision, upstream, key);
+          return finalizeStream(store, decision, upstream, key, body);
         }
 
-        return finalizeJson(store, decision, upstream, key);
+        return finalizeJson(store, decision, upstream, key, body);
       } catch (error) {
         if (error instanceof UpstreamProviderError) {
           const keyCooldown = keyFailureCooldown(error);
@@ -240,7 +245,7 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
         createdAt: new Date().toISOString(),
         providerId: decision.provider.id,
         providerName: decision.provider.name,
-        model: decision.provider.model,
+        model: loggedModel(body, decision.provider.model),
         tier: decision.provider.tier,
         taskType: decision.taskType,
         inputTokens: decision.estimatedInputTokens,
@@ -264,7 +269,7 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
   return NextResponse.json({ error: { message: "All fallback providers failed.", attempts: errors } }, { status: 502 });
 }
 
-async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream: any, key: string) {
+async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream: any, key: string, body: any) {
   const usage = upstream?.usage ?? {};
   const inputTokens = Number(usage.prompt_tokens ?? decision.estimatedInputTokens);
   const outputTokens = Number(usage.completion_tokens ?? decision.estimatedOutputTokens);
@@ -279,7 +284,7 @@ async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream:
     createdAt: new Date().toISOString(),
     providerId: decision.provider.id,
     providerName: decision.provider.name,
-    model: decision.provider.model,
+    model: loggedModel(body, decision.provider.model),
     tier: decision.provider.tier,
     taskType: decision.taskType,
     inputTokens,
@@ -298,7 +303,7 @@ async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream:
       key,
       createdAt: new Date().toISOString(),
       providerId: decision.provider.id,
-      model: decision.provider.model,
+      model: loggedModel(body, decision.provider.model),
       response: upstream,
       inputTokens,
       outputTokens,
@@ -317,7 +322,7 @@ async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream:
   });
 }
 
-function finalizeStream(store: NesaStore, decision: RouteDecision, upstream: ReadableStream<Uint8Array>, key: string) {
+function finalizeStream(store: NesaStore, decision: RouteDecision, upstream: ReadableStream<Uint8Array>, key: string, body: any) {
   let capturedUsage: OpenAiUsage | null = null;
   const tracked = trackOpenAiStreamUsage(upstream, (usage) => {
     capturedUsage = usage;
@@ -328,7 +333,7 @@ function finalizeStream(store: NesaStore, decision: RouteDecision, upstream: Rea
     createdAt: new Date().toISOString(),
     providerId: decision.provider.id,
     providerName: decision.provider.name,
-    model: decision.provider.model,
+    model: loggedModel(body, decision.provider.model),
     tier: decision.provider.tier,
     taskType: decision.taskType,
     inputTokens: decision.estimatedInputTokens,

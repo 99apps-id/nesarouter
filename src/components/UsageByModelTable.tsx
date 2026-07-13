@@ -3,7 +3,8 @@ import ProviderIcon from "@/components/ProviderIcon";
 
 export interface UsageByModelRow {
   model: string;
-  provider: string;
+  providerId: string;
+  providerName: string;
   requests: number;
   inputTokens: number;
   outputTokens: number;
@@ -36,11 +37,11 @@ export default function UsageByModelTable({ rows }: { rows: UsageByModelRow[] })
           </div>
         ) : (
           rows.map((row) => (
-            <div className="model-row" key={`${row.provider}:${row.model}`}>
+            <div className="model-row" key={`${row.providerId}:${row.model}`}>
               <span>{row.model}</span>
               <span className="provider-cell">
-                <ProviderIcon provider={{ providerName: row.provider, model: row.model }} size="sm" active />
-                <span>{row.provider}</span>
+                <ProviderIcon provider={{ providerName: row.providerName, model: row.model }} size="sm" active />
+                <span>{row.providerName}</span>
               </span>
               <span>{row.requests}</span>
               <span>{row.inputTokens.toLocaleString()}</span>

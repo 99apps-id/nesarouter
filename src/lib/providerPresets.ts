@@ -699,6 +699,74 @@ export const providerPresets: ProviderConfig[] = [
     priority: 51,
     inputCostPerMTok: 3,
     outputCostPerMTok: 15
+  }),
+  preset({
+    id: "fal-ai",
+    name: "fal.ai",
+    type: "openai_compatible",
+    tier: "balanced",
+    baseUrl: "https://fal.run/fal-ai",
+    model: "any-llm",
+    models: ["any-llm", "flux/dev", "flux/schnell"],
+    priority: 52,
+    inputCostPerMTok: 0,
+    outputCostPerMTok: 0
+  }),
+  preset({
+    id: "replicate",
+    name: "Replicate",
+    type: "openai_compatible",
+    tier: "balanced",
+    baseUrl: "https://api.replicate.com/v1",
+    model: "meta/meta-llama-3-8b-instruct",
+    priority: 53,
+    inputCostPerMTok: 0,
+    outputCostPerMTok: 0
+  }),
+  preset({
+    id: "ai21",
+    name: "AI21 Labs",
+    type: "openai_compatible",
+    tier: "balanced",
+    baseUrl: "https://api.ai21.com/studio/v1",
+    model: "jamba-large",
+    models: ["jamba-large", "jamba-mini"],
+    priority: 54,
+    inputCostPerMTok: 0,
+    outputCostPerMTok: 0
+  }),
+  preset({
+    id: "lambda-labs",
+    name: "Lambda Labs",
+    type: "openai_compatible",
+    tier: "cheap",
+    baseUrl: "https://api.lambdalabs.com/v1",
+    model: "llama-3.1-70b-instruct",
+    priority: 55,
+    inputCostPerMTok: 0,
+    outputCostPerMTok: 0
+  }),
+  preset({
+    id: "lepton",
+    name: "Lepton AI",
+    type: "openai_compatible",
+    tier: "cheap",
+    baseUrl: "https://api.lepton.ai/v1",
+    model: "llama3-8b",
+    priority: 56,
+    inputCostPerMTok: 0,
+    outputCostPerMTok: 0
+  }),
+  preset({
+    id: "mystic",
+    name: "Mystic (OpenRouter alt)",
+    type: "openai_compatible",
+    tier: "cheap",
+    baseUrl: "https://api.mystic.ai/v1",
+    model: "auto",
+    priority: 57,
+    inputCostPerMTok: 0,
+    outputCostPerMTok: 0
   })
 ];
 
@@ -773,7 +841,13 @@ export const providerPresetGroups: Array<{ label: string; ids: string[] }> = [
       "openai-compatible",
       "openrouter-paid",
       "openai-gpt-4o",
-      "anthropic-messages"
+      "anthropic-messages",
+      "fal-ai",
+      "replicate",
+      "ai21",
+      "lambda-labs",
+      "lepton",
+      "mystic"
     ]
   }
 ];

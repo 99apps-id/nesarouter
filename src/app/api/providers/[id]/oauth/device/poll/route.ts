@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { finalizeAdminResponse, requireAdmin } from "@/lib/adminApi";
 import { pollDeviceFlow, pollKiroDeviceFlow } from "@/core/oauthPkce";
 import { getPreset } from "@/core/oauthProviderPresets";
 import { deleteDevicePending, readDevicePending, readProviderById, saveProviderOAuthTokens } from "@/lib/store";
@@ -53,12 +53,18 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         : {})
     });
     await deleteDevicePending(id);
-    return NextResponse.json({ status: "ok" });
+    return finalizeAdminResponse(NextResponse.json({ status: "ok" }), request);
   } catch (error) {
     const err = error as Error & { pending?: boolean; interval?: number };
     if (err.pending) {
-      return NextResponse.json({ status: "pending", interval: err.interval ?? 5 });
+      return finalizeAdminResponse(
+        NextResponse.json({ status: "pending", interval: err.interval ?? 5 }),
+        request
+      );
     }
-    return NextResponse.json({ error: err.message ?? "Device poll failed." }, { status: 502 });
+    return finalizeAdminResponse(
+      NextResponse.json({ error: err.message ?? "Device poll failed." }, { status: 502 }),
+      request
+    );
   }
 }

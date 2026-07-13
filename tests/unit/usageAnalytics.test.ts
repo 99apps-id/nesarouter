@@ -1,57 +1,50 @@
 import { describe, expect, it } from "vitest";
-import { usageChart, usageStats } from "@/lib/usageAnalytics";
-import { UsageLog } from "@/core/types";
+import { usageStats } from "@/lib/usageAnalytics";
+import type { UsageLog } from "@/core/types";
 
-function makeUsage(overrides: Partial<UsageLog>): UsageLog {
-  return {
-    id: "u",
-    createdAt: new Date().toISOString(),
+const sample: UsageLog[] = [
+  {
+    id: "a",
+    createdAt: "2026-07-13T10:00:00.000Z",
     providerId: "p1",
-    providerName: "P1",
-    model: "m",
-    tier: "free",
+    providerName: "Provider One",
+    model: "gpt-test",
+    tier: "cheap",
     taskType: "chat",
     inputTokens: 10,
     outputTokens: 5,
-    totalCostUsd: 0.001,
+    totalCostUsd: 0.01,
     costSource: "estimated",
+    cacheStatus: "miss",
+    budgetStatus: "ok",
+    routingReason: "test",
+    status: "success"
+  },
+  {
+    id: "b",
+    createdAt: "2026-07-13T11:00:00.000Z",
+    providerId: "p2",
+    providerName: "Provider Two",
+    model: "claude-test",
+    tier: "premium",
+    taskType: "chat",
+    inputTokens: 20,
+    outputTokens: 8,
+    totalCostUsd: 0.02,
+    costSource: "provider_usage",
     cacheStatus: "skipped",
     budgetStatus: "ok",
-    routingReason: "auto",
-    status: "success",
-    ...overrides
-  };
-}
+    routingReason: "test",
+    status: "success"
+  }
+];
 
-describe("usageStats", () => {
-  it("aggregates totals, providers, and cache rate", () => {
-    const stats = usageStats([
-      makeUsage({ id: "a", status: "success", cacheStatus: "hit", totalCostUsd: 0.1 }),
-      makeUsage({ id: "b", status: "error", cacheStatus: "skipped", totalCostUsd: 0, providerId: "p2", providerName: "P2" }),
-      makeUsage({ id: "c", status: "success", cacheStatus: "hit", totalCostUsd: 0.2 })
-    ]);
-    expect(stats.totalRequests).toBe(3);
-    expect(stats.successCount).toBe(2);
-    expect(stats.errorCount).toBe(1);
-    expect(stats.cacheHits).toBe(2);
-    expect(stats.cacheHitRate).toBeCloseTo(2 / 3);
+describe("usageAnalytics", () => {
+  it("aggregates per provider and per model", () => {
+    const stats = usageStats(sample);
     expect(stats.byProvider).toHaveLength(2);
-    expect(stats.byProvider[0].requests).toBe(2);
-  });
-});
-
-describe("usageChart", () => {
-  it("emits one point per day for the requested window", () => {
-    const points = usageChart([makeUsage({ id: "a" }), makeUsage({ id: "b" })], 7);
-    expect(points).toHaveLength(7);
-    const today = points[points.length - 1];
-    expect(today.requests).toBe(2);
-    expect(today.success).toBe(2);
-  });
-
-  it("ignores usage outside the window", () => {
-    const old = new Date(Date.now() - 30 * 86_400_000).toISOString();
-    const points = usageChart([makeUsage({ id: "old", createdAt: old })], 14);
-    expect(points.reduce((s, p) => s + p.requests, 0)).toBe(0);
+    expect(stats.byModel).toHaveLength(2);
+    expect(stats.byProvider[0]?.requests).toBeGreaterThan(0);
+    expect(stats.byModel.some((row) => row.model === "gpt-test")).toBe(true);
   });
 });

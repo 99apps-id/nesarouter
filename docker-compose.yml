@@ -17,7 +17,7 @@ services:
       DATA_DIR: /app/data
       NODE_ENV: production
     healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://localhost:20129/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:20129/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 5

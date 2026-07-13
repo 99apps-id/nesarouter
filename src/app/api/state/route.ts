@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { adminJson, requireAdmin } from "@/lib/adminApi";
 import { getBudgetStatus } from "@/core/budget";
 import { keyRows } from "@/lib/keyIdentity";
 import { redactCacheEntryForClient, redactProviderForClient } from "@/lib/providerRedact";
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   const todaySpend = getTodaySpend(store);
   const budgetStatus = getBudgetStatus(store);
   const { localApiKeys: _keys, cache, providers, ...publicStore } = store;
-  return NextResponse.json({
+  return adminJson(request, {
     ...publicStore,
     secretsRedacted: true,
     localApiKeys: keyRows(_keys),
@@ -64,5 +64,5 @@ export async function PUT(request: Request) {
     aliases
   };
   await writeStore(nextStore);
-  return NextResponse.json({ ok: true });
+  return adminJson(request, { ok: true });
 }

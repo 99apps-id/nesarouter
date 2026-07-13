@@ -1,13 +1,14 @@
 import { Activity, Boxes, FlaskConical, Gauge, KeyRound, Network, ShieldCheck, SlidersHorizontal, Terminal, Waypoints } from "lucide-react";
-import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { adminAuthEnabled, adminCookieName, adminPasswordMustChange, verifyAdminToken } from "@/core/adminAuth";
+import { adminAuthEnabled, adminPasswordMustChange, resolveVerifiedAdminSessionToken } from "@/core/adminAuth";
 import { getBudgetStatus } from "@/core/budget";
 import { publicOrigin } from "@/core/publicUrl";
 import { readStore } from "@/lib/store";
 import { readAppVersion } from "@/lib/appVersion";
 import ThemeToggle from "@/components/ThemeToggle";
 import UpdateBanner from "@/components/UpdateBanner";
+import SessionKeeper from "@/components/SessionKeeper";
 
 const navItems = [
   { href: "/", label: "Overview", icon: Gauge, id: "overview" as const },
@@ -33,9 +34,16 @@ export default async function AppShell({
   title: string;
   children: React.ReactNode;
 }) {
-  const cookieStore = await cookies();
-  if ((await adminAuthEnabled()) && !(await verifyAdminToken(cookieStore.get(adminCookieName)?.value))) {
-    redirect("/login");
+  const requestHeaders = await headers();
+  if (await adminAuthEnabled()) {
+    const cookieHeader = requestHeaders.get("cookie");
+    const probeRequest = cookieHeader
+      ? new Request("http://nesa-router.local/", { headers: { cookie: cookieHeader } })
+      : undefined;
+    if (!(await resolveVerifiedAdminSessionToken(probeRequest))) {
+      const pathname = requestHeaders.get("x-nesa-pathname") || "/";
+      redirect(`/login?next=${encodeURIComponent(pathname)}`);
+    }
   }
 
   const store = await readStore();
@@ -52,6 +60,7 @@ export default async function AppShell({
 
   return (
     <main className="app-shell">
+      <SessionKeeper />
       <aside className="sidebar">
         <div className="brand-mark">
           <div className="brand-icon">

@@ -48,10 +48,16 @@ export default function AliasesManager({
     await persist(items.filter((item) => item.id !== id));
   }
 
-  const targets = [
+  const targetOptions = [
     ...providers.map((provider) => ({ value: provider.model, label: `${provider.name} (${provider.model})` })),
     ...combos.map((combo) => ({ value: combo.name, label: `combo: ${combo.name}` }))
   ];
+  const targets = Array.from(
+    targetOptions.reduce((unique, target) => {
+      if (!unique.has(target.value)) unique.set(target.value, target);
+      return unique;
+    }, new Map<string, { value: string; label: string }>()).values()
+  );
 
   return (
     <section className="panel">

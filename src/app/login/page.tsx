@@ -1,12 +1,11 @@
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import {
   adminAuthEnabled,
-  adminCookieName,
   adminLoginPasswordHint,
   defaultAdminPassword,
   readLoginLock,
-  verifyAdminToken
+  resolveVerifiedAdminSessionToken
 } from "@/core/adminAuth";
 import { availableOAuthProviders } from "@/core/oauth";
 import LoginForm from "@/components/LoginForm";
@@ -14,9 +13,18 @@ import LoginForm from "@/components/LoginForm";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export default async function LoginPage({ searchParams }: { searchParams?: Promise<{ error?: string }> }) {
-  const cookieStore = await cookies();
-  if (!(await adminAuthEnabled()) || (await verifyAdminToken(cookieStore.get(adminCookieName)?.value))) {
+export default async function LoginPage({ searchParams }: { searchParams?: Promise<{ error?: string; next?: string }> }) {
+  const requestHeaders = await headers();
+  const cookieHeader = requestHeaders.get("cookie");
+  const probeRequest = cookieHeader
+    ? new Request("http://nesa-router.local/", { headers: { cookie: cookieHeader } })
+    : undefined;
+  if (!(await adminAuthEnabled()) || (await resolveVerifiedAdminSessionToken(probeRequest))) {
+    const params = searchParams ? await searchParams : {};
+    const next = params.next?.trim();
+    if (next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/login")) {
+      redirect(next);
+    }
     redirect("/");
   }
 

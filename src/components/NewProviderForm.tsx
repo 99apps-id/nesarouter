@@ -4,6 +4,7 @@ import { ListRestart, Plus, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ProviderConfig } from "@/core/types";
 import { customProviderTemplate, providerPresetGroups, providerPresets } from "@/lib/providerPresets";
+import NoAutofillInput from "@/components/NoAutofillInput";
 
 export default function NewProviderForm() {
   const [draft, setDraft] = useState<ProviderConfig>(customProviderTemplate());
@@ -172,7 +173,7 @@ export default function NewProviderForm() {
         </div>
       </div>
 
-      <div className="settings-grid">
+      <form className="settings-grid" autoComplete="off" onSubmit={(event) => event.preventDefault()}>
         <label>
           Filter presets
           <input
@@ -243,7 +244,7 @@ export default function NewProviderForm() {
         </label>
         <label>
           Base URL
-          <input value={draft.baseUrl} onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })} placeholder="https://api.example.com/v1" />
+          <NoAutofillInput value={draft.baseUrl} onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })} placeholder="https://api.example.com/v1" />
         </label>
         {draft.oauthProfile ? (
           <label>
@@ -253,7 +254,7 @@ export default function NewProviderForm() {
         ) : (
           <label>
             API key
-            <input type="password" value={draft.apiKey} onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })} placeholder="Paste key, without Bearer" />
+            <NoAutofillInput sensitive type="password" value={draft.apiKey} onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })} placeholder="Paste key, without Bearer" />
           </label>
         )}
         <label>
@@ -286,7 +287,7 @@ export default function NewProviderForm() {
             onChange={(event) => setDraft({ ...draft, outputCostPerMTok: Number(event.target.value) })}
           />
         </label>
-      </div>
+      </form>
       {seedMessage ? <p className="subtle">{seedMessage}</p> : null}
       {modelsMessage ? <p className={`test-message ${modelsResult}`}>{modelsMessage}</p> : null}
       {!draft.oauthProfile ? (

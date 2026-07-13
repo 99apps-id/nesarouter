@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { cookies } from "next/headers";
 import {
   clearLoginLockState,
   createAdminSessionRecord,
@@ -7,6 +8,7 @@ import {
   findAdminSessionByHash,
   readAdminPasswordHash,
   readLoginLockState,
+  touchAdminSessionExpiry,
   writeLoginLockState
 } from "@/lib/store";
 import {
@@ -14,6 +16,7 @@ import {
   buildAdminSessionCookie,
   hashSessionToken,
   peekAdminCookie,
+  peekAdminCookieLenient,
   SESSION_TTL_MS,
   timingSafeEqualString
 } from "@/core/adminSessionCookie";
@@ -126,7 +129,7 @@ export async function adminSessionToken() {
 }
 
 export async function verifyAdminToken(cookieValue?: string) {
-  const peeked = await peekAdminCookie(cookieValue);
+  const peeked = await peekAdminCookieLenient(cookieValue);
   if (!peeked) return false;
   const tokenHash = await hashSessionToken(peeked.token);
   const record = await findAdminSessionByHash(tokenHash);
@@ -138,8 +141,58 @@ export async function verifyAdminToken(cookieValue?: string) {
   return true;
 }
 
+/** Collect session cookie values from every server-visible source (proxy-safe). */
+export async function readAdminSessionTokenCandidates(request?: Request): Promise<string[]> {
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+  const add = (value?: string | null) => {
+    const trimmed = value?.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    candidates.push(trimmed);
+  };
+
+  // Prefer the raw Cookie header on API requests — more reliable behind reverse proxies
+  // than cookies() alone, which can occasionally disagree with the browser jar.
+  if (request) add(adminTokenFromRequest(request));
+  try {
+    add((await cookies()).get(adminCookieName)?.value);
+  } catch {
+    /* cookies() unavailable outside a request context */
+  }
+
+  return candidates;
+}
+
+/** Return the first session token that passes full verify (HMAC + DB). */
+export async function resolveVerifiedAdminSessionToken(request?: Request): Promise<string | undefined> {
+  for (const candidate of await readAdminSessionTokenCandidates(request)) {
+    if (await verifyAdminToken(candidate)) return candidate;
+  }
+  return undefined;
+}
+
+/** Refresh Set-Cookie after a verified admin API call (extends cookie + DB TTL). */
+export async function refreshAdminSessionCookie(
+  sessionToken: string,
+  request?: Request
+): Promise<{ value: string; options: ReturnType<typeof adminCookieOptions> } | null> {
+  const peeked = await peekAdminCookieLenient(sessionToken);
+  if (!peeked) return null;
+  const tokenHash = await hashSessionToken(peeked.token);
+  const record = await findAdminSessionByHash(tokenHash);
+  if (!record || new Date(record.expiresAt).getTime() <= Date.now()) return null;
+
+  const expMs = Date.now() + SESSION_TTL_MS;
+  await touchAdminSessionExpiry(tokenHash, new Date(expMs).toISOString());
+  return {
+    value: await buildAdminSessionCookie(peeked.token, expMs),
+    options: adminCookieOptions(request)
+  };
+}
+
 export async function revokeAdminToken(cookieValue?: string) {
-  const peeked = await peekAdminCookie(cookieValue);
+  const peeked = await peekAdminCookieLenient(cookieValue);
   if (!peeked) return;
   await deleteAdminSessionByHash(await hashSessionToken(peeked.token));
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { finalizeAdminResponse, requireAdmin } from "@/lib/adminApi";
 import { ProviderConfig } from "@/core/types";
 import { redactProviderForClient } from "@/lib/providerRedact";
 import { deleteProvider, readStore, updateProvider } from "@/lib/store";
@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
   const store = await readStore();
-  return NextResponse.json(store.providers.map(redactProviderForClient));
+  return finalizeAdminResponse(NextResponse.json(store.providers.map(redactProviderForClient)), request);
 }
 
 export async function POST(request: Request) {
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Provider id, name, baseUrl, and model are required." }, { status: 400 });
   }
   const saved = await updateProvider(provider);
-  return NextResponse.json(redactProviderForClient(saved));
+  return finalizeAdminResponse(NextResponse.json(redactProviderForClient(saved)), request);
 }
 
 export async function DELETE(request: Request) {
@@ -32,5 +32,5 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Provider id required." }, { status: 400 });
   }
   await deleteProvider(body.id);
-  return NextResponse.json({ ok: true });
+  return finalizeAdminResponse(NextResponse.json({ ok: true }), request);
 }
