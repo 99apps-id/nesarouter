@@ -139,6 +139,36 @@ describe("router", () => {
     expect(decision.provider.id).toBe("groq");
   });
 
+  it("blocks a paid route at the hard limit and continues with a free provider", () => {
+    const store = storeWith([
+      provider({ id: "paid", name: "Paid", tier: "premium", model: "gpt-4", priority: 1 }),
+      provider({ id: "free", name: "Free", tier: "free", model: "local", priority: 2 })
+    ]);
+    store.router = { ...store.router, routingMode: "best", preferFreeTier: false };
+    store.budget = { ...store.budget, dailyBudgetUsd: 1, onExceeded: "block_paid" };
+    store.usage = [{
+      id: "hard-limit-spend",
+      createdAt: new Date().toISOString(),
+      providerId: "old",
+      providerName: "Old",
+      model: "old",
+      tier: "premium",
+      taskType: "chat",
+      inputTokens: 0,
+      outputTokens: 0,
+      totalCostUsd: 1,
+      costSource: "estimated",
+      cacheStatus: "miss",
+      budgetStatus: "exceeded",
+      routingReason: "test",
+      status: "success"
+    }];
+
+    const decision = chooseProvider(store, { model: "auto", messages: [{ role: "user", content: "hi" }] });
+    expect(decision.provider.id).toBe("free");
+    expect(decision.skippedProviders).toContainEqual({ providerId: "paid", reason: "Skipped by budget guard." });
+  });
+
   it("applies combo round_robin even when global providerStrategy is priority", () => {
     const combo: Combo = { id: "c1", name: "rr-combo", providerIds: ["a", "b"], strategy: "round_robin" };
     const usage: UsageLog = {

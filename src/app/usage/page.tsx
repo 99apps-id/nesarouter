@@ -28,7 +28,7 @@ export default async function UsagePage() {
       <UsageChart />
       <ProviderQuotaPanel providers={store.providers} usage={store.usage} />
       <section className="usage-map-grid">
-        <UsageFlow providers={store.providers} usage={store.usage} latestProviderId={store.usage[0]?.providerId} />
+        <UsageFlow providers={store.providers} usage={store.usage} />
         <RecentRequestsPanel usage={store.usage} />
       </section>
       <RequestInspector usage={store.usage} />

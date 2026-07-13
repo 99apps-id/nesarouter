@@ -42,13 +42,16 @@ function curvePath(from: Point, to: Point, index: number) {
 }
 
 function mapNodes(providers: ProviderConfig[]): MapNode[] {
-  if (providers.length <= maxVisibleNodes) {
-    return providers.map((provider) => ({ ...provider, kind: "provider" as const }));
+  // The map represents selectable upstream routes, not the entire provider
+  // catalog. Disabled and cooldown presets cannot receive traffic.
+  const activeProviders = providers.filter((provider) => provider.status === "active");
+  if (activeProviders.length <= maxVisibleNodes) {
+    return activeProviders.map((provider) => ({ ...provider, kind: "provider" as const }));
   }
   const visibleProviderCount = maxVisibleNodes - 1;
-  const hiddenCount = providers.length - visibleProviderCount;
+  const hiddenCount = activeProviders.length - visibleProviderCount;
   return [
-    ...providers.slice(0, visibleProviderCount).map((provider) => ({ ...provider, kind: "provider" as const })),
+    ...activeProviders.slice(0, visibleProviderCount).map((provider) => ({ ...provider, kind: "provider" as const })),
     { id: "overflow", name: `+${hiddenCount} providers`, status: "disabled", kind: "overflow", hiddenCount }
   ];
 }
@@ -123,7 +126,9 @@ function clampZoom(value: number) {
 function providerUsageMap(usage: UsageLog[]) {
   const map = new Map<string, { requests: number; tokens: number }>();
   for (const row of usage) {
-    if (row.status !== "success") continue;
+    // A cache hit is real dashboard usage, but it never opens an upstream
+    // provider connection and must not make a provider look active on the map.
+    if (row.status !== "success" || row.cacheStatus === "hit") continue;
     const existing = map.get(row.providerId) ?? { requests: 0, tokens: 0 };
     existing.requests += 1;
     existing.tokens += row.inputTokens + row.outputTokens;
@@ -134,12 +139,10 @@ function providerUsageMap(usage: UsageLog[]) {
 
 export default function UsageFlow({
   providers,
-  usage,
-  latestProviderId
+  usage
 }: {
   providers: ProviderConfig[];
   usage: UsageLog[];
-  latestProviderId?: string;
 }) {
   const visibleNodes = useMemo(() => mapNodes(providers), [providers]);
   const [liveUsage, setLiveUsage] = useState<UsageLog[]>(usage);
@@ -164,9 +167,9 @@ export default function UsageFlow({
   const dragStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const pinchStart = useRef<{ distance: number; scale: number } | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const latestUsage = liveUsage.find((row) => row.status === "success");
+  const latestUsage = liveUsage.find((row) => row.status === "success" && row.cacheStatus !== "hit");
   const recentTraffic = Boolean(latestUsage && Date.now() - new Date(latestUsage.createdAt).getTime() < LIVE_WINDOW_MS);
-  const activeProviderId = recentTraffic ? latestUsage?.providerId ?? latestProviderId : undefined;
+  const activeProviderId = recentTraffic ? latestUsage?.providerId : undefined;
   const center: Point = { x: 0, y: 0 };
   const viewBox = useMemo(() => {
     const w = Math.max(mapSize.width, 1);
