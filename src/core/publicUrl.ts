@@ -1,9 +1,10 @@
 /**
- * Canonical public origin for OAuth redirects and post-auth navigation.
+ * Canonical public origin for OAuth redirects, middleware login redirects,
+ * and post-auth navigation.
  *
  * Priority:
- * 1. NESA_PUBLIC_URL
- * 2. Router setting publicBaseUrl (dashboard)
+ * 1. NESA_PUBLIC_URL (Edge-safe; use bracket env access so standalone keeps runtime value)
+ * 2. Router setting publicBaseUrl (Node only — skipped on Edge)
  * 3. X-Forwarded-Host / Host (when not loopback — typical reverse proxy)
  * 4. request.url origin
  */
@@ -11,6 +12,11 @@
 function isLoopbackHost(host: string) {
   const hostname = host.replace(/^\[|\]$/g, "").split(":")[0]?.toLowerCase() ?? "";
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function readEnv(name: string) {
+  // Bracket access avoids build-time inlining of empty values into Edge middleware.
+  return process.env[name]?.trim() || undefined;
 }
 
 function originFromEnv(value: string | undefined | null) {
@@ -27,7 +33,7 @@ function originFromEnv(value: string | undefined | null) {
   }
 }
 
-/** Optional dashboard-configured public URL (lazy to avoid hard Edge deps). */
+/** Optional dashboard-configured public URL (Node only; never call from Edge). */
 function originFromStore(): string | undefined {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -38,54 +44,82 @@ function originFromStore(): string | undefined {
   }
 }
 
-export function publicOrigin(request?: Request): string {
-  const fromEnv = originFromEnv(process.env.NESA_PUBLIC_URL);
-  if (fromEnv) return fromEnv;
+function isEdgeRuntime() {
+  return typeof (globalThis as { EdgeRuntime?: string }).EdgeRuntime === "string";
+}
 
-  const fromStore = originFromStore();
-  if (fromStore) return fromStore;
+/** Resolve origin from proxy / Host headers (Edge-safe, no SQLite). */
+export function publicOriginFromHeaders(request: Request): string {
+  const url = new URL(request.url);
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const hostHeader = request.headers.get("host")?.split(",")[0]?.trim();
+  const candidate = forwardedHost || hostHeader || url.host;
+  const forwardedProto = request.headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim()
+    ?.replace(/:$/, "");
 
-  if (request) {
-    const url = new URL(request.url);
-    const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-    const hostHeader = request.headers.get("host")?.split(",")[0]?.trim();
-    const candidate = forwardedHost || hostHeader || url.host;
-    const forwardedProto = request.headers
-      .get("x-forwarded-proto")
-      ?.split(",")[0]
-      ?.trim()
-      ?.replace(/:$/, "");
-
-    if (candidate && !isLoopbackHost(candidate)) {
-      const proto =
-        forwardedProto ||
-        (url.protocol === "https:" ? "https" : undefined) ||
-        // Public hostnames behind TLS terminators usually omit x-forwarded-proto
-        // when misconfigured; prefer https for bare domains without an explicit port.
-        (!candidate.includes(":") ? "https" : "http");
-      return `${proto}://${candidate}`;
-    }
-
-    if (forwardedHost) {
-      const proto = forwardedProto || url.protocol.replace(":", "") || "http";
-      return `${proto}://${forwardedHost}`;
-    }
-
-    return url.origin;
+  if (candidate && !isLoopbackHost(candidate)) {
+    const proto =
+      forwardedProto ||
+      (url.protocol === "https:" ? "https" : undefined) ||
+      (!candidate.includes(":") ? "https" : "http");
+    return `${proto}://${candidate}`;
   }
 
-  const port = process.env.PORT?.trim() || "20129";
+  if (forwardedHost) {
+    const proto = forwardedProto || url.protocol.replace(":", "") || "http";
+    return `${proto}://${forwardedHost}`;
+  }
+
+  return url.origin;
+}
+
+/**
+ * Edge-safe public origin (env + headers only). Use from middleware.
+ * Does not read SQLite publicBaseUrl.
+ */
+export function publicOriginEdge(request: Request): string {
+  const fromEnv = originFromEnv(readEnv("NESA_PUBLIC_URL"));
+  if (fromEnv) return fromEnv;
+  return publicOriginFromHeaders(request);
+}
+
+export function publicOrigin(request?: Request): string {
+  const fromEnv = originFromEnv(readEnv("NESA_PUBLIC_URL"));
+  if (fromEnv) return fromEnv;
+
+  if (!isEdgeRuntime()) {
+    const fromStore = originFromStore();
+    if (fromStore) return fromStore;
+  }
+
+  if (request) return publicOriginFromHeaders(request);
+
+  const port = readEnv("PORT") || "20129";
   return `http://127.0.0.1:${port}`;
 }
 
 export function publicUrl(pathname: string, request?: Request): string {
-  const base = publicOrigin(request);
-  return new URL(pathname.startsWith("/") ? pathname : `/${pathname}`, `${base}/`).toString();
+  const base = request ? (isEdgeRuntime() ? publicOriginEdge(request) : publicOrigin(request)) : publicOrigin();
+  const path = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  return new URL(path, `${base}/`).toString();
+}
+
+/** Absolute login redirect for middleware (always uses public origin). */
+export function publicLoginRedirectUrl(request: Request, nextPath: string): string {
+  const origin = publicOriginEdge(request);
+  const login = new URL("/login", `${origin}/`);
+  if (nextPath && nextPath !== "/login") {
+    login.searchParams.set("next", nextPath);
+  }
+  return login.toString();
 }
 
 /** Whether Set-Cookie should use the Secure flag (must match the browser scheme). */
 export function cookieSecurePreferred(request?: Request): boolean {
-  const override = process.env.NESA_COOKIE_SECURE?.trim().toLowerCase();
+  const override = readEnv("NESA_COOKIE_SECURE")?.toLowerCase();
   if (override === "true" || override === "1") return true;
   if (override === "false" || override === "0") return false;
 
@@ -106,8 +140,6 @@ export function cookieSecurePreferred(request?: Request): boolean {
     try {
       const proto = new URL(request.url).protocol;
       if (proto === "https:") return true;
-      // request.url is often http://127.0.0.1 behind TLS — do not treat that as insecure
-      // when the public Host is a real domain (assume TLS terminator).
       if (proto === "http:") {
         const host = (request.headers.get("x-forwarded-host") || request.headers.get("host") || "")
           .split(",")[0]
@@ -121,7 +153,7 @@ export function cookieSecurePreferred(request?: Request): boolean {
   }
 
   try {
-    if (originFromEnv(process.env.NESA_PUBLIC_URL)?.startsWith("https://")) return true;
+    if (originFromEnv(readEnv("NESA_PUBLIC_URL"))?.startsWith("https://")) return true;
   } catch {
     /* ignore */
   }

@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cookieSecurePreferred, publicOrigin, publicUrl } from "@/core/publicUrl";
+import {
+  cookieSecurePreferred,
+  publicLoginRedirectUrl,
+  publicOrigin,
+  publicOriginEdge,
+  publicUrl
+} from "@/core/publicUrl";
 
 describe("publicUrl", () => {
   const prevPublic = process.env.NESA_PUBLIC_URL;
@@ -39,6 +45,29 @@ describe("publicUrl", () => {
       }
     });
     expect(publicOrigin(request)).toBe("https://nesa.example.com");
+  });
+
+  it("middleware login redirect uses public origin not localhost", () => {
+    process.env.NESA_PUBLIC_URL = "https://nesa.example.com";
+    const request = new Request("http://127.0.0.1:20129/providers", {
+      headers: { host: "127.0.0.1:20129" }
+    });
+    expect(publicOriginEdge(request)).toBe("https://nesa.example.com");
+    expect(publicLoginRedirectUrl(request, "/providers")).toBe(
+      "https://nesa.example.com/login?next=%2Fproviders"
+    );
+  });
+
+  it("middleware login redirect falls back to forwarded host", () => {
+    delete process.env.NESA_PUBLIC_URL;
+    const request = new Request("http://127.0.0.1:20129/keys", {
+      headers: {
+        host: "127.0.0.1:20129",
+        "x-forwarded-host": "nesa.example.com",
+        "x-forwarded-proto": "https"
+      }
+    });
+    expect(publicLoginRedirectUrl(request, "/keys")).toBe("https://nesa.example.com/login?next=%2Fkeys");
   });
 
   it("cookieSecurePreferred follows https public URL", () => {
