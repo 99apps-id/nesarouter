@@ -41,7 +41,7 @@ export default function ProviderDetail({
   const [modelsMessage, setModelsMessage] = useState("");
   const [oauthMessage, setOauthMessage] = useState("");
   const [showImport, setShowImport] = useState(false);
-  const [oauthPaste, setOauthPaste] = useState<{ state: string; hint?: string } | null>(null);
+  const [oauthPaste, setOauthPaste] = useState<{ state: string; hint?: string; mode?: "code" | "callbackUrl" } | null>(null);
   const [oauthCode, setOauthCode] = useState("");
   const [oauthWaiting, setOauthWaiting] = useState(false);
   const oauthPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -239,20 +239,29 @@ export default function ProviderDetail({
       return;
     }
 
-    // Keep this tab on NesaRouter (9router-style): paste code here and/or wait for loopback.
-    setOauthPaste({
-      state: result.state,
-      hint:
-        result.hint ??
-        (result.manualCode
-          ? "Authorize in the other tab, then paste the code here."
-          : "Authorize in the other tab. If a code is shown, paste it here — otherwise this page updates when the login finishes.")
-    });
-    setOauthMessage(
-      result.manualCode
-        ? "Authorize in the new tab, then paste the code below."
-        : "Authorize in the new tab. Waiting for token…"
-    );
+    if (result.manualCode || result.loopback) {
+      setOauthPaste({
+        state: result.state,
+        mode: result.loopback ? "callbackUrl" : "code",
+        hint:
+          result.hint ??
+          (result.loopback
+            ? "After ChatGPT redirects to localhost (page may fail to load), copy the FULL URL from the address bar and paste it here, then Save."
+            : "Authorize in the other tab, then paste the code here.")
+      });
+      setOauthMessage(
+        result.loopback
+          ? "Authorize in the new tab, then paste the localhost callback URL below (same as 9router)."
+          : "Authorize in the new tab, then paste the code below."
+      );
+    } else {
+      setOauthPaste({
+        state: result.state,
+        mode: "code",
+        hint: result.hint ?? "Authorize in the other tab. If a code or callback URL is shown, paste it here."
+      });
+      setOauthMessage("Authorize in the new tab…");
+    }
     startOauthPoll({
       hadToken: Boolean(draft.oauthAccessToken),
       expiresAt: draft.oauthTokenExpiresAt,
@@ -263,14 +272,22 @@ export default function ProviderDetail({
   async function submitOAuthCode() {
     setError("");
     if (!oauthPaste || !oauthCode.trim()) {
-      setError("Paste the authorization code first.");
+      setError(
+        oauthPaste?.mode === "callbackUrl"
+          ? "Paste the full callback URL from the browser address bar."
+          : "Paste the authorization code first."
+      );
       return;
     }
     setOauthMessage("Exchanging code…");
     const response = await adminFetch(`/api/providers/${draft.id}/oauth/complete`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code: oauthCode.trim(), state: oauthPaste.state })
+      body: JSON.stringify({
+        callbackUrl: oauthCode.trim(),
+        code: oauthCode.trim(),
+        state: oauthPaste.state
+      })
     });
     const result = await response.json().catch(() => ({}));
     if (response.ok) {
@@ -573,7 +590,9 @@ export default function ProviderDetail({
                 ? `Not connected — start the device flow, then authorize NesaRouter with ${deviceVendorLabel} in a browser.`
                 : usesCursorImport
                   ? "Not connected — import the token from this machine's Cursor IDE (state.vscdb), or paste access token + machine id."
-                  : "Not connected — Connect opens the vendor login in a new tab. Paste the code here (Claude / Gemini), or wait while this page picks up the token."}
+                  : draft.oauthProfile === "openai_codex"
+                    ? "Not connected — Connect opens ChatGPT. After redirect to localhost (page may error), copy the FULL URL from the address bar (…?code=…&state=…) and paste it here, then Save — same as 9router."
+                    : "Not connected — Connect opens the vendor login in a new tab. Claude / Gemini: paste the code. ChatGPT: paste the full localhost callback URL."}
           </p>
           {usesCursorImport ? (
             <>
@@ -659,19 +678,25 @@ export default function ProviderDetail({
                 <div className="oauth-import">
                   <p className="subtle">
                     {oauthPaste.hint ??
-                      "Paste the authorization code from the other tab (Claude may use code#state)."}
-                    {oauthWaiting ? " Waiting for completion…" : ""}
+                      (oauthPaste.mode === "callbackUrl"
+                        ? "Paste the full callback URL from the browser address bar."
+                        : "Paste the authorization code from the other tab (Claude may use code#state).")}
+                    {oauthWaiting ? " Waiting for automatic completion…" : ""}
                   </p>
                   <input
                     suppressHydrationWarning
-                    placeholder="Authorization code (from the other tab)"
+                    placeholder={
+                      oauthPaste.mode === "callbackUrl"
+                        ? "http://localhost:1455/auth/callback?code=...&state=..."
+                        : "Authorization code (from the other tab)"
+                    }
                     value={oauthCode}
                     onChange={(e) => setOauthCode(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submitOAuthCode(); } }}
                   />
                   <div className="button-row">
                     <button className="button primary" type="button" onClick={submitOAuthCode} disabled={!oauthCode.trim()}>
-                      <Save size={14} /> Submit code
+                      <Save size={14} /> {oauthPaste.mode === "callbackUrl" ? "Save callback URL" : "Submit code"}
                     </button>
                     {oauthWaiting ? (
                       <button className="button" type="button" onClick={stopOauthPoll}>

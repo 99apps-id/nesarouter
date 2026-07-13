@@ -2,6 +2,12 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.10
+
+### Fixes
+
+- ChatGPT/Codex OAuth matches 9router: after redirect to `localhost:1455`, paste the **full callback URL** from the address bar and Save (parses `code` + `state`).
+
 ## 0.1.9
 
 ### Fixes
