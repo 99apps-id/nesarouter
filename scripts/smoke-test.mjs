@@ -261,6 +261,11 @@ try {
   await loginAdminIfNeeded();
   await provisionSmokeKey();
 
+  const update = await request("/api/update");
+  assert(update.response.ok, "/api/update failed");
+  assert(update.json?.currentVersion && update.json.currentVersion !== "0.0.0", "currentVersion should not be 0.0.0");
+  assert(/^\d+\.\d+\.\d+/.test(update.json.currentVersion), "currentVersion should look like semver");
+
   await request("/api/providers", {
     method: "POST",
     headers: { "content-type": "application/json" },

@@ -5,7 +5,7 @@ import { adminAuthEnabled, adminCookieName, adminPasswordMustChange, verifyAdmin
 import { getBudgetStatus } from "@/core/budget";
 import { publicOrigin } from "@/core/publicUrl";
 import { readStore } from "@/lib/store";
-import { readPackageVersion } from "@/lib/updateCheck";
+import { readAppVersion } from "@/lib/appVersion";
 import ThemeToggle from "@/components/ThemeToggle";
 import UpdateBanner from "@/components/UpdateBanner";
 
@@ -47,7 +47,7 @@ export default async function AppShell({
   }
 
   const visibleNav = mustChangePassword ? navItems.filter((item) => item.id === "routing") : navItems;
-  const appVersion = readPackageVersion();
+  const appVersion = readAppVersion();
   const endpointBase = `${publicOrigin(undefined, store.router.publicBaseUrl)}/v1`;
 
   return (
