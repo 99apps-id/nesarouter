@@ -1,6 +1,6 @@
 {
   "name": "nesa-router",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "private": true,
   "license": "MIT",
   "description": "NesaRouter - Next Smart Adaptive Router",
@@ -12,6 +12,7 @@
     "build": "next build",
     "start": "node scripts/start-standalone.mjs",
     "smoke": "node scripts/smoke-test.mjs",
+    "unlock-admin": "node scripts/unlock-admin.mjs",
     "cursor:export": "node scripts/cursor-export.mjs",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",

@@ -2,6 +2,12 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.14 - 2026-07-14
+
+### Added
+
+- `npm run unlock-admin` clears an accidental dashboard login lock without resetting the admin password, sessions, provider credentials, or router data.
+
 ## 0.1.13 - 2026-07-14
 
 ### Fixes

@@ -55,3 +55,4 @@ When returning provider objects to the browser, use the shared redaction helpers
 - Client `/v1` keys must stay encrypted at rest; list APIs expose id + preview only.
 - Prefer extending existing store/crypto helpers over inventing parallel secret formats.
 - To reset a local admin password during development: `node scripts/reset-admin.mjs` (also clears sessions), then use the bootstrap password from `.env`.
+- To clear only a local login lock without changing password or sessions: `npm run unlock-admin`.
