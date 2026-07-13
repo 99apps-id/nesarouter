@@ -129,6 +129,14 @@ Never commit `.env`, the `data` directory, provider keys, OAuth tokens, or expor
 - Dashboard JSON/SSR redacts provider secrets, device client secrets, and cache response bodies.
 - Production refuses to start without a strong `NESA_ENCRYPTION_KEY` / `NESA_ADMIN_PASSWORD`.
 
+### Clear an accidental login lock
+
+After three wrong password attempts, the dashboard locks for 30 minutes. An operator with VPS shell access can clear only that lock without changing the password, sessions, or provider data:
+
+```bash
+npm run unlock-admin
+```
+
 Details: [SECURITY.md](SECURITY.md).
 
 ## Docker
