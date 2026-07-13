@@ -2,6 +2,12 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.9
+
+### Fixes
+
+- Report the real app version in the dashboard/update banner on standalone and Docker installs (no more `v0.0.0`). Version is baked at build via `NESA_APP_VERSION`, with start-script and `package.json` fallbacks.
+
 ## 0.1.8
 
 ### Fixes

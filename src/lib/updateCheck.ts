@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import packageJson from "../../package.json";
 
 export interface UpdateCheckResult {
   enabled: boolean;
@@ -14,6 +15,7 @@ export interface UpdateCheckResult {
 
 const DEFAULT_REPO = "99apps-id/nesarouter";
 const CACHE_MS = 6 * 60 * 60 * 1000;
+const BUILD_VERSION = typeof packageJson?.version === "string" ? packageJson.version : undefined;
 
 let cache: { expiresAt: number; result: UpdateCheckResult } | null = null;
 
@@ -21,22 +23,36 @@ function githubRepo() {
   return (process.env.NESA_GITHUB_REPO?.trim() || DEFAULT_REPO).replace(/^https?:\/\/github\.com\//i, "").replace(/\.git$/i, "");
 }
 
+function versionFromPackageFile(filePath: string) {
+  try {
+    const pkg = JSON.parse(readFileSync(filePath, "utf8")) as { name?: string; version?: string };
+    if (!pkg.version) return undefined;
+    if (!pkg.name || pkg.name === "nesa-router" || pkg.name === "nesarouter") return pkg.version;
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function readPackageVersion() {
+  // next.config.mjs bakes NESA_APP_VERSION at build time (critical for standalone/Docker).
+  const fromEnv = process.env.NESA_APP_VERSION?.trim() || process.env.npm_package_version?.trim();
+  if (fromEnv) return fromEnv;
+  if (BUILD_VERSION) return BUILD_VERSION;
+
   const candidates = [
     path.join(process.cwd(), "package.json"),
     path.join(process.cwd(), "..", "package.json"),
-    path.join(process.cwd(), "..", "..", "package.json")
+    path.join(process.cwd(), "..", "..", "package.json"),
+    path.join(process.cwd(), "..", "..", "..", "package.json")
   ];
+
   for (const candidate of candidates) {
-    try {
-      const pkg = JSON.parse(readFileSync(candidate, "utf8")) as { name?: string; version?: string };
-      if (pkg.name === "nesa-router" && pkg.version) return pkg.version;
-      if (pkg.version && !pkg.name) return pkg.version;
-    } catch {
-      /* try next */
-    }
+    const version = versionFromPackageFile(candidate);
+    if (version) return version;
   }
-  return process.env.npm_package_version ?? "0.0.0";
+
+  return "0.0.0";
 }
 
 /** Compare dotted semver-ish tags. Returns 1 if a>b, -1 if a<b, 0 if equal/unknown. */
@@ -137,7 +153,10 @@ export async function checkForAppUpdate(options?: { force?: boolean }): Promise<
     }
 
     const latestVersion = (payload.tag_name ?? "").replace(/^v/i, "");
-    const updateAvailable = Boolean(latestVersion) && compareVersions(latestVersion, currentVersion) > 0;
+    // Treat unknown/broken local version as outdated so the banner still helps operators.
+    const localUnknown = !currentVersion || currentVersion === "0.0.0";
+    const updateAvailable =
+      Boolean(latestVersion) && (localUnknown || compareVersions(latestVersion, currentVersion) > 0);
     const result: UpdateCheckResult = {
       enabled: true,
       currentVersion,
@@ -160,7 +179,6 @@ export async function checkForAppUpdate(options?: { force?: boolean }): Promise<
       checkedAt,
       error: error instanceof Error ? error.message : "Update check failed."
     };
-    // Shorter cache on errors so a later attempt can succeed.
     cache = { expiresAt: Date.now() + 30 * 60_000, result };
     return result;
   }
