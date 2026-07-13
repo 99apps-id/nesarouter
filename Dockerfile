@@ -23,12 +23,22 @@ ENV DATA_DIR=/app/data
 
 RUN groupadd --system --gid 1001 nesa && useradd --system --uid 1001 --gid nesa nesa
 
+# Keep the full Next standalone tree (may nest under app/ or repo folder name).
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/.next/standalone ./standalone
+COPY --from=builder /app/.next/static ./standalone-static
+COPY --from=builder /app/scripts/start-standalone.mjs ./scripts/start-standalone.mjs
 
-RUN mkdir -p /app/data && chown -R nesa:nesa /app
+# Normalize to the layout start-standalone.mjs expects: .next/standalone(+static)
+RUN mkdir -p .next \
+  && mv standalone .next/standalone \
+  && mkdir -p .next/static \
+  && cp -a standalone-static/. .next/static/ \
+  && rm -rf standalone-static \
+  && mkdir -p /app/data \
+  && chown -R nesa:nesa /app
+
 USER nesa
 
 EXPOSE 20129
-CMD ["node", "server.js"]
+CMD ["node", "scripts/start-standalone.mjs"]
