@@ -2,6 +2,14 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.8
+
+### Fixes
+
+- Stop Edge middleware from rejecting `/api/*` with false "Admin authentication required" when the session cookie is valid for SSR pages (common behind reverse proxies).
+- `requireAdmin` reads the session via `cookies()` (same as AppShell) with Cookie-header fallback.
+- Provider detail admin calls use `credentials: "include"`.
+
 ## 0.1.7
 
 ### Fixes

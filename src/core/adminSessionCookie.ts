@@ -102,17 +102,7 @@ export async function peekAdminCookie(cookieValue?: string | null): Promise<{ to
   const expMs = Number(expRaw);
   const expected = await signSessionPayload(token!, expMs);
   if (!(await timingSafeEqualString(sig!, expected))) return null;
-  try {
-    const key = await hmacKey();
-    const ok = await getSubtle().verify(
-      "HMAC",
-      key,
-      base64UrlToBytes(sig!),
-      new TextEncoder().encode(`${token}.${expMs}`)
-    );
-    if (!ok) return null;
-  } catch {
-    return null;
-  }
+  // String compare of the HMAC is sufficient; SubtleCrypto.verify is best-effort
+  // (padding/encoding differences behind some runtimes previously rejected valid cookies).
   return { token: token!, expMs };
 }

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, KeyRound, Layers, ListRestart, PlugZap, Plus, Save, Star, Trash2 } from "lucide-react";
 import { ProviderConfig } from "@/core/types";
 import ProviderIcon from "@/components/ProviderIcon";
+import { adminFetch } from "@/lib/adminFetch";
 
 export default function ProviderDetail({
   provider,
@@ -75,7 +76,7 @@ export default function ProviderDetail({
         return;
       }
       try {
-        const response = await fetch("/api/providers");
+        const response = await adminFetch("/api/providers");
         if (!response.ok) return;
         const list = (await response.json()) as ProviderConfig[];
         const current = list.find((item) => item.id === draft.id);
@@ -99,7 +100,7 @@ export default function ProviderDetail({
     setError("");
     const key = newKey.trim().replace(/^Bearer\s+/i, "").trim();
     if (!key) return;
-    const response = await fetch(`/api/providers/${draft.id}/keys`, {
+    const response = await adminFetch(`/api/providers/${draft.id}/keys`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ key })
@@ -116,7 +117,7 @@ export default function ProviderDetail({
 
   async function removeKey(index: number) {
     setError("");
-    const response = await fetch(`/api/providers/${draft.id}/keys`, {
+    const response = await adminFetch(`/api/providers/${draft.id}/keys`, {
       method: "DELETE",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ index })
@@ -157,7 +158,7 @@ export default function ProviderDetail({
     delete (payload as any).apiKeys;
     delete (payload as any).oauthAccessToken;
     delete (payload as any).oauthRefreshToken;
-    const response = await fetch("/api/providers", {
+    const response = await adminFetch("/api/providers", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload)
@@ -174,7 +175,7 @@ export default function ProviderDetail({
   async function testProvider(allAccounts = false) {
     setTestResult("testing");
     setTestMessage("");
-    const response = await fetch("/api/providers/test", {
+    const response = await adminFetch("/api/providers/test", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ providerId: draft.id, allAccounts })
@@ -191,7 +192,7 @@ export default function ProviderDetail({
   async function loadModels() {
     setModelsLoading(true);
     setModelsMessage("");
-    const response = await fetch("/api/providers/models", {
+    const response = await adminFetch("/api/providers/models", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ providerId: draft.id })
@@ -210,7 +211,7 @@ export default function ProviderDetail({
   }
 
   async function deleteProvider() {
-    const response = await fetch("/api/providers", {
+    const response = await adminFetch("/api/providers", {
       method: "DELETE",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ id: draft.id })
@@ -224,7 +225,7 @@ export default function ProviderDetail({
     setOauthPaste(null);
     setOauthCode("");
     stopOauthPoll();
-    const response = await fetch(`/api/providers/${draft.id}/oauth/start`, { method: "POST" });
+    const response = await adminFetch(`/api/providers/${draft.id}/oauth/start`, { method: "POST" });
     const result = await response.json().catch(() => ({}));
     if (!result.authorizeUrl) {
       setOauthMessage(result.error ?? "Failed to start OAuth flow.");
@@ -266,7 +267,7 @@ export default function ProviderDetail({
       return;
     }
     setOauthMessage("Exchanging code…");
-    const response = await fetch(`/api/providers/${draft.id}/oauth/complete`, {
+    const response = await adminFetch(`/api/providers/${draft.id}/oauth/complete`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ code: oauthCode.trim(), state: oauthPaste.state })
@@ -289,7 +290,7 @@ export default function ProviderDetail({
     delete (payload as any).apiKeys;
     delete (payload as any).oauthTokenExpiresAt;
     delete (payload as any).oauthLastRefreshAt;
-    const response = await fetch("/api/providers", {
+    const response = await adminFetch("/api/providers", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload)
@@ -301,7 +302,7 @@ export default function ProviderDetail({
     setError("");
     const accessToken = importTok.accessToken.trim();
     if (!accessToken) { setError("Access token is required."); return; }
-    const response = await fetch(`/api/providers/${draft.id}/oauth/import`, {
+    const response = await adminFetch(`/api/providers/${draft.id}/oauth/import`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -327,7 +328,7 @@ export default function ProviderDetail({
     setOauthMessage("");
     setCursorImporting(true);
     try {
-      const detect = await fetch(`/api/providers/${draft.id}/oauth/cursor/auto-import`);
+      const detect = await adminFetch(`/api/providers/${draft.id}/oauth/cursor/auto-import`);
       const found = await detect.json().catch(() => ({}));
       if (!detect.ok || !found.found || !found.imported) {
         setShowImport(true);
@@ -344,7 +345,7 @@ export default function ProviderDetail({
   async function startDeviceFlow() {
     setError("");
     setOauthMessage("");
-    const response = await fetch(`/api/providers/${draft.id}/oauth/device/start`, { method: "POST" });
+    const response = await adminFetch(`/api/providers/${draft.id}/oauth/device/start`, { method: "POST" });
     const result = await response.json().catch(() => ({}));
     if (response.ok && result.user_code) {
       setDevice({ userCode: result.user_code, verificationUri: result.verification_uri, interval: result.interval ?? 5 });
@@ -356,7 +357,7 @@ export default function ProviderDetail({
   async function pollDeviceFlow() {
     if (!device) return;
     setDevicePolling(true);
-    const response = await fetch(`/api/providers/${draft.id}/oauth/device/poll`, { method: "POST" });
+    const response = await adminFetch(`/api/providers/${draft.id}/oauth/device/poll`, { method: "POST" });
     const result = await response.json().catch(() => ({}));
     if (response.ok && result.status === "ok") {
       setDevice(null);
