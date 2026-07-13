@@ -47,6 +47,30 @@ describe("publicUrl", () => {
     expect(cookieSecurePreferred()).toBe(true);
   });
 
+  it("cookieSecurePreferred respects x-forwarded-proto http", () => {
+    delete process.env.NESA_PUBLIC_URL;
+    delete process.env.NESA_COOKIE_SECURE;
+    const request = new Request("http://127.0.0.1:20129/api/auth/login", {
+      headers: {
+        host: "nesa.example.com:20129",
+        "x-forwarded-proto": "http"
+      }
+    });
+    expect(cookieSecurePreferred(request)).toBe(false);
+  });
+
+  it("cookieSecurePreferred respects x-forwarded-proto https", () => {
+    delete process.env.NESA_PUBLIC_URL;
+    delete process.env.NESA_COOKIE_SECURE;
+    const request = new Request("http://127.0.0.1:20129/api/auth/login", {
+      headers: {
+        host: "nesa.example.com",
+        "x-forwarded-proto": "https"
+      }
+    });
+    expect(cookieSecurePreferred(request)).toBe(true);
+  });
+
   it("cookieSecurePreferred can be forced off", () => {
     process.env.NESA_PUBLIC_URL = "https://nesa.example.com";
     process.env.NESA_COOKIE_SECURE = "false";

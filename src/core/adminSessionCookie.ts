@@ -78,29 +78,41 @@ export async function buildAdminSessionCookie(token: string, expMs = Date.now() 
   return `${COOKIE_PREFIX}.${token}.${expMs}.${sig}`;
 }
 
+/**
+ * Edge-safe shape check only (no HMAC). Full crypto verify runs in Node route
+ * handlers — Edge middleware often lacks runtime NESA_ENCRYPTION_KEY after
+ * Docker/standalone builds, which previously rejected valid sessions.
+ */
+export function hasAdminSessionCookieShape(cookieValue?: string | null): boolean {
+  if (!cookieValue) return false;
+  const parts = cookieValue.split(".");
+  if (parts.length !== 4 || parts[0] !== COOKIE_PREFIX) return false;
+  const [, token, expRaw, sig] = parts;
+  if (!token || !sig || !/^[A-Za-z0-9_-]{32,}$/.test(token)) return false;
+  if (!/^[A-Za-z0-9_-]+$/.test(sig)) return false;
+  const expMs = Number(expRaw);
+  return Number.isFinite(expMs) && expMs > Date.now();
+}
+
 /** Edge-safe shape + HMAC check (no DB). Full revoke still happens in verifyAdminToken. */
 export async function peekAdminCookie(cookieValue?: string | null): Promise<{ token: string; expMs: number } | null> {
-  if (!cookieValue) return null;
-  const parts = cookieValue.split(".");
-  if (parts.length !== 4 || parts[0] !== COOKIE_PREFIX) return null;
+  if (!hasAdminSessionCookieShape(cookieValue)) return null;
+  const parts = cookieValue!.split(".");
   const [, token, expRaw, sig] = parts;
-  if (!token || !sig || !/^[A-Za-z0-9_-]{32,}$/.test(token)) return null;
   const expMs = Number(expRaw);
-  if (!Number.isFinite(expMs) || expMs <= Date.now()) return null;
-  const expected = await signSessionPayload(token, expMs);
-  if (!(await timingSafeEqualString(sig, expected))) return null;
-  // Also verify via SubtleCrypto.verify when lengths match for defense in depth.
+  const expected = await signSessionPayload(token!, expMs);
+  if (!(await timingSafeEqualString(sig!, expected))) return null;
   try {
     const key = await hmacKey();
     const ok = await getSubtle().verify(
       "HMAC",
       key,
-      base64UrlToBytes(sig),
+      base64UrlToBytes(sig!),
       new TextEncoder().encode(`${token}.${expMs}`)
     );
     if (!ok) return null;
   } catch {
     return null;
   }
-  return { token, expMs };
+  return { token: token!, expMs };
 }
