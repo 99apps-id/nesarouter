@@ -1337,6 +1337,24 @@ button:focus-visible {
   padding: 6px 0;
 }
 
+.money-input {
+  align-items: center;
+  display: flex;
+  position: relative;
+}
+
+.money-input > span {
+  color: var(--muted);
+  font-weight: 800;
+  left: 12px;
+  pointer-events: none;
+  position: absolute;
+}
+
+.money-input input {
+  padding-left: 28px;
+}
+
 .provider-usage-row {
   grid-template-columns: 1.6fr 0.6fr 0.8fr 0.8fr 0.7fr;
 }
