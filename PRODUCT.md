@@ -16,9 +16,10 @@ NesaRouter, the Next Smart Adaptive Router, provides one OpenAI-compatible endpo
 
 - **Unified `/v1` gateway** for chat, responses, messages, embeddings, media, search, and guarded web fetch.
 - **Smart routing** with budget guard, cache, combos, aliases, and per-request audit trail.
-- **Dual credential model**: usage-billed API keys vs subscription OAuth / IDE import (Claude, ChatGPT/Codex, Gemini CLI, Copilot, Kiro, Antigravity, Cursor).
+- **Dual credential model**: usage-billed API keys vs subscription OAuth / IDE import (Claude, ChatGPT/Codex, Gemini CLI, Copilot, Kiro, Antigravity, Cursor), plus keyless free presets (e.g. OpenCode Free).
+- **Multi-account OAuth pools** with round-robin, per-account health, and automatic skip of fatal-error accounts.
 - **Token savers**: Caveman (default lite) + RTK tool-result compression; optional Headroom / pxpipe hooks.
-- **Local operator console**: providers, keys, routing, usage, MCP, tunnel, CLI helpers.
+- **Local operator console**: providers, keys, routing, usage (live provider-flow map), MCP, tunnel, CLI helpers.
 - **Security defaults for self-host**: encrypted secrets at rest, must-change bootstrap password, revocable admin sessions, redacted admin APIs, empty client keys = locked `/v1`.
 
 ## Brand Personality

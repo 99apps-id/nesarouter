@@ -24,6 +24,8 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     refreshToken?: string;
     expiresIn?: number;
     machineId?: string;
+    accountId?: string;
+    createNew?: boolean;
   };
   const accessToken = (body.accessToken ?? "").trim();
   if (!accessToken) return NextResponse.json({ error: "access_token is required." }, { status: 400 });
@@ -38,6 +40,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ? new Date(Date.now() + 86400 * 1000).toISOString()
       : undefined;
 
-  await saveProviderOAuthTokens(provider.id, { accessToken, refreshToken, expiresAt, machineId });
+  await saveProviderOAuthTokens(provider.id, { accessToken, refreshToken, expiresAt, machineId }, {
+    accountId: body.accountId,
+    createNew: Boolean(body.createNew)
+  });
   return NextResponse.json({ ok: true, expiresAt, machineId: Boolean(machineId) });
 }

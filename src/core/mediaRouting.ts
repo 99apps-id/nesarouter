@@ -1,3 +1,4 @@
+import { providerHasCredential } from "@/core/providerCredentials";
 import { getBudgetStatus } from "@/core/budget";
 import { chooseProvider } from "@/core/router";
 import { MediaKind } from "@/core/mediaPassthrough";
@@ -20,8 +21,7 @@ function mediaProviderId(store: NesaStore, kind: MediaKind): string | undefined 
 
 function isProviderReady(provider: ProviderConfig) {
   if (provider.status !== "active") return false;
-  if (provider.apiKey || provider.oauthAccessToken) return true;
-  return Array.isArray(provider.apiKeys) && provider.apiKeys.some((key) => typeof key === "string" && key.trim());
+  return providerHasCredential(provider);
 }
 
 function manualMediaDecision(store: NesaStore, provider: ProviderConfig, probeText: string, kind: MediaKind): RouteDecision {

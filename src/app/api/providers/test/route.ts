@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { finalizeAdminResponse, requireAdmin } from "@/lib/adminApi";
+import { isKeylessProvider } from "@/core/providerCredentials";
 import { testProviderConnection } from "@/core/providerClient";
 import { configuredProviderKeys } from "@/core/providerKeys";
 import { ProviderConfig } from "@/core/types";
@@ -24,8 +25,8 @@ export async function POST(request: Request) {
 
   const keylessAllowed =
     provider.oauthProfile ||
-    provider.type === "kiro" ||
-    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(provider.baseUrl);
+    isKeylessProvider(provider) ||
+    provider.type === "kiro";
 
   if (!provider.apiKey && !keylessAllowed) {
     return finalizeAdminResponse(

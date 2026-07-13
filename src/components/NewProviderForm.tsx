@@ -146,8 +146,7 @@ export default function NewProviderForm() {
     <section className="panel compact">
       <div className="panel-heading">
         <div>
-          <p className="subtle">Add</p>
-          <h2>New provider</h2>
+          <h2>Add provider</h2>
         </div>
         <button className="button" type="button" onClick={syncCatalog} title="Insert missing catalog presets into the pool">
           <RefreshCw size={16} /> Sync catalog

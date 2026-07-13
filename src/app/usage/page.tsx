@@ -37,7 +37,6 @@ export default async function UsagePage() {
       <section className="panel">
         <div className="panel-heading">
           <div>
-            <p className="subtle">Audit</p>
             <h2>Requests</h2>
           </div>
         </div>

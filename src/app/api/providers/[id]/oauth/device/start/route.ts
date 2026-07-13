@@ -16,6 +16,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
   const { id } = await context.params;
+  const body = (await request.json().catch(() => ({}))) as { accountId?: string; createNew?: boolean };
   const provider = await readProviderById(id);
   if (!provider) return NextResponse.json({ error: "Provider not found." }, { status: 404 });
   const preset = getPreset(provider.oauthProfile);
@@ -30,10 +31,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       await saveDevicePending(id, {
         deviceCode: info.device_code,
         createdAt: new Date().toISOString(),
+        accountId: body.createNew ? undefined : body.accountId,
         clientId: info.clientId,
         clientSecret: info.clientSecret,
         region: info.region
-      });
+      }, body.createNew ? undefined : body.accountId);
       return finalizeAdminResponse(
         NextResponse.json({
           user_code: info.user_code,
@@ -46,7 +48,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     const info = await startDeviceFlow(preset);
-    await saveDevicePending(id, { deviceCode: info.device_code, createdAt: new Date().toISOString() });
+    await saveDevicePending(id, {
+      deviceCode: info.device_code,
+      createdAt: new Date().toISOString(),
+      accountId: body.createNew ? undefined : body.accountId
+    }, body.createNew ? undefined : body.accountId);
     return finalizeAdminResponse(
       NextResponse.json({
         user_code: info.user_code,

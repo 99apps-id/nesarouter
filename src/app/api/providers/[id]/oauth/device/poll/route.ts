@@ -51,8 +51,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       ...(preset.kiroDeviceFlow && pending.clientId && pending.clientSecret
         ? { deviceClientId: pending.clientId, deviceClientSecret: pending.clientSecret }
         : {})
+    }, {
+      accountId: pending.accountId,
+      createNew: !pending.accountId
     });
-    await deleteDevicePending(id);
+    await deleteDevicePending(id, pending.accountId);
     return finalizeAdminResponse(NextResponse.json({ status: "ok" }), request);
   } catch (error) {
     const err = error as Error & { pending?: boolean; interval?: number };

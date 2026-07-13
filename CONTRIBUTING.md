@@ -29,10 +29,12 @@ Run these before opening a pull request:
 npm run typecheck
 npm test
 npm run build
+npm run start
+# In another terminal:
 npm run smoke
 ```
 
-`npm run smoke` needs a running local server and creates temporary data that it cleans up afterwards.
+`npm run smoke` needs the standalone server created by `npm run build`; it exercises routing against local mock providers and cleans up its temporary records. Do not keep `npm run dev` running during the build or smoke run because both use `.next`.
 
 ## Pull Requests
 

@@ -50,6 +50,9 @@ export async function GET(request: Request) {
       refreshToken: tokens.refresh_token,
       expiresAt,
       projectId
+    }, {
+      accountId: pending.accountId,
+      createNew: !pending.accountId
     });
     return NextResponse.redirect(publicUrl("/providers?oauth=connected", request));
   } catch (error) {

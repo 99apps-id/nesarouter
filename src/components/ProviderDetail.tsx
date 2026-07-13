@@ -16,6 +16,8 @@ export default function ProviderDetail({
   keyCount,
   hasApiKey,
   hasOAuthToken,
+  oauthAccountSummaries = [],
+  routableOAuthCount = 0,
   tierLabel,
   canDelete = false
 }: {
@@ -24,6 +26,16 @@ export default function ProviderDetail({
   keyCount: number;
   hasApiKey: boolean;
   hasOAuthToken: boolean;
+  oauthAccountSummaries?: Array<{
+    id: string;
+    name: string;
+    connected: boolean;
+    status: "connected" | "error" | "empty" | "unknown";
+    lastError?: string;
+    lastCheckedAt?: string;
+    routable: boolean;
+  }>;
+  routableOAuthCount?: number;
   tierLabel: string;
   canDelete?: boolean;
 }) {
@@ -52,6 +64,78 @@ export default function ProviderDetail({
   const [devicePolling, setDevicePolling] = useState(false);
   const [cursorImporting, setCursorImporting] = useState(false);
   const [error, setError] = useState("");
+  const [oauthTarget, setOauthTarget] = useState<{ accountId?: string; createNew: boolean }>({ createNew: false });
+  const [liveOAuthAccounts, setLiveOAuthAccounts] = useState(oauthAccountSummaries);
+  const [oauthProbeAt, setOauthProbeAt] = useState<string>("");
+
+  useEffect(() => {
+    setLiveOAuthAccounts(oauthAccountSummaries);
+  }, [oauthAccountSummaries]);
+
+  useEffect(() => {
+    if (!draft.oauthProfile) return;
+    let cancelled = false;
+
+    async function refreshStatus(probe = false) {
+      const response = await adminFetch(`/api/providers/${draft.id}/oauth/accounts/status`, {
+        method: probe ? "POST" : "GET"
+      });
+      if (!response.ok || cancelled) return;
+      const result = await response.json().catch(() => ({}));
+      if (!result.accounts || cancelled) return;
+      setLiveOAuthAccounts(result.accounts.map((account: any) => ({
+        id: account.id,
+        name: account.name,
+        connected: account.status !== "empty",
+        status: account.status,
+        lastError: account.lastError,
+        lastCheckedAt: account.lastCheckedAt,
+        routable: Boolean(account.routable)
+      })));
+      if (result.updatedAt) setOauthProbeAt(result.updatedAt);
+    }
+
+    void refreshStatus(true);
+    const fast = window.setInterval(() => { void refreshStatus(false); }, 12_000);
+    const probe = window.setInterval(() => { void refreshStatus(true); }, 45_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(fast);
+      window.clearInterval(probe);
+    };
+  }, [draft.id, draft.oauthProfile]);
+
+  function oauthStatusTone(status: string) {
+    if (status === "connected") return "success";
+    if (status === "error") return "error";
+    return "neutral";
+  }
+
+  function oauthStatusText(account: { status: string; routable: boolean }) {
+    if (account.status === "connected") return "connected";
+    if (account.status === "error") return "error — skipped in routing";
+    if (account.status === "empty") return "empty";
+    return "checking…";
+  }
+
+  function oauthConnectBody() {
+    return oauthTarget.createNew
+      ? { createNew: true }
+      : { accountId: oauthTarget.accountId ?? oauthAccountSummaries[0]?.id };
+  }
+
+  async function removeOAuthAccount(accountId: string) {
+    const response = await adminFetch(`/api/providers/${draft.id}/oauth/accounts`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ accountId })
+    });
+    if (response.ok) router.refresh();
+    else {
+      const result = await response.json().catch(() => ({}));
+      setError(result.error ?? "Failed to remove OAuth account.");
+    }
+  }
 
   function handleSessionExpired(setMessage: (value: string) => void) {
     setMessage(ADMIN_SESSION_EXPIRED);
@@ -253,7 +337,11 @@ export default function ProviderDetail({
       return;
     }
 
-    const response = await adminFetch(`/api/providers/${draft.id}/oauth/start`, { method: "POST" });
+    const response = await adminFetch(`/api/providers/${draft.id}/oauth/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(oauthConnectBody())
+    });
     if (guardAdminResponse(response, setError)) {
       popup.close();
       setOauthMessage("");
@@ -348,16 +436,9 @@ export default function ProviderDetail({
   }
 
   async function disconnectOAuth() {
-    const payload = { ...draft, models, model: models[0] ?? draft.model, oauthAccessToken: "", oauthRefreshToken: "" };
-    delete (payload as any).apiKeys;
-    delete (payload as any).oauthTokenExpiresAt;
-    delete (payload as any).oauthLastRefreshAt;
-    const response = await adminFetch("/api/providers", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    if (response.ok) router.refresh();
+    const accountId = oauthTarget.accountId ?? oauthAccountSummaries[0]?.id;
+    if (!accountId) return;
+    await removeOAuthAccount(accountId);
   }
 
   async function importToken() {
@@ -371,7 +452,8 @@ export default function ProviderDetail({
         accessToken,
         refreshToken: importTok.refreshToken.trim() || undefined,
         expiresIn: importTok.expiresIn ? Number(importTok.expiresIn) : undefined,
-        machineId: importTok.machineId.trim() || undefined
+        machineId: importTok.machineId.trim() || undefined,
+        ...oauthConnectBody()
       })
     });
     if (response.ok) {
@@ -408,7 +490,11 @@ export default function ProviderDetail({
   async function startDeviceFlow() {
     setError("");
     setOauthMessage("");
-    const response = await adminFetch(`/api/providers/${draft.id}/oauth/device/start`, { method: "POST" });
+    const response = await adminFetch(`/api/providers/${draft.id}/oauth/device/start`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(oauthConnectBody())
+    });
     if (guardAdminResponse(response, setError)) return;
     const result = await response.json().catch(() => ({}));
     if (response.ok && result.user_code) {
@@ -466,7 +552,15 @@ export default function ProviderDetail({
             <span>{tierLabel}</span>
             <div className="provider-badges">
               <span className={`status ${connectionStatus === "connected" ? "success" : connectionStatus === "error" ? "error" : "neutral"}`}>{connectionLabel}</span>
-              {isAccountProvider ? <span className={`status ${hasOAuthToken ? "success" : "neutral"}`}>OAuth {hasOAuthToken ? "connected" : "not connected"}</span> : <span className={`status ${keyCountState > 0 ? "success" : "neutral"}`}><KeyRound size={12} /> {keyCountState} key{keyCountState === 1 ? "" : "s"}</span>}
+              {isAccountProvider ? (
+                <span className={`status ${routableOAuthCount > 0 ? "success" : hasOAuthToken ? "error" : "neutral"}`}>
+                  OAuth {routableOAuthCount > 0 ? `${routableOAuthCount} routable` : hasOAuthToken ? "all accounts error" : "not connected"}
+                </span>
+              ) : (
+                <span className={`status ${keyCountState > 0 ? "success" : "neutral"}`}>
+                  <KeyRound size={12} /> {keyCountState} key{keyCountState === 1 ? "" : "s"}
+                </span>
+              )}
               <span className="status neutral"><Layers size={12} /> {models.length} model{models.length === 1 ? "" : "s"}</span>
             </div>
             {draft.lastError ? <small title={draft.lastError}>Last error: {draft.lastError}</small> : null}
@@ -635,9 +729,44 @@ export default function ProviderDetail({
           <div className="panel-heading">
             <div>
               <p className="subtle">Subscription OAuth ({draft.oauthProfile})</p>
-              <h2>OAuth connection</h2>
+              <h2>OAuth accounts</h2>
             </div>
+            <button
+              className="button"
+              type="button"
+              onClick={() => setOauthTarget({ createNew: true })}
+            >
+              <Plus size={16} /> Add account
+            </button>
           </div>
+          <p className="compact-copy">
+            Status updates in real time (green = routable, red = error/quota/no access and skipped in routing).
+            {oauthProbeAt ? ` Last probe: ${new Date(oauthProbeAt).toLocaleTimeString()}.` : ""}
+          </p>
+          <div className="key-list">
+            {liveOAuthAccounts.length === 0 ? (
+              <p className="subtle">No accounts yet — Connect or Add account below.</p>
+            ) : liveOAuthAccounts.map((account) => (
+              <div key={account.id} className="key-row">
+                <span className="key-preview"><KeyRound size={14} /> {account.name}</span>
+                <span className={`status ${oauthStatusTone(account.status)}`}>{oauthStatusText(account)}</span>
+                {account.lastError ? <small title={account.lastError} className="subtle">{account.lastError.slice(0, 80)}</small> : null}
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => setOauthTarget({ accountId: account.id, createNew: false })}
+                >
+                  Use
+                </button>
+                {account.connected ? (
+                  <button className="button danger-button" type="button" onClick={() => removeOAuthAccount(account.id)}>
+                    <Trash2 size={14} /> Remove
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+          {oauthTarget.createNew ? <p className="subtle">Adding new account — Connect / device flow / import will attach to a new slot.</p> : oauthTarget.accountId ? <p className="subtle">Active slot: {liveOAuthAccounts.find((item) => item.id === oauthTarget.accountId)?.name ?? "selected account"}</p> : null}
           <p className="compact-copy">
             {hasOAuthToken
               ? `Connected${draft.oauthTokenExpiresAt ? ` · expires ${new Date(draft.oauthTokenExpiresAt).toLocaleString()}` : ""}${draft.oauthProjectId ? ` · project ${draft.oauthProjectId}` : ""}${draft.oauthMachineId ? " · machine id set" : ""}. Tokens refresh automatically where supported.`

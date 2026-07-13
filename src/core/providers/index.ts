@@ -1,4 +1,5 @@
 import { ProviderConfig } from "@/core/types";
+import { isKeylessProvider } from "@/core/providerCredentials";
 import { GeminiExecutor } from "@/core/providers/gemini";
 import { GeminiCliExecutor } from "@/core/providers/geminiCli";
 import { GithubCopilotExecutor } from "@/core/providers/githubCopilot";
@@ -6,6 +7,7 @@ import { OpenAiCompatibleExecutor } from "@/core/providers/openaiCompatible";
 import { AnthropicMessagesExecutor } from "@/core/providers/anthropic";
 import { OpenAiResponsesExecutor } from "@/core/providers/openaiResponses";
 import { KiroExecutor } from "@/core/providers/kiro";
+import { OpenCodeExecutor } from "@/core/providers/opencode";
 import { CursorExecutor } from "@/core/providers/cursor";
 import { ProviderExecutor, UpstreamProviderError, cleanApiKey } from "@/core/providers/shared";
 
@@ -17,6 +19,7 @@ const executors: Record<ProviderConfig["type"], ProviderExecutor> = {
   anthropic_messages: new AnthropicMessagesExecutor(),
   openai_responses: new OpenAiResponsesExecutor(),
   kiro: new KiroExecutor(),
+  opencode: new OpenCodeExecutor(),
   cursor: new CursorExecutor()
 };
 
@@ -33,8 +36,8 @@ export async function callProvider(provider: ProviderConfig, body: any, apiKey?:
 export async function listProviderModels(provider: ProviderConfig) {
   const keylessAllowed =
     provider.oauthProfile ||
-    provider.type === "kiro" ||
-    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(provider.baseUrl);
+    isKeylessProvider(provider) ||
+    provider.type === "kiro";
 
   if (!cleanApiKey(provider.apiKey) && !keylessAllowed) throw new UpstreamProviderError("Provider API key is empty.", 400);
   return getProviderExecutor(provider).listModels(provider);

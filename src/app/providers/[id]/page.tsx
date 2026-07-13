@@ -2,6 +2,8 @@ import AppShell from "@/components/AppShell";
 import ProviderDetail from "@/components/ProviderDetail";
 import { providerPresets } from "@/lib/providerPresets";
 import { keyPreview, tierLabel } from "@/lib/providerLabels";
+import { configuredOAuthAccounts, oauthAccountCount, routableOAuthAccountCount } from "@/core/oauthAccounts";
+import { oauthAccountStatusLabel } from "@/core/oauthAccountHealth";
 import { redactProviderForClient } from "@/lib/providerRedact";
 import { readStore } from "@/lib/store";
 import { notFound } from "next/navigation";
@@ -21,6 +23,18 @@ export default async function ProviderDetailPage({ params }: { params: Promise<{
     ...(Array.isArray(provider.apiKeys) ? provider.apiKeys.map((key) => keyPreview(key)) : [])
   ];
   const safeProvider = redactProviderForClient(provider);
+  const oauthAccountSummaries = configuredOAuthAccounts(provider).map((account) => {
+    const status = oauthAccountStatusLabel(account);
+    return {
+      id: account.id,
+      name: account.name ?? `Account ${account.index + 1}`,
+      connected: Boolean(account.oauthAccessToken || account.oauthCopilotToken),
+      status,
+      lastError: account.lastError,
+      lastCheckedAt: account.lastCheckedAt,
+      routable: Boolean((account.oauthAccessToken || account.oauthCopilotToken) && account.connectionStatus !== "error")
+    };
+  });
 
   return (
     <AppShell active="providers" eyebrow="Provider" title={provider.name}>
@@ -33,7 +47,9 @@ export default async function ProviderDetailPage({ params }: { params: Promise<{
         keyPreviews={keyPreviews}
         keyCount={keyPreviews.length}
         hasApiKey={Boolean(provider.apiKey)}
-        hasOAuthToken={Boolean(provider.oauthAccessToken ?? provider.oauthCopilotToken)}
+        hasOAuthToken={oauthAccountCount(provider) > 0}
+        routableOAuthCount={routableOAuthAccountCount(provider)}
+        oauthAccountSummaries={oauthAccountSummaries}
         tierLabel={`${tierLabel[provider.tier]} · ${provider.type}`}
         canDelete={!presetIds.has(provider.id)}
       />
