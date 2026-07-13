@@ -17,12 +17,15 @@ function minutesLeft(ms = 0) {
 
 export default function LoginForm({
   defaultPassword,
+  passwordHint,
   initialLock,
   oauthProviders,
   oauthError
 }: {
   /** Only set while still on the temporary local bootstrap password. */
   defaultPassword?: string;
+  /** default = show nesa123456; env = point at .env without revealing the value */
+  passwordHint?: "default" | "env";
   initialLock?: LoginLock;
   oauthProviders: OAuthProviderInfo[];
   oauthError?: string;
@@ -71,11 +74,21 @@ export default function LoginForm({
             <span>Admin access</span>
           </div>
         </div>
-        {defaultPassword ? (
+        {passwordHint === "default" && defaultPassword ? (
           <div className="default-password-box">
             <span>Temporary default password</span>
             <code>{defaultPassword}</code>
             <small>Shown only until you change it under Routing → Password.</small>
+          </div>
+        ) : null}
+        {passwordHint === "env" ? (
+          <div className="default-password-box">
+            <span>Bootstrap password from server .env</span>
+            <small>
+              Use the value of <code>NESA_ADMIN_PASSWORD</code> set during install (production cannot use{" "}
+              <code>nesa123456</code>). Ask your installer if you do not have it, then change it under Routing →
+              Password after login.
+            </small>
           </div>
         ) : null}
         <label>

@@ -2,6 +2,13 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.3
+
+### Fixes
+
+- Login explains when the bootstrap password comes from `NESA_ADMIN_PASSWORD` in `.env` (without revealing the value), so VPS installs are less confusing when `nesa123456` is not shown.
+- Document installer/agent guidance: do not silently randomize the admin password (`AGENTS.md`, README).
+
 ## 0.1.2
 
 ### Fixes

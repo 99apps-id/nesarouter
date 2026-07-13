@@ -3,9 +3,9 @@ import { cookies } from "next/headers";
 import {
   adminAuthEnabled,
   adminCookieName,
+  adminLoginPasswordHint,
   defaultAdminPassword,
   readLoginLock,
-  shouldShowBootstrapPasswordHint,
   verifyAdminToken
 } from "@/core/adminAuth";
 import { availableOAuthProviders } from "@/core/oauth";
@@ -22,10 +22,11 @@ export default async function LoginPage({ searchParams }: { searchParams?: Promi
 
   const lock = await readLoginLock();
   const params = searchParams ? await searchParams : {};
-  const showBootstrapHint = await shouldShowBootstrapPasswordHint();
+  const passwordHint = await adminLoginPasswordHint();
   return (
     <LoginForm
-      defaultPassword={showBootstrapHint ? defaultAdminPassword : undefined}
+      defaultPassword={passwordHint === "default" ? defaultAdminPassword : undefined}
+      passwordHint={passwordHint ?? undefined}
       initialLock={lock}
       oauthProviders={availableOAuthProviders()}
       oauthError={params.error}

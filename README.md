@@ -50,7 +50,13 @@ npm run dev
 
 Open `http://localhost:20129`.
 
-For a first local development run, the bootstrap password is `nesa123456` when `NESA_ADMIN_PASSWORD` is unset. Until you change it under **Routing → Password**, other dashboard menus stay locked and most admin APIs return `403`. Do not use the default password on a VPS, Cloudflare Funnel, or any public tunnel — that exposes the admin UI (and MCP command spawn) to the internet.
+For a first local development run, the bootstrap password is `nesa123456` when `NESA_ADMIN_PASSWORD` is unset. Until you change it under **Routing → Password**, other dashboard menus stay locked and most admin APIs return `403`.
+
+### VPS / production install
+
+Production requires a unique `NESA_ADMIN_PASSWORD` (not `nesa123456`). Installers and automation agents must either ask the operator for that password or print the chosen value clearly once — do not set a hidden random password. After first login, change it under **Routing → Password**.
+
+Do not expose the dashboard on a public tunnel until that password is changed.
 
 Then:
 
