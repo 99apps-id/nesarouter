@@ -4,7 +4,7 @@ import { ensureOauthLoopback } from "@/core/oauthLoopback";
 import { buildAuthorizeUrl, generatePkce, generateState } from "@/core/oauthPkce";
 import { getPreset } from "@/core/oauthProviderPresets";
 import { publicOrigin, publicUrl } from "@/core/publicUrl";
-import { readProviderById, saveOAuthPending } from "@/lib/store";
+import { readProviderById, readPublicBaseUrlSync, saveOAuthPending } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,10 +25,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }, { status: 400 });
   }
 
+  const publicBase = readPublicBaseUrlSync();
   const { verifier, challenge } = generatePkce();
   const state = `${id}:${generateState()}`;
   const redirectUri =
-    preset.fixedRedirectUri ?? `${publicOrigin(request)}/api/providers/oauth/callback`;
+    preset.fixedRedirectUri ?? `${publicOrigin(request, publicBase)}/api/providers/oauth/callback`;
 
   if (preset.loopbackPort && preset.loopbackPath) {
     try {
@@ -52,7 +53,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     state,
     manualCode: Boolean(preset.manualCodeFlow),
     loopback: Boolean(preset.loopbackPort),
-    returnUrl: publicUrl("/providers", request),
+    returnUrl: publicUrl("/providers", request, publicBase),
     hint: preset.manualCodeFlow
       ? "Authorize in the new tab, copy the code shown there, and paste it back here."
       : preset.loopbackPort

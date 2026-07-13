@@ -2,10 +2,12 @@
  * Canonical public origin for OAuth redirects, middleware login redirects,
  * and post-auth navigation.
  *
+ * Edge-safe: no SQLite / node: imports (middleware bundles this module).
+ *
  * Priority:
- * 1. NESA_PUBLIC_URL (Edge-safe; use bracket env access so standalone keeps runtime value)
- * 2. Router setting publicBaseUrl (Node only — skipped on Edge)
- * 3. X-Forwarded-Host / Host (when not loopback — typical reverse proxy)
+ * 1. explicit override (e.g. router.publicBaseUrl from a Node caller)
+ * 2. NESA_PUBLIC_URL (bracket env access keeps runtime value in standalone)
+ * 3. X-Forwarded-Host / Host (when not loopback)
  * 4. request.url origin
  */
 
@@ -15,11 +17,10 @@ function isLoopbackHost(host: string) {
 }
 
 function readEnv(name: string) {
-  // Bracket access avoids build-time inlining of empty values into Edge middleware.
   return process.env[name]?.trim() || undefined;
 }
 
-function originFromEnv(value: string | undefined | null) {
+export function originFromEnv(value: string | undefined | null) {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
   try {
@@ -33,22 +34,7 @@ function originFromEnv(value: string | undefined | null) {
   }
 }
 
-/** Optional dashboard-configured public URL (Node only; never call from Edge). */
-function originFromStore(): string | undefined {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { readPublicBaseUrlSync } = require("@/lib/store") as typeof import("@/lib/store");
-    return originFromEnv(readPublicBaseUrlSync());
-  } catch {
-    return undefined;
-  }
-}
-
-function isEdgeRuntime() {
-  return typeof (globalThis as { EdgeRuntime?: string }).EdgeRuntime === "string";
-}
-
-/** Resolve origin from proxy / Host headers (Edge-safe, no SQLite). */
+/** Resolve origin from proxy / Host headers (Edge-safe). */
 export function publicOriginFromHeaders(request: Request): string {
   const url = new URL(request.url);
   const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
@@ -77,23 +63,15 @@ export function publicOriginFromHeaders(request: Request): string {
 }
 
 /**
- * Edge-safe public origin (env + headers only). Use from middleware.
- * Does not read SQLite publicBaseUrl.
+ * Edge-safe public origin (env + headers only).
+ * Pass `override` from Node (e.g. dashboard publicBaseUrl) when available.
  */
-export function publicOriginEdge(request: Request): string {
+export function publicOrigin(request?: Request, override?: string | null): string {
+  const fromOverride = originFromEnv(override);
+  if (fromOverride) return fromOverride;
+
   const fromEnv = originFromEnv(readEnv("NESA_PUBLIC_URL"));
   if (fromEnv) return fromEnv;
-  return publicOriginFromHeaders(request);
-}
-
-export function publicOrigin(request?: Request): string {
-  const fromEnv = originFromEnv(readEnv("NESA_PUBLIC_URL"));
-  if (fromEnv) return fromEnv;
-
-  if (!isEdgeRuntime()) {
-    const fromStore = originFromStore();
-    if (fromStore) return fromStore;
-  }
 
   if (request) return publicOriginFromHeaders(request);
 
@@ -101,16 +79,20 @@ export function publicOrigin(request?: Request): string {
   return `http://127.0.0.1:${port}`;
 }
 
-export function publicUrl(pathname: string, request?: Request): string {
-  const base = request ? (isEdgeRuntime() ? publicOriginEdge(request) : publicOrigin(request)) : publicOrigin();
+/** Alias used by middleware — same as publicOrigin (kept for call-site clarity). */
+export function publicOriginEdge(request: Request): string {
+  return publicOrigin(request);
+}
+
+export function publicUrl(pathname: string, request?: Request, override?: string | null): string {
+  const base = publicOrigin(request, override);
   const path = pathname.startsWith("/") ? pathname : `/${pathname}`;
   return new URL(path, `${base}/`).toString();
 }
 
 /** Absolute login redirect for middleware (always uses public origin). */
 export function publicLoginRedirectUrl(request: Request, nextPath: string): string {
-  const origin = publicOriginEdge(request);
-  const login = new URL("/login", `${origin}/`);
+  const login = new URL("/login", `${publicOrigin(request)}/`);
   if (nextPath && nextPath !== "/login") {
     login.searchParams.set("next", nextPath);
   }
