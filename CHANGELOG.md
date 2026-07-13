@@ -2,6 +2,12 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.7
+
+### Fixes
+
+- Teach webpack to rewrite `node:` imports (e.g. `node:crypto`) so Edge/middleware builds no longer hit `UnhandledSchemeError`.
+
 ## 0.1.6
 
 ### Fixes
