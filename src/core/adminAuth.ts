@@ -160,6 +160,12 @@ export function adminCookieOptions(request?: Request) {
 
 export function adminTokenFromRequest(request: Request) {
   const cookie = request.headers.get("cookie") ?? "";
-  const match = cookie.match(new RegExp(`${adminCookieName}=([^;]+)`));
-  return match?.[1] ? decodeURIComponent(match[1]) : undefined;
+  const match = cookie.match(new RegExp(`(?:^|;\\s*)${adminCookieName}=([^;]*)`));
+  if (!match?.[1]) return undefined;
+  const raw = match[1].trim().replace(/^"|"$/g, "");
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
 }

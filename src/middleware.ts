@@ -3,34 +3,27 @@ import type { NextRequest } from "next/server";
 import { adminCookieName, hasAdminSessionCookieShape } from "@/core/adminSessionCookie";
 import { publicLoginRedirectUrl } from "@/core/publicUrl";
 
-const PUBLIC_API_PREFIXES = [
-  "/api/auth/login",
-  "/api/auth/session",
-  "/api/auth/logout",
-  "/api/auth/oauth",
-  "/api/providers/oauth/callback",
-  "/api/tags"
-];
-
 const PUBLIC_PAGES = ["/login"];
+
+function sessionCookieValue(request: NextRequest) {
+  const fromJar = request.cookies.get(adminCookieName)?.value;
+  if (fromJar) return fromJar;
+  const header = request.headers.get("cookie") ?? "";
+  const match = header.match(new RegExp(`(?:^|;\\s*)${adminCookieName}=([^;]*)`));
+  if (!match?.[1]) return undefined;
+  try {
+    return decodeURIComponent(match[1].trim().replace(/^"|"$/g, ""));
+  } catch {
+    return match[1].trim().replace(/^"|"$/g, "");
+  }
+}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  // Shape-only here: HMAC needs NESA_ENCRYPTION_KEY which Edge middleware often
-  // does not see at runtime after image builds. Node handlers still verify fully.
-  const cookieOk = hasAdminSessionCookieShape(request.cookies.get(adminCookieName)?.value);
 
-  if (pathname.startsWith("/api/")) {
-    if (PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
-      return NextResponse.next();
-    }
-    if (!cookieOk) {
-      return NextResponse.json({ error: "Admin authentication required." }, { status: 401 });
-    }
-    return NextResponse.next();
-  }
-
-  if (pathname.startsWith("/_next") || pathname.startsWith("/favicon") || pathname.startsWith("/v1")) {
+  // Admin JSON APIs are gated in Node via requireAdmin (cookies() + DB).
+  // Edge middleware cookie parsing was returning false 401s for /api/* while SSR pages worked.
+  if (pathname.startsWith("/api/") || pathname.startsWith("/_next") || pathname.startsWith("/favicon") || pathname.startsWith("/v1")) {
     return NextResponse.next();
   }
 
@@ -38,8 +31,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  const cookieOk = hasAdminSessionCookieShape(sessionCookieValue(request));
   if (!cookieOk && !pathname.startsWith("/login")) {
-    // Absolute public URL so reverse-proxy installs do not bounce to localhost:20129.
     return NextResponse.redirect(publicLoginRedirectUrl(request, pathname));
   }
 
