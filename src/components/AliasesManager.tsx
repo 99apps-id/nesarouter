@@ -62,7 +62,8 @@ export default function AliasesManager({
         </div>
       </div>
       <p className="compact-copy">
-        Map <code>model: &quot;fast&quot;</code> to a provider model or combo name before routing.
+        Map <code>model: &quot;fast&quot;</code> to a provider model or combo. You can also call providers with a short prefix
+        without an alias, e.g. <code>cx/gpt-5.5</code>, <code>cc/claude-sonnet-4</code>, or <code>oauth-chatgpt/gpt-5.5</code>.
       </p>
       <div className="combo-list">
         {items.length === 0 ? <p className="subtle">No aliases yet.</p> : null}

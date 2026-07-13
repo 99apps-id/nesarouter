@@ -4,7 +4,9 @@ import { redirect } from "next/navigation";
 import { adminAuthEnabled, adminCookieName, adminPasswordMustChange, verifyAdminToken } from "@/core/adminAuth";
 import { getBudgetStatus } from "@/core/budget";
 import { readStore } from "@/lib/store";
+import { readPackageVersion } from "@/lib/updateCheck";
 import ThemeToggle from "@/components/ThemeToggle";
+import UpdateBanner from "@/components/UpdateBanner";
 
 const navItems = [
   { href: "/", label: "Overview", icon: Gauge, id: "overview" as const },
@@ -44,6 +46,7 @@ export default async function AppShell({
   }
 
   const visibleNav = mustChangePassword ? navItems.filter((item) => item.id === "routing") : navItems;
+  const appVersion = readPackageVersion();
 
   return (
     <main className="app-shell">
@@ -54,7 +57,7 @@ export default async function AppShell({
           </div>
           <div>
             <strong>NesaRouter</strong>
-            <span>Smart AI gateway</span>
+            <span>Smart AI gateway · v{appVersion}</span>
           </div>
         </div>
         <nav className="nav-list" aria-label="Main navigation">
@@ -96,7 +99,9 @@ export default async function AppShell({
               <span>Use Password below. Other menus unlock after you save a new password.</span>
             </div>
           </section>
-        ) : null}
+        ) : (
+          <UpdateBanner />
+        )}
         {children}
       </section>
     </main>
