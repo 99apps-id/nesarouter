@@ -2,6 +2,13 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.6
+
+### Fixes
+
+- Remove SQLite/`node:*` import chain from `publicUrl` so Edge middleware builds cleanly again (fixes client "Application error" / failed `next build` on v0.1.5).
+- Dashboard public base URL is still applied from Routing settings / `NESA_PUBLIC_URL` without pulling the store into middleware.
+
 ## 0.1.5
 
 ### Fixes

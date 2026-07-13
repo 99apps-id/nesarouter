@@ -48,7 +48,7 @@ export default async function AppShell({
 
   const visibleNav = mustChangePassword ? navItems.filter((item) => item.id === "routing") : navItems;
   const appVersion = readPackageVersion();
-  const endpointBase = `${publicOrigin()}/v1`;
+  const endpointBase = `${publicOrigin(undefined, store.router.publicBaseUrl)}/v1`;
 
   return (
     <main className="app-shell">

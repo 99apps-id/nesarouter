@@ -2,7 +2,7 @@ import http from "node:http";
 import { exchangeCode } from "@/core/oauthPkce";
 import { getPreset } from "@/core/oauthProviderPresets";
 import { publicUrl } from "@/core/publicUrl";
-import { deleteOAuthPending, readOAuthPending, readProviderById, saveProviderOAuthTokens } from "@/lib/store";
+import { deleteOAuthPending, readOAuthPending, readProviderById, readPublicBaseUrlSync, saveProviderOAuthTokens } from "@/lib/store";
 
 type LoopbackEntry = {
   server: http.Server;
@@ -96,9 +96,11 @@ async function handleLoopbackCallback(req: http.IncomingMessage, res: http.Serve
  * (e.g. Codex on http://localhost:1455/auth/callback).
  */
 export async function ensureOauthLoopback(port: number, path: string, request?: Request): Promise<void> {
+  const publicBase = readPublicBaseUrlSync();
+  const successRedirect = publicUrl("/providers", request, publicBase);
   const existing = loopbackMap().get(port);
   if (existing) {
-    existing.successRedirect = publicUrl("/providers", request);
+    existing.successRedirect = successRedirect;
     existing.path = path;
     return;
   }
@@ -106,7 +108,7 @@ export async function ensureOauthLoopback(port: number, path: string, request?: 
   const entry: LoopbackEntry = {
     server: null as unknown as http.Server,
     path,
-    successRedirect: publicUrl("/providers", request)
+    successRedirect
   };
 
   const server = http.createServer((req, res) => {
