@@ -680,6 +680,20 @@ h2 {
   margin-top: 2px;
 }
 
+.alert-banner.update-banner {
+  justify-content: flex-start;
+}
+
+.alert-banner.update-banner a {
+  color: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.alert-banner.update-banner .button {
+  margin-left: auto;
+}
+
 .system-strip {
   border: 1px solid var(--border);
   background: var(--surface-soft);

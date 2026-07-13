@@ -2,6 +2,7 @@ import { BudgetSettings, Combo, NesaStore, ProviderConfig, ProviderTier, RouteDe
 import { resolveModelAlias } from "@/core/aliases";
 import { getBudgetStatus } from "@/core/budget";
 import { detectTaskType, estimateCost, estimateOutputTokens, estimateTokens, extractRequestText } from "@/core/estimation";
+import { parsePrefixedModel } from "@/core/providerPrefixes";
 import { getProviderQuotaState, providerQuotaReason } from "@/core/quota";
 import { providerGroup } from "@/lib/providerGroups";
 
@@ -138,16 +139,26 @@ export function chooseProvider(
   });
 
   const mode = effectiveRoutingMode(store);
-  const model = resolveModelAlias(store.aliases, requestedModel(body));
+  const afterAlias = resolveModelAlias(store.aliases, requestedModel(body));
+  const prefixed = parsePrefixedModel(afterAlias, store.providers);
+  const model = prefixed ? prefixed.providerId : afterAlias;
   const comboConstraint = combo && combo.providerIds.length ? combo : undefined;
 
   const requestedProviderAny = !isAutoModel(model) && !comboConstraint
-    ? store.providers.find((provider) => matchesRequestedModel(provider, model))
+    ? store.providers.find((provider) =>
+        prefixed ? provider.id === prefixed.providerId : matchesRequestedModel(provider, model)
+      )
     : undefined;
 
   if (!isAutoModel(model) && !comboConstraint) {
-    if (!requestedProviderAny) throw new Error(`Model '${model}' is not configured.`);
-    if (excludedProviderIds.includes(requestedProviderAny.id)) throw new Error(`Model '${model}' failed.`);
+    if (!requestedProviderAny) {
+      throw new Error(
+        prefixed
+          ? `Provider '${prefixed.prefix}' → ${prefixed.providerId} is not configured.`
+          : `Model '${model}' is not configured.`
+      );
+    }
+    if (excludedProviderIds.includes(requestedProviderAny.id)) throw new Error(`Model '${afterAlias || model}' failed.`);
   }
 
   const requestedProvider = requestedProviderAny
@@ -158,8 +169,8 @@ export function chooseProvider(
     const skipReason = skippedProviders.find((item) => item.providerId === requestedProviderAny?.id)?.reason;
     throw new Error(
       skipReason
-        ? `Model '${model}' is unavailable: ${skipReason}`
-        : `Model '${model}' is not available or its provider is inactive.`
+        ? `Model '${afterAlias || model}' is unavailable: ${skipReason}`
+        : `Model '${afterAlias || model}' is not available or its provider is inactive.`
     );
   }
 
@@ -177,20 +188,22 @@ export function chooseProvider(
   }
 
   for (const provider of candidates) {
+    const selectedProvider =
+      prefixed && provider.id === prefixed.providerId ? { ...provider, model: prefixed.modelId } : provider;
     const estimatedCostUsd = estimateCost(
       estimatedInputTokens,
       estimatedOutputTokens,
-      provider.inputCostPerMTok,
-      provider.outputCostPerMTok
+      selectedProvider.inputCostPerMTok,
+      selectedProvider.outputCostPerMTok
     );
     const budgetStatus = getBudgetStatus(store, estimatedCostUsd);
-    if (!budgetAllowsProvider(store.budget, provider, budgetStatus)) {
-      skippedProviders.push({ providerId: provider.id, reason: "Skipped by budget guard." });
+    if (!budgetAllowsProvider(store.budget, selectedProvider, budgetStatus)) {
+      skippedProviders.push({ providerId: selectedProvider.id, reason: "Skipped by budget guard." });
       continue;
     }
 
     return {
-      provider,
+      provider: selectedProvider,
       taskType,
       estimatedInputTokens,
       estimatedOutputTokens,
@@ -198,10 +211,12 @@ export function chooseProvider(
       budgetStatus,
       skippedProviders,
       routingReason: comboConstraint
-        ? `Combo ${comboConstraint.name} selected ${provider.name}; budget ${budgetStatus}.`
+        ? `Combo ${comboConstraint.name} selected ${selectedProvider.name}; budget ${budgetStatus}.`
         : requestedProvider
-          ? `Model ${model} selected ${provider.name}; budget ${budgetStatus}.`
-          : `${mode}/${store.router.providerStrategy ?? "priority"} selected ${provider.name} for ${taskType}; budget ${budgetStatus}.`
+          ? prefixed
+            ? `Prefix ${prefixed.prefix}/${prefixed.modelId} selected ${selectedProvider.name}; budget ${budgetStatus}.`
+            : `Model ${model} selected ${selectedProvider.name}; budget ${budgetStatus}.`
+          : `${mode}/${store.router.providerStrategy ?? "priority"} selected ${selectedProvider.name} for ${taskType}; budget ${budgetStatus}.`
     };
   }
 

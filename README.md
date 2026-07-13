@@ -14,8 +14,10 @@ NesaRouter is designed for a laptop or small VPS. It runs as one Next.js service
 - Encrypts provider API keys, OAuth tokens, client `/v1` keys, MCP env values, and short-lived OAuth pending secrets at rest (AES-256-GCM).
 - Saves tokens with **Caveman** (default lite) and full **RTK** compression on tool results (git / grep / ls / logs / builds).
 - Connects subscription accounts via OAuth or local IDE import (Claude, ChatGPT/Codex, Gemini CLI, GitHub Copilot, Kiro, Antigravity, Cursor).
+- Supports short provider prefixes in `model` (`cx/gpt-5.5`, `cc/...`, full provider id also works).
 - Includes a dashboard for providers, keys, routing, usage, MCP, tunnels, Headroom, and CLI configuration.
 - Locks the dashboard until the bootstrap admin password is changed; admin sessions are random and revocable.
+- Shows an update banner when a newer GitHub Release exists than the installed version.
 
 ## Authentication Modes
 
@@ -119,6 +121,18 @@ Common endpoints:
 - `POST /v1/web/fetch` (SSRF-guarded)
 
 All `/v1` endpoints require a NesaRouter client key created in **Keys**. The dashboard has separate admin authentication (cookie session), not the client Bearer key.
+
+### Model ids
+
+| Form | Example | Meaning |
+| --- | --- | --- |
+| Auto | `auto` | Smart routing |
+| Bare model | `gpt-5.5` | Match configured provider model |
+| Prefix | `cx/gpt-5.5` | ChatGPT OAuth provider + upstream model |
+| Provider id | `oauth-claude/claude-sonnet-4` | Explicit provider + model |
+| Alias / combo | `fast`, `my-chain` | Custom alias or combo name |
+
+Common prefixes: `cx`/`chatgpt`, `cc`/`claude`, `gemini`/`gcli`, `copilot`, `kiro`, `cursor`, `or`/`openrouter`, `ollama`, `ds`/`deepseek`.
 
 Response headers may include routing and saver metadata such as `x-nesa-cache` and `x-nesa-rtk-saved`.
 
