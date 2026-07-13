@@ -670,6 +670,17 @@ export async function readAdminPasswordHash() {
   return readSetting<string | null>(getDb(), "adminPasswordHash", null);
 }
 
+/** Sync read of dashboard public base URL (used by OAuth redirect helpers). */
+export function readPublicBaseUrlSync(): string | undefined {
+  try {
+    const router = readRouterSettings(getDb());
+    const value = router.publicBaseUrl?.trim();
+    return value || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function writeAdminPasswordHash(hash: string) {
   writeSetting(getDb(), "adminPasswordHash", hash);
 }

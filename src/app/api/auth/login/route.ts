@@ -44,6 +44,6 @@ export async function POST(request: Request) {
 
   await recordLoginSuccess();
   const response = NextResponse.json({ ok: true, mustChangePassword: await adminPasswordMustChange() });
-  response.cookies.set(adminCookieName, await createAdminSession(), adminCookieOptions());
+  response.cookies.set(adminCookieName, await createAdminSession(), adminCookieOptions(request));
   return response;
 }

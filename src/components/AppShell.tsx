@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { adminAuthEnabled, adminCookieName, adminPasswordMustChange, verifyAdminToken } from "@/core/adminAuth";
 import { getBudgetStatus } from "@/core/budget";
+import { publicOrigin } from "@/core/publicUrl";
 import { readStore } from "@/lib/store";
 import { readPackageVersion } from "@/lib/updateCheck";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -47,6 +48,7 @@ export default async function AppShell({
 
   const visibleNav = mustChangePassword ? navItems.filter((item) => item.id === "routing") : navItems;
   const appVersion = readPackageVersion();
+  const endpointBase = `${publicOrigin()}/v1`;
 
   return (
     <main className="app-shell">
@@ -72,7 +74,7 @@ export default async function AppShell({
         </nav>
         <div className="endpoint-box">
           <span>Endpoint</span>
-          <code>http://localhost:20129/v1</code>
+          <code>{endpointBase}</code>
           <small>Manage client keys in Keys.</small>
         </div>
       </aside>

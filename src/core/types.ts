@@ -99,6 +99,11 @@ export interface RouterSettings {
   headroomCompressUserMessages?: boolean;
   /** Optional in-process pxpipe-style compression (fail-open). */
   pxpipeEnabled?: boolean;
+  /**
+   * Public origin for OAuth return URLs and CLI hints (e.g. https://router.example.com).
+   * Prefer this (or NESA_PUBLIC_URL) when NesaRouter sits behind a reverse proxy.
+   */
+  publicBaseUrl?: string;
 }
 
 export interface UsageLog {
