@@ -2,13 +2,11 @@ import { ProviderConfig } from "@/core/types";
 
 /**
  * Short provider prefixes for `prefix/model` routing (9router-style).
- * Full provider ids also work: `oauth-chatgpt/gpt-5.5`.
+ * Codex subscription uses `cx/gpt-…` only (canonical provider id: oauth-chatgpt).
  */
 export const PROVIDER_PREFIXES: Record<string, string> = {
   // OAuth / subscription
   cx: "oauth-chatgpt",
-  chatgpt: "oauth-chatgpt",
-  codex: "oauth-codex",
   cc: "oauth-claude",
   claude: "oauth-claude",
   gemini: "oauth-gemini-cli",
@@ -26,6 +24,8 @@ export const PROVIDER_PREFIXES: Record<string, string> = {
   openrouter: "openrouter-free",
   orp: "openrouter-paid",
   ollama: "ollama-local",
+  oc: "opencode-free",
+  opencode: "opencode-free",
   ds: "deepseek",
   deepseek: "deepseek",
   groq: "groq",
@@ -78,7 +78,7 @@ export function isExactConfiguredModel(providers: ProviderConfig[], model: strin
 }
 
 /**
- * Parse `cx/gpt-5.5` or `oauth-chatgpt/gpt-5.5`.
+ * Parse `cx/gpt-5.6-sol` (Codex) or full provider id when configured.
  * Does not claim slash-containing model ids that are already configured on a provider.
  */
 export function parsePrefixedModel(model: string, providers: ProviderConfig[]): PrefixedModel | null {

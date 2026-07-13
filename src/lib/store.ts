@@ -1,7 +1,8 @@
 import Database from "better-sqlite3";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { CacheEntry, Combo, McpServer, NesaStore, ProviderConfig, UsageLog } from "@/core/types";
+import { CacheEntry, Combo, McpServer, NesaStore, OAuthAccount, ProviderConfig, UsageLog } from "@/core/types";
+import { createOAuthAccountId, defaultOAuthAccountName } from "@/core/oauthAccounts";
 import { defaultStore } from "@/lib/defaults";
 import { decryptSecret, encryptSecret, isRedactedSecret } from "@/lib/crypto";
 
@@ -137,7 +138,9 @@ function migrate(database: Database.Database) {
   ensureColumn(database, "providers", "proxy_url", "TEXT");
   ensureColumn(database, "usage_logs", "skipped_providers", "TEXT");
   ensureColumn(database, "combos", "judge_provider_id", "TEXT");
+  ensureColumn(database, "providers", "oauth_accounts", "TEXT");
   migrateLocalApiKeysEncryption(database);
+  migrateLegacyOAuthAccounts(database);
 }
 
 /** Encrypt any leftover plaintext client API keys at rest (idempotent). */
@@ -173,6 +176,132 @@ function seedIfEmpty(database: Database.Database) {
   writeStoreToDb(database, seed);
 }
 
+function consolidateDuplicateCodexProvider(database: Database.Database) {
+  const dup = database.prepare("SELECT id FROM providers WHERE id = 'oauth-codex'").get() as { id: string } | undefined;
+  if (!dup) {
+    database.prepare("UPDATE providers SET name = 'Codex' WHERE id = 'oauth-chatgpt' AND name != 'Codex'").run();
+    return;
+  }
+
+  type OAuthRow = {
+    oauth_access_token_encrypted?: string;
+    oauth_refresh_token_encrypted?: string;
+    oauth_token_expires_at?: string;
+    oauth_last_refresh_at?: string;
+    oauth_copilot_token_encrypted?: string;
+    oauth_copilot_token_expires_at?: string;
+    oauth_project_id?: string;
+    oauth_device_client_id?: string;
+    oauth_device_client_secret_encrypted?: string;
+    oauth_machine_id?: string;
+    connection_status?: string;
+    last_checked_at?: string;
+    last_error?: string;
+    models?: string;
+    model?: string;
+  };
+
+  const dupRow = database
+    .prepare(
+      `SELECT oauth_access_token_encrypted, oauth_refresh_token_encrypted, oauth_token_expires_at,
+              oauth_last_refresh_at, oauth_copilot_token_encrypted, oauth_copilot_token_expires_at,
+              oauth_project_id, oauth_device_client_id, oauth_device_client_secret_encrypted,
+              oauth_machine_id, connection_status, last_checked_at, last_error, models, model
+       FROM providers WHERE id = 'oauth-codex'`
+    )
+    .get() as OAuthRow | undefined;
+
+  const mainExists = database.prepare("SELECT id FROM providers WHERE id = 'oauth-chatgpt'").get() as { id: string } | undefined;
+  if (!mainExists) {
+    database.prepare("UPDATE providers SET id = 'oauth-chatgpt', name = 'Codex' WHERE id = 'oauth-codex'").run();
+    return;
+  }
+
+  const mainRow = database
+    .prepare("SELECT oauth_access_token_encrypted FROM providers WHERE id = 'oauth-chatgpt'")
+    .get() as { oauth_access_token_encrypted?: string } | undefined;
+
+  if (dupRow?.oauth_access_token_encrypted && !mainRow?.oauth_access_token_encrypted) {
+    database
+      .prepare(
+        `UPDATE providers SET
+           oauth_access_token_encrypted = ?,
+           oauth_refresh_token_encrypted = ?,
+           oauth_token_expires_at = ?,
+           oauth_last_refresh_at = ?,
+           oauth_copilot_token_encrypted = ?,
+           oauth_copilot_token_expires_at = ?,
+           oauth_project_id = ?,
+           oauth_device_client_id = ?,
+           oauth_device_client_secret_encrypted = ?,
+           oauth_machine_id = ?,
+           connection_status = COALESCE(?, connection_status),
+           last_checked_at = COALESCE(?, last_checked_at),
+           last_error = COALESCE(?, last_error),
+           models = COALESCE(?, models),
+           model = COALESCE(?, model),
+           name = 'Codex'
+         WHERE id = 'oauth-chatgpt'`
+      )
+      .run(
+        dupRow.oauth_access_token_encrypted,
+        dupRow.oauth_refresh_token_encrypted ?? "",
+        dupRow.oauth_token_expires_at ?? null,
+        dupRow.oauth_last_refresh_at ?? null,
+        dupRow.oauth_copilot_token_encrypted ?? "",
+        dupRow.oauth_copilot_token_expires_at ?? null,
+        dupRow.oauth_project_id ?? null,
+        dupRow.oauth_device_client_id ?? null,
+        dupRow.oauth_device_client_secret_encrypted ?? "",
+        dupRow.oauth_machine_id ?? null,
+        dupRow.connection_status ?? null,
+        dupRow.last_checked_at ?? null,
+        dupRow.last_error ?? null,
+        dupRow.models ?? null,
+        dupRow.model ?? null
+      );
+  } else {
+    database.prepare("UPDATE providers SET name = 'Codex' WHERE id = 'oauth-chatgpt'").run();
+  }
+
+  const combos = database.prepare("SELECT id, provider_ids FROM combos").all() as Array<{ id: string; provider_ids: string }>;
+  for (const combo of combos) {
+    try {
+      const ids = JSON.parse(combo.provider_ids) as string[];
+      if (!ids.includes("oauth-codex")) continue;
+      const next = [...new Set(ids.map((id) => (id === "oauth-codex" ? "oauth-chatgpt" : id)))];
+      database.prepare("UPDATE combos SET provider_ids = ? WHERE id = ?").run(JSON.stringify(next), combo.id);
+    } catch {
+      /* ignore malformed combo */
+    }
+  }
+
+  const aliasRow = database.prepare("SELECT value FROM settings WHERE key = 'aliases'").get() as { value: string } | undefined;
+  if (aliasRow) {
+    try {
+      const aliases = JSON.parse(aliasRow.value) as Array<{ id?: string; alias?: string; target?: string }>;
+      let changed = false;
+      const next = aliases.map((item) => {
+        if (!item.target) return item;
+        let target = item.target;
+        if (target.startsWith("oauth-codex/")) {
+          target = `cx/${target.slice("oauth-codex/".length)}`;
+          changed = true;
+        } else if (target === "oauth-codex") {
+          target = "oauth-chatgpt";
+          changed = true;
+        }
+        return target === item.target ? item : { ...item, target };
+      });
+      if (changed) writeSetting(database, "aliases", next);
+    } catch {
+      /* ignore malformed aliases */
+    }
+  }
+
+  database.prepare("DELETE FROM providers WHERE id = 'oauth-codex'").run();
+}
+
 function ensureDefaultProviders(database: Database.Database): string[] {
   const added: string[] = [];
   const transaction = database.transaction(() => {
@@ -204,6 +333,15 @@ function ensureDefaultProviders(database: Database.Database): string[] {
       database.prepare("UPDATE providers SET name = ? WHERE id = ? AND name = ?").run(nextName, id, previousName);
     }
 
+    consolidateDuplicateCodexProvider(database);
+    database.prepare(`
+      UPDATE providers
+      SET type = 'opencode',
+          connection_status = CASE WHEN type = 'kiro' THEN 'unknown' ELSE connection_status END,
+          last_error = CASE WHEN type = 'kiro' THEN NULL ELSE last_error END
+      WHERE id = 'opencode-free' AND type = 'kiro'
+    `).run();
+
     for (const provider of defaultStore.providers) {
       const exists = database.prepare("SELECT id FROM providers WHERE id = ?").get(provider.id) as
         | { id: string }
@@ -217,6 +355,24 @@ function ensureDefaultProviders(database: Database.Database): string[] {
                WHERE id = ?`
             )
             .run(provider.name, provider.type, provider.oauthProfile, provider.id);
+          if (provider.oauthProfile === "openai_codex" && provider.models?.length) {
+            database
+              .prepare(
+                `UPDATE providers
+                 SET models = ?
+                 WHERE id = ?
+                   AND (models IS NULL OR models = '[]' OR models = ? OR json_array_length(models) <= 1)`
+              )
+              .run(JSON.stringify(provider.models), provider.id, JSON.stringify([provider.model]));
+          }
+        }
+        if (provider.id === "opencode-free") {
+          database.prepare(`
+            UPDATE providers
+            SET type = 'opencode',
+                status = CASE WHEN status = 'disabled' AND (api_key_encrypted IS NULL OR api_key_encrypted = '') THEN 'active' ELSE status END
+            WHERE id = 'opencode-free'
+          `).run();
         }
         continue;
       }
@@ -276,7 +432,167 @@ function parseStringArray(raw: any): string[] | undefined {
   return undefined;
 }
 
+type StoredOAuthAccount = {
+  id: string;
+  name?: string;
+  oauthAccessTokenEncrypted?: string;
+  oauthRefreshTokenEncrypted?: string;
+  oauthTokenExpiresAt?: string;
+  oauthLastRefreshAt?: string;
+  oauthCopilotTokenEncrypted?: string;
+  oauthCopilotTokenExpiresAt?: string;
+  oauthProjectId?: string;
+  oauthDeviceClientId?: string;
+  oauthDeviceClientSecretEncrypted?: string;
+  oauthMachineId?: string;
+  connectionStatus?: ProviderConfig["connectionStatus"];
+  lastError?: string;
+  lastCheckedAt?: string;
+  rateLimitedUntil?: string;
+  createdAt?: string;
+};
+
+function oauthAccountFromStored(stored: StoredOAuthAccount): OAuthAccount {
+  return {
+    id: stored.id,
+    name: stored.name,
+    oauthAccessToken: stored.oauthAccessTokenEncrypted ? decryptSecret(stored.oauthAccessTokenEncrypted) : undefined,
+    oauthRefreshToken: stored.oauthRefreshTokenEncrypted ? decryptSecret(stored.oauthRefreshTokenEncrypted) : undefined,
+    oauthTokenExpiresAt: stored.oauthTokenExpiresAt,
+    oauthLastRefreshAt: stored.oauthLastRefreshAt,
+    oauthCopilotToken: stored.oauthCopilotTokenEncrypted ? decryptSecret(stored.oauthCopilotTokenEncrypted) : undefined,
+    oauthCopilotTokenExpiresAt: stored.oauthCopilotTokenExpiresAt,
+    oauthProjectId: stored.oauthProjectId,
+    oauthDeviceClientId: stored.oauthDeviceClientId,
+    oauthDeviceClientSecret: stored.oauthDeviceClientSecretEncrypted ? decryptSecret(stored.oauthDeviceClientSecretEncrypted) : undefined,
+    oauthMachineId: stored.oauthMachineId,
+    connectionStatus: stored.connectionStatus,
+    lastError: stored.lastError,
+    lastCheckedAt: stored.lastCheckedAt,
+    rateLimitedUntil: stored.rateLimitedUntil,
+    createdAt: stored.createdAt
+  };
+}
+
+function oauthAccountToStored(account: OAuthAccount): StoredOAuthAccount {
+  return {
+    id: account.id,
+    name: account.name,
+    oauthAccessTokenEncrypted: account.oauthAccessToken && !isRedactedSecret(account.oauthAccessToken)
+      ? encryptSecret(account.oauthAccessToken.trim())
+      : undefined,
+    oauthRefreshTokenEncrypted: account.oauthRefreshToken && !isRedactedSecret(account.oauthRefreshToken)
+      ? encryptSecret(account.oauthRefreshToken.trim())
+      : undefined,
+    oauthTokenExpiresAt: account.oauthTokenExpiresAt,
+    oauthLastRefreshAt: account.oauthLastRefreshAt,
+    oauthCopilotTokenEncrypted: account.oauthCopilotToken && !isRedactedSecret(account.oauthCopilotToken)
+      ? encryptSecret(account.oauthCopilotToken.trim())
+      : undefined,
+    oauthCopilotTokenExpiresAt: account.oauthCopilotTokenExpiresAt,
+    oauthProjectId: account.oauthProjectId,
+    oauthDeviceClientId: account.oauthDeviceClientId,
+    oauthDeviceClientSecretEncrypted: account.oauthDeviceClientSecret && !isRedactedSecret(account.oauthDeviceClientSecret)
+      ? encryptSecret(account.oauthDeviceClientSecret.trim())
+      : undefined,
+    oauthMachineId: account.oauthMachineId,
+    connectionStatus: account.connectionStatus,
+    lastError: account.lastError,
+    lastCheckedAt: account.lastCheckedAt,
+    rateLimitedUntil: account.rateLimitedUntil,
+    createdAt: account.createdAt
+  };
+}
+
+function parseOAuthAccounts(raw: any): OAuthAccount[] | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as StoredOAuthAccount[];
+    if (!Array.isArray(parsed) || !parsed.length) return undefined;
+    return parsed.map(oauthAccountFromStored).filter((account) => Boolean(account.id));
+  } catch {}
+  return undefined;
+}
+
+function serializeOAuthAccounts(accounts: OAuthAccount[]) {
+  return JSON.stringify(accounts.map(oauthAccountToStored));
+}
+
+function legacyOAuthAccountFromRow(row: any): OAuthAccount | null {
+  if (!row.oauth_access_token_encrypted && !row.oauth_copilot_token_encrypted) return null;
+  return {
+    id: "legacy",
+    name: "Account 1",
+    oauthAccessToken: row.oauth_access_token_encrypted ? decryptSecret(row.oauth_access_token_encrypted) : undefined,
+    oauthRefreshToken: row.oauth_refresh_token_encrypted ? decryptSecret(row.oauth_refresh_token_encrypted) : undefined,
+    oauthTokenExpiresAt: row.oauth_token_expires_at ?? undefined,
+    oauthLastRefreshAt: row.oauth_last_refresh_at ?? undefined,
+    oauthCopilotToken: row.oauth_copilot_token_encrypted ? decryptSecret(row.oauth_copilot_token_encrypted) : undefined,
+    oauthCopilotTokenExpiresAt: row.oauth_copilot_token_expires_at ?? undefined,
+    oauthProjectId: row.oauth_project_id ?? undefined,
+    oauthDeviceClientId: row.oauth_device_client_id ?? undefined,
+    oauthDeviceClientSecret: row.oauth_device_client_secret_encrypted ? decryptSecret(row.oauth_device_client_secret_encrypted) : undefined,
+    oauthMachineId: row.oauth_machine_id ?? undefined,
+    connectionStatus: row.connection_status ?? undefined,
+    lastError: row.last_error ?? undefined,
+    rateLimitedUntil: row.rate_limited_until ?? undefined
+  };
+}
+
+function migrateLegacyOAuthAccounts(database: Database.Database) {
+  const migrated = readSetting<boolean>(database, "oauthAccountsV1", false);
+  if (migrated) return;
+  const rows = database.prepare(`
+    SELECT id, oauth_access_token_encrypted, oauth_refresh_token_encrypted, oauth_token_expires_at,
+           oauth_last_refresh_at, oauth_copilot_token_encrypted, oauth_copilot_token_expires_at,
+           oauth_project_id, oauth_device_client_id, oauth_device_client_secret_encrypted,
+           oauth_machine_id, connection_status, last_error, rate_limited_until, oauth_accounts
+    FROM providers
+    WHERE oauth_profile IS NOT NULL AND oauth_profile != ''
+  `).all() as any[];
+  for (const row of rows) {
+    if (row.oauth_accounts) continue;
+    const legacy = legacyOAuthAccountFromRow(row);
+    if (!legacy) continue;
+    database.prepare("UPDATE providers SET oauth_accounts = ? WHERE id = ?").run(serializeOAuthAccounts([legacy]), row.id);
+  }
+  writeSetting(database, "oauthAccountsV1", true);
+}
+
+function syncPrimaryOAuthColumns(database: Database.Database, providerId: string, accounts: OAuthAccount[]) {
+  const primary = accounts[0];
+  database.prepare(`UPDATE providers SET
+    oauth_access_token_encrypted = ?,
+    oauth_refresh_token_encrypted = ?,
+    oauth_token_expires_at = ?,
+    oauth_last_refresh_at = ?,
+    oauth_copilot_token_encrypted = ?,
+    oauth_copilot_token_expires_at = ?,
+    oauth_project_id = ?,
+    oauth_device_client_id = ?,
+    oauth_device_client_secret_encrypted = ?,
+    oauth_machine_id = ?
+    WHERE id = ?`).run(
+    primary?.oauthAccessToken && !isRedactedSecret(primary.oauthAccessToken) ? encryptSecret(primary.oauthAccessToken.trim()) : null,
+    primary?.oauthRefreshToken && !isRedactedSecret(primary.oauthRefreshToken) ? encryptSecret(primary.oauthRefreshToken.trim()) : null,
+    primary?.oauthTokenExpiresAt ?? null,
+    primary?.oauthLastRefreshAt ?? null,
+    primary?.oauthCopilotToken && !isRedactedSecret(primary.oauthCopilotToken) ? encryptSecret(primary.oauthCopilotToken.trim()) : null,
+    primary?.oauthCopilotTokenExpiresAt ?? null,
+    primary?.oauthProjectId ?? null,
+    primary?.oauthDeviceClientId ?? null,
+    primary?.oauthDeviceClientSecret && !isRedactedSecret(primary.oauthDeviceClientSecret) ? encryptSecret(primary.oauthDeviceClientSecret.trim()) : null,
+    primary?.oauthMachineId ?? null,
+    providerId
+  );
+}
+
 function providerFromRow(row: any): ProviderConfig {
+  const oauthAccounts = parseOAuthAccounts(row.oauth_accounts) ?? (() => {
+    const legacy = legacyOAuthAccountFromRow(row);
+    return legacy ? [legacy] : undefined;
+  })();
+  const primary = oauthAccounts?.[0];
   return {
     id: row.id,
     name: row.name,
@@ -297,16 +613,17 @@ function providerFromRow(row: any): ProviderConfig {
     quotaLimitTokens: row.quota_limit_tokens ?? undefined,
     models: parseStringArray(row.models),
     oauthProfile: row.oauth_profile ?? undefined,
-    oauthAccessToken: row.oauth_access_token_encrypted ? decryptSecret(row.oauth_access_token_encrypted) : undefined,
-    oauthRefreshToken: row.oauth_refresh_token_encrypted ? decryptSecret(row.oauth_refresh_token_encrypted) : undefined,
-    oauthTokenExpiresAt: row.oauth_token_expires_at ?? undefined,
-    oauthLastRefreshAt: row.oauth_last_refresh_at ?? undefined,
-    oauthCopilotToken: row.oauth_copilot_token_encrypted ? decryptSecret(row.oauth_copilot_token_encrypted) : undefined,
-    oauthCopilotTokenExpiresAt: row.oauth_copilot_token_expires_at ?? undefined,
-    oauthProjectId: row.oauth_project_id ?? undefined,
-    oauthDeviceClientId: row.oauth_device_client_id ?? undefined,
-    oauthDeviceClientSecret: row.oauth_device_client_secret_encrypted ? decryptSecret(row.oauth_device_client_secret_encrypted) : undefined,
-    oauthMachineId: row.oauth_machine_id ?? undefined,
+    oauthAccounts,
+    oauthAccessToken: primary?.oauthAccessToken ?? (row.oauth_access_token_encrypted ? decryptSecret(row.oauth_access_token_encrypted) : undefined),
+    oauthRefreshToken: primary?.oauthRefreshToken ?? (row.oauth_refresh_token_encrypted ? decryptSecret(row.oauth_refresh_token_encrypted) : undefined),
+    oauthTokenExpiresAt: primary?.oauthTokenExpiresAt ?? row.oauth_token_expires_at ?? undefined,
+    oauthLastRefreshAt: primary?.oauthLastRefreshAt ?? row.oauth_last_refresh_at ?? undefined,
+    oauthCopilotToken: primary?.oauthCopilotToken ?? (row.oauth_copilot_token_encrypted ? decryptSecret(row.oauth_copilot_token_encrypted) : undefined),
+    oauthCopilotTokenExpiresAt: primary?.oauthCopilotTokenExpiresAt ?? row.oauth_copilot_token_expires_at ?? undefined,
+    oauthProjectId: primary?.oauthProjectId ?? row.oauth_project_id ?? undefined,
+    oauthDeviceClientId: primary?.oauthDeviceClientId ?? row.oauth_device_client_id ?? undefined,
+    oauthDeviceClientSecret: primary?.oauthDeviceClientSecret ?? (row.oauth_device_client_secret_encrypted ? decryptSecret(row.oauth_device_client_secret_encrypted) : undefined),
+    oauthMachineId: primary?.oauthMachineId ?? row.oauth_machine_id ?? undefined,
     proxyUrl: row.proxy_url ?? undefined
   };
 }
@@ -335,6 +652,9 @@ function writeProviderToDb(database: Database.Database, provider: ProviderConfig
     provider.oauthDeviceClientSecret && !isRedactedSecret(provider.oauthDeviceClientSecret)
       ? encryptSecret(provider.oauthDeviceClientSecret.trim())
       : null;
+  const oauthAccountsSerialized = Array.isArray(provider.oauthAccounts) && provider.oauthAccounts.length
+    ? serializeOAuthAccounts(provider.oauthAccounts)
+    : null;
   database
     .prepare(`
       INSERT INTO providers (
@@ -344,7 +664,8 @@ function writeProviderToDb(database: Database.Database, provider: ProviderConfig
         oauth_profile, oauth_access_token_encrypted, oauth_refresh_token_encrypted,
         oauth_token_expires_at, oauth_last_refresh_at,
         oauth_copilot_token_encrypted, oauth_copilot_token_expires_at,
-        oauth_project_id, oauth_device_client_id, oauth_device_client_secret_encrypted, oauth_machine_id, proxy_url
+        oauth_project_id, oauth_device_client_id, oauth_device_client_secret_encrypted, oauth_machine_id, proxy_url,
+        oauth_accounts
       ) VALUES (
         @id, @name, @type, @tier, @status, @baseUrl, @apiKeyEncrypted, @apiKeys, @model, @priority,
         @inputCostPerMTok, @outputCostPerMTok, @rateLimitedUntil, @lastError,
@@ -352,7 +673,8 @@ function writeProviderToDb(database: Database.Database, provider: ProviderConfig
         @oauthProfile, @oauthAccessEncrypted, @oauthRefreshEncrypted,
         @oauthTokenExpiresAt, @oauthLastRefreshAt,
         @oauthCopilotEncrypted, @oauthCopilotTokenExpiresAt,
-        @oauthProjectId, @oauthDeviceClientId, @oauthDeviceSecretEncrypted, @oauthMachineId, @proxyUrl
+        @oauthProjectId, @oauthDeviceClientId, @oauthDeviceSecretEncrypted, @oauthMachineId, @proxyUrl,
+        @oauthAccounts
       )
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
@@ -383,7 +705,8 @@ function writeProviderToDb(database: Database.Database, provider: ProviderConfig
         oauth_device_client_id = excluded.oauth_device_client_id,
         oauth_device_client_secret_encrypted = excluded.oauth_device_client_secret_encrypted,
         oauth_machine_id = excluded.oauth_machine_id,
-        proxy_url = excluded.proxy_url
+        proxy_url = excluded.proxy_url,
+        oauth_accounts = COALESCE(excluded.oauth_accounts, providers.oauth_accounts)
     `)
     .run({
       ...provider,
@@ -406,7 +729,8 @@ function writeProviderToDb(database: Database.Database, provider: ProviderConfig
       oauthDeviceClientId: provider.oauthDeviceClientId ?? null,
       oauthDeviceSecretEncrypted,
       oauthMachineId: provider.oauthMachineId ?? null,
-      proxyUrl: provider.proxyUrl ?? null
+      proxyUrl: provider.proxyUrl ?? null,
+      oauthAccounts: oauthAccountsSerialized
     });
 }
 
@@ -936,48 +1260,145 @@ export async function saveProviderOAuthTokens(providerId: string, tokens: {
   deviceClientId?: string;
   deviceClientSecret?: string;
   machineId?: string;
-}) {
+}, options?: { accountId?: string; createNew?: boolean; accountName?: string }) {
   const database = getDb();
-  const accessEncrypted = tokens.accessToken ? encryptSecret(tokens.accessToken) : null;
-  const refreshEncrypted = tokens.refreshToken ? encryptSecret(tokens.refreshToken) : null;
-  const copilotEncrypted = tokens.copilotToken ? encryptSecret(tokens.copilotToken) : null;
-  const deviceSecretEncrypted = tokens.deviceClientSecret ? encryptSecret(tokens.deviceClientSecret) : null;
-  database
-    .prepare(`UPDATE providers SET
-      oauth_access_token_encrypted = ?,
-      oauth_refresh_token_encrypted = ?,
-      oauth_token_expires_at = ?,
-      oauth_last_refresh_at = ?,
-      oauth_copilot_token_encrypted = COALESCE(?, oauth_copilot_token_encrypted),
-      oauth_copilot_token_expires_at = COALESCE(?, oauth_copilot_token_expires_at),
-      oauth_project_id = COALESCE(?, oauth_project_id),
-      oauth_device_client_id = COALESCE(?, oauth_device_client_id),
-      oauth_device_client_secret_encrypted = COALESCE(?, oauth_device_client_secret_encrypted),
-      oauth_machine_id = COALESCE(?, oauth_machine_id),
-      connection_status = 'connected',
-      last_checked_at = ?
-      WHERE id = ?`)
-    .run(
-      accessEncrypted,
-      refreshEncrypted,
-      tokens.expiresAt ?? null,
-      new Date().toISOString(),
-      copilotEncrypted,
-      tokens.copilotTokenExpiresAt ?? null,
-      tokens.projectId ?? null,
-      tokens.deviceClientId ?? null,
-      deviceSecretEncrypted,
-      tokens.machineId ?? null,
-      new Date().toISOString(),
-      providerId
-    );
+  const provider = await readProviderById(providerId);
+  if (!provider) throw new Error("Provider not found.");
+
+  const existingAccounts = Array.isArray(provider.oauthAccounts) && provider.oauthAccounts.length
+    ? [...provider.oauthAccounts]
+    : configuredOAuthAccountsFromProvider(provider);
+
+  const accountId = options?.createNew
+    ? createOAuthAccountId()
+    : options?.accountId ?? existingAccounts[0]?.id ?? "legacy";
+  const existing = existingAccounts.find((account) => account.id === accountId);
+  const nextAccount: OAuthAccount = {
+    id: accountId,
+    name: options?.accountName ?? existing?.name ?? defaultOAuthAccountName(options?.createNew ? existingAccounts.length : Math.max(existingAccounts.length - 1, 0)),
+    oauthAccessToken: tokens.accessToken,
+    oauthRefreshToken: tokens.refreshToken ?? existing?.oauthRefreshToken,
+    oauthTokenExpiresAt: tokens.expiresAt ?? existing?.oauthTokenExpiresAt,
+    oauthLastRefreshAt: new Date().toISOString(),
+    oauthCopilotToken: tokens.copilotToken ?? existing?.oauthCopilotToken,
+    oauthCopilotTokenExpiresAt: tokens.copilotTokenExpiresAt ?? existing?.oauthCopilotTokenExpiresAt,
+    oauthProjectId: tokens.projectId ?? existing?.oauthProjectId,
+    oauthDeviceClientId: tokens.deviceClientId ?? existing?.oauthDeviceClientId,
+    oauthDeviceClientSecret: tokens.deviceClientSecret ?? existing?.oauthDeviceClientSecret,
+    oauthMachineId: tokens.machineId ?? existing?.oauthMachineId,
+    connectionStatus: "connected",
+    lastError: undefined,
+    lastCheckedAt: new Date().toISOString(),
+    createdAt: existing?.createdAt ?? new Date().toISOString()
+  };
+
+  const accounts = options?.createNew || !existing
+    ? [...existingAccounts, nextAccount]
+    : existingAccounts.map((account) => (account.id === accountId ? { ...account, ...nextAccount } : account));
+
+  database.prepare(`UPDATE providers SET oauth_accounts = ? WHERE id = ?`).run(serializeOAuthAccounts(accounts), providerId);
+  syncPrimaryOAuthColumns(database, providerId, accounts);
+  syncProviderOAuthConnectionStatus(database, providerId, accounts);
+  return accountId;
+}
+
+function configuredOAuthAccountsFromProvider(provider: ProviderConfig): OAuthAccount[] {
+  if (Array.isArray(provider.oauthAccounts) && provider.oauthAccounts.length) return [...provider.oauthAccounts];
+  if (!provider.oauthAccessToken && !provider.oauthCopilotToken) return [];
+  return [{
+    id: "legacy",
+    name: "Account 1",
+    oauthAccessToken: provider.oauthAccessToken,
+    oauthRefreshToken: provider.oauthRefreshToken,
+    oauthTokenExpiresAt: provider.oauthTokenExpiresAt,
+    oauthLastRefreshAt: provider.oauthLastRefreshAt,
+    oauthCopilotToken: provider.oauthCopilotToken,
+    oauthCopilotTokenExpiresAt: provider.oauthCopilotTokenExpiresAt,
+    oauthProjectId: provider.oauthProjectId,
+    oauthDeviceClientId: provider.oauthDeviceClientId,
+    oauthDeviceClientSecret: provider.oauthDeviceClientSecret,
+    oauthMachineId: provider.oauthMachineId,
+    connectionStatus: provider.connectionStatus,
+    lastError: provider.lastError,
+    rateLimitedUntil: provider.rateLimitedUntil
+  }];
+}
+
+export async function updateProviderOAuthAccountTokens(providerId: string, accountId: string, patch: Partial<OAuthAccount>) {
+  const provider = await readProviderById(providerId);
+  if (!provider) throw new Error("Provider not found.");
+  const accounts = configuredOAuthAccountsFromProvider(provider).map((account) =>
+    account.id === accountId ? { ...account, ...patch } : account
+  );
+  const database = getDb();
+  database.prepare("UPDATE providers SET oauth_accounts = ? WHERE id = ?").run(serializeOAuthAccounts(accounts), providerId);
+  syncPrimaryOAuthColumns(database, providerId, accounts);
 }
 
 export async function clearProviderOAuthTokens(providerId: string) {
   const database = getDb();
   database
-    .prepare(`UPDATE providers SET oauth_access_token_encrypted = NULL, oauth_refresh_token_encrypted = NULL, oauth_token_expires_at = NULL, oauth_last_refresh_at = NULL, oauth_copilot_token_encrypted = NULL, oauth_copilot_token_expires_at = NULL, oauth_project_id = NULL, oauth_device_client_id = NULL, oauth_device_client_secret_encrypted = NULL, oauth_machine_id = NULL WHERE id = ?`)
+    .prepare(`UPDATE providers SET oauth_accounts = NULL, oauth_access_token_encrypted = NULL, oauth_refresh_token_encrypted = NULL, oauth_token_expires_at = NULL, oauth_last_refresh_at = NULL, oauth_copilot_token_encrypted = NULL, oauth_copilot_token_expires_at = NULL, oauth_project_id = NULL, oauth_device_client_id = NULL, oauth_device_client_secret_encrypted = NULL, oauth_machine_id = NULL WHERE id = ?`)
     .run(providerId);
+}
+
+export async function clearOAuthAccount(providerId: string, accountId: string) {
+  const provider = await readProviderById(providerId);
+  if (!provider) return;
+  const accounts = configuredOAuthAccountsFromProvider(provider).filter((account) => account.id !== accountId);
+  const database = getDb();
+  if (!accounts.length) {
+    await clearProviderOAuthTokens(providerId);
+    return;
+  }
+  database.prepare("UPDATE providers SET oauth_accounts = ? WHERE id = ?").run(serializeOAuthAccounts(accounts), providerId);
+  syncPrimaryOAuthColumns(database, providerId, accounts);
+  syncProviderOAuthConnectionStatus(database, providerId, accounts);
+}
+
+function syncProviderOAuthConnectionStatus(database: Database.Database, providerId: string, accounts: OAuthAccount[]) {
+  const routable = accounts.filter((account) =>
+    Boolean(account.oauthAccessToken || account.oauthCopilotToken) && account.connectionStatus !== "error"
+  );
+  const withToken = accounts.filter((account) => Boolean(account.oauthAccessToken || account.oauthCopilotToken));
+  const status = routable.length ? "connected" : withToken.length ? "error" : "unknown";
+  const lastError = routable.length ? null : withToken.find((account) => account.lastError)?.lastError ?? null;
+  database
+    .prepare("UPDATE providers SET connection_status = ?, last_checked_at = ?, last_error = ? WHERE id = ?")
+    .run(status, new Date().toISOString(), lastError, providerId);
+}
+
+export async function markOAuthAccountConnection(
+  providerId: string,
+  accountId: string,
+  ok: boolean,
+  message?: string,
+  options?: { rateLimitedUntil?: string }
+) {
+  const provider = await readProviderById(providerId);
+  if (!provider) return;
+  const accounts = configuredOAuthAccountsFromProvider(provider).map((account) =>
+    account.id === accountId
+      ? {
+          ...account,
+          connectionStatus: ok ? ("connected" as const) : ("error" as const),
+          lastError: ok ? undefined : message?.slice(0, 500),
+          lastCheckedAt: new Date().toISOString(),
+          rateLimitedUntil: options?.rateLimitedUntil ?? (ok ? undefined : account.rateLimitedUntil)
+        }
+      : account
+  );
+  const database = getDb();
+  database.prepare("UPDATE providers SET oauth_accounts = ? WHERE id = ?").run(serializeOAuthAccounts(accounts), providerId);
+  syncPrimaryOAuthColumns(database, providerId, accounts);
+  syncProviderOAuthConnectionStatus(database, providerId, accounts);
+}
+
+export async function writeOAuthAccounts(providerId: string, accounts: OAuthAccount[]) {
+  const database = getDb();
+  database.prepare("UPDATE providers SET oauth_accounts = ? WHERE id = ?").run(serializeOAuthAccounts(accounts), providerId);
+  syncPrimaryOAuthColumns(database, providerId, accounts);
+  syncProviderOAuthConnectionStatus(database, providerId, accounts);
 }
 
 export async function readProviderById(providerId: string): Promise<ProviderConfig | undefined> {
@@ -985,7 +1406,7 @@ export async function readProviderById(providerId: string): Promise<ProviderConf
   return row ? providerFromRow(row) : undefined;
 }
 
-export async function saveOAuthPending(state: string, data: { providerId: string; codeVerifier: string; redirectUri: string; createdAt: string }) {
+export async function saveOAuthPending(state: string, data: { providerId: string; accountId?: string; codeVerifier: string; redirectUri: string; createdAt: string }) {
   writeSetting(getDb(), `oauthPending:${state}`, {
     ...data,
     codeVerifier: encryptSecret(data.codeVerifier)
@@ -993,7 +1414,7 @@ export async function saveOAuthPending(state: string, data: { providerId: string
 }
 
 export async function readOAuthPending(state: string) {
-  const pending = readSetting<{ providerId: string; codeVerifier: string; redirectUri: string; createdAt: string } | null>(
+  const pending = readSetting<{ providerId: string; accountId?: string; codeVerifier: string; redirectUri: string; createdAt: string } | null>(
     getDb(),
     `oauthPending:${state}`,
     null
@@ -1012,31 +1433,52 @@ export async function deleteOAuthPending(state: string) {
 export type DevicePendingState = {
   deviceCode: string;
   createdAt: string;
+  accountId?: string;
   clientId?: string;
   clientSecret?: string;
   region?: string;
 };
 
-export async function saveDevicePending(providerId: string, data: DevicePendingState) {
-  writeSetting(getDb(), `devicePending:${providerId}`, {
+export async function saveDevicePending(providerId: string, data: DevicePendingState, accountId?: string) {
+  const key = accountId ? `devicePending:${providerId}:${accountId}` : `devicePending:${providerId}`;
+  writeSetting(getDb(), key, {
     ...data,
+    accountId: data.accountId ?? accountId,
     deviceCode: encryptSecret(data.deviceCode),
     clientSecret: data.clientSecret ? encryptSecret(data.clientSecret) : undefined
   });
 }
 
-export async function readDevicePending(providerId: string) {
-  const pending = readSetting<DevicePendingState | null>(getDb(), `devicePending:${providerId}`, null);
-  if (!pending) return null;
-  return {
-    ...pending,
-    deviceCode: decryptSecret(pending.deviceCode),
-    clientSecret: pending.clientSecret ? decryptSecret(pending.clientSecret) : undefined
-  };
+export async function readDevicePending(providerId: string, accountId?: string) {
+  const keys = accountId
+    ? [`devicePending:${providerId}:${accountId}`]
+    : [`devicePending:${providerId}`, ...listDevicePendingKeys(providerId)];
+  for (const key of keys) {
+    const pending = readSetting<DevicePendingState | null>(getDb(), key, null);
+    if (!pending) continue;
+    return {
+      ...pending,
+      deviceCode: decryptSecret(pending.deviceCode),
+      clientSecret: pending.clientSecret ? decryptSecret(pending.clientSecret) : undefined
+    };
+  }
+  return null;
 }
 
-export async function deleteDevicePending(providerId: string) {
+function listDevicePendingKeys(providerId: string) {
+  const rows = getDb().prepare("SELECT key FROM settings WHERE key LIKE ?").all(`devicePending:${providerId}:%`) as Array<{ key: string }>;
+  return rows.map((row) => row.key);
+}
+
+export async function deleteDevicePending(providerId: string, accountId?: string) {
+  if (accountId) {
+    getDb().prepare("DELETE FROM settings WHERE key = ?").run(`devicePending:${providerId}:${accountId}`);
+    return;
+  }
   getDb().prepare("DELETE FROM settings WHERE key = ?").run(`devicePending:${providerId}`);
+  for (const key of listDevicePendingKeys(providerId)) {
+    getDb().prepare("DELETE FROM settings WHERE key = ?").run(key);
+  }
 }
 
 export function getDataDir() {

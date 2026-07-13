@@ -14,8 +14,7 @@ export default function RoutingPolicyPanel({
     <section className="panel">
       <div className="panel-heading">
         <div>
-          <p className="subtle">Flow</p>
-          <h2>Routing engine</h2>
+          <h2>Router</h2>
         </div>
       </div>
       <div className="route-lane" aria-label="Routing lane">

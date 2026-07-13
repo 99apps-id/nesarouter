@@ -2,6 +2,7 @@ import AppShell from "@/components/AppShell";
 import NewProviderForm from "@/components/NewProviderForm";
 import ProviderCard from "@/components/ProviderCard";
 import { providerGroup, providerGroupMeta, ProviderGroupId } from "@/lib/providerGroups";
+import { oauthAccountCount, routableOAuthAccountCount } from "@/core/oauthAccounts";
 import { redactProviderForClient } from "@/lib/providerRedact";
 import { readStore, seedMissingProviders } from "@/lib/store";
 
@@ -21,7 +22,6 @@ export default async function ProvidersPage() {
         <section className="panel">
           <div className="panel-heading">
             <div>
-              <p className="subtle">Pool</p>
               <h2>{store.providers.length} providers</h2>
             </div>
           </div>
@@ -48,7 +48,9 @@ export default async function ProvidersPage() {
                             provider={{ ...safe, apiKey: "", apiKeys: [] }}
                             hasApiKey={Boolean(provider.apiKey)}
                             hasExtraKeys={Boolean(provider.apiKeys?.length)}
-                            hasOAuthToken={Boolean(provider.oauthAccessToken || provider.oauthCopilotToken)}
+                            hasOAuthToken={oauthAccountCount(provider) > 0}
+                            oauthAccountCount={oauthAccountCount(provider)}
+                            routableOAuthCount={routableOAuthAccountCount(provider)}
                           />
                         );
                       })}

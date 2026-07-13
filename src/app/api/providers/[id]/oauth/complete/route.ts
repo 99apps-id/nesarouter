@@ -56,6 +56,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       refreshToken: tokens.refresh_token,
       expiresAt,
       projectId
+    }, {
+      accountId: pending.accountId,
+      createNew: !pending.accountId
     });
     return NextResponse.json({ ok: true });
   } catch (error) {

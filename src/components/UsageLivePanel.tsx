@@ -60,8 +60,7 @@ export default function UsageLivePanel() {
     <section className="panel compact usage-live-panel">
       <div className="panel-heading">
         <div>
-          <p className="subtle">Live</p>
-          <h2>Usage tracker</h2>
+          <h2>Usage</h2>
         </div>
         <button className="icon-button" type="button" onClick={load} aria-label="Refresh usage stats">
           <RefreshCw size={15} />
@@ -82,7 +81,7 @@ export default function UsageLivePanel() {
           </div>
           <div className="usage-live-grid">
             <div>
-              <h3>By provider</h3>
+              <h3>Provider</h3>
               {stats.byProvider.length === 0 ? (
                 <p className="subtle">No provider traffic yet.</p>
               ) : (
@@ -96,7 +95,7 @@ export default function UsageLivePanel() {
               )}
             </div>
             <div>
-              <h3>By model</h3>
+              <h3>Model</h3>
               {stats.byModel.length === 0 ? (
                 <p className="subtle">No model traffic yet.</p>
               ) : (

@@ -1,5 +1,6 @@
 import { getPreset, OAuthPreset } from "@/core/oauthProviderPresets";
 import { refreshKiroToken, refreshToken } from "@/core/oauthPkce";
+import { configuredOAuthAccounts, providerForOAuthAccount } from "@/core/oauthAccounts";
 import { ProviderConfig } from "@/core/types";
 import { readProviderById, saveProviderOAuthTokens } from "@/lib/store";
 
@@ -49,68 +50,72 @@ function copilotTokenNeedsRefresh(provider: ProviderConfig, preset: OAuthPreset)
  * if needed, then exchanging it for a new Copilot token). Returns null when the
  * provider has no OAuth material at all.
  */
-export async function ensureFreshAccessToken(provider: ProviderConfig): Promise<string | null> {
+export async function ensureFreshAccessToken(provider: ProviderConfig, accountId?: string): Promise<string | null> {
   if (!provider.oauthProfile) return provider.oauthAccessToken ?? null;
-  const preset = getPreset(provider.oauthProfile);
-  if (!preset) return provider.oauthAccessToken ?? null;
-  if (!provider.oauthAccessToken) return null;
+  const account = accountId
+    ? configuredOAuthAccounts(provider).find((item) => item.id === accountId)
+    : configuredOAuthAccounts(provider)[0];
+  if (!account) return null;
+  const snapshot = providerForOAuthAccount(provider, account);
+  const preset = getPreset(snapshot.oauthProfile);
+  if (!preset) return snapshot.oauthAccessToken ?? null;
+  if (!snapshot.oauthAccessToken) return null;
 
   if (preset.profile === "github_copilot") {
-    // Refresh the GitHub access token if it is about to expire.
-    if (tokenNeedsRefresh(provider, preset) && provider.oauthRefreshToken) {
+    if (tokenNeedsRefresh(snapshot, preset) && snapshot.oauthRefreshToken) {
       try {
-        const tokens = await refreshToken(preset, provider.oauthRefreshToken);
+        const tokens = await refreshToken(preset, snapshot.oauthRefreshToken);
         const accessToken = tokens.access_token;
-        if (!accessToken) return provider.oauthCopilotToken ?? null;
-        const refreshTokenValue = tokens.refresh_token ?? provider.oauthRefreshToken;
+        if (!accessToken) return snapshot.oauthCopilotToken ?? null;
+        const refreshTokenValue = tokens.refresh_token ?? snapshot.oauthRefreshToken;
         const expiresAt = computeExpiry(tokens.expires_in);
-        await saveProviderOAuthTokens(provider.id, { accessToken, refreshToken: refreshTokenValue, expiresAt });
-        provider = { ...provider, oauthAccessToken: accessToken };
+        await saveProviderOAuthTokens(snapshot.id, { accessToken, refreshToken: refreshTokenValue, expiresAt }, { accountId: account.id });
+        snapshot.oauthAccessToken = accessToken;
       } catch {
         // fall through with the existing access token
       }
     }
-    if (!copilotTokenNeedsRefresh(provider, preset)) return provider.oauthCopilotToken ?? null;
-    const githubAccessToken = provider.oauthAccessToken;
-    if (!githubAccessToken) return provider.oauthCopilotToken ?? null;
+    if (!copilotTokenNeedsRefresh(snapshot, preset)) return snapshot.oauthCopilotToken ?? null;
+    const githubAccessToken = snapshot.oauthAccessToken;
+    if (!githubAccessToken) return snapshot.oauthCopilotToken ?? null;
     const refreshed = await refreshCopilotToken(preset, githubAccessToken);
-    if (!refreshed) return provider.oauthCopilotToken ?? null;
-    await saveProviderOAuthTokens(provider.id, {
+    if (!refreshed) return snapshot.oauthCopilotToken ?? null;
+    await saveProviderOAuthTokens(snapshot.id, {
       accessToken: githubAccessToken,
-      refreshToken: provider.oauthRefreshToken,
-      expiresAt: provider.oauthTokenExpiresAt,
+      refreshToken: snapshot.oauthRefreshToken,
+      expiresAt: snapshot.oauthTokenExpiresAt,
       copilotToken: refreshed.token,
       copilotTokenExpiresAt: refreshed.expiresAt
-    });
+    }, { accountId: account.id });
     return refreshed.token;
   }
 
-  if (!tokenNeedsRefresh(provider, preset)) return provider.oauthAccessToken;
-  if (!provider.oauthRefreshToken) return provider.oauthAccessToken;
+  if (!tokenNeedsRefresh(snapshot, preset)) return snapshot.oauthAccessToken;
+  if (!snapshot.oauthRefreshToken) return snapshot.oauthAccessToken;
 
   try {
-    const tokens = preset.kiroDeviceFlow && provider.oauthDeviceClientId && provider.oauthDeviceClientSecret
+    const tokens = preset.kiroDeviceFlow && snapshot.oauthDeviceClientId && snapshot.oauthDeviceClientSecret
       ? await refreshKiroToken(
           preset.kiroRegion ?? "us-east-1",
-          provider.oauthDeviceClientId,
-          provider.oauthDeviceClientSecret,
-          provider.oauthRefreshToken
+          snapshot.oauthDeviceClientId,
+          snapshot.oauthDeviceClientSecret,
+          snapshot.oauthRefreshToken
         )
-      : await refreshToken(preset, provider.oauthRefreshToken);
+      : await refreshToken(preset, snapshot.oauthRefreshToken);
     const accessToken = tokens.access_token;
-    if (!accessToken) return provider.oauthAccessToken;
-    const refreshTokenValue = tokens.refresh_token ?? provider.oauthRefreshToken;
+    if (!accessToken) return snapshot.oauthAccessToken;
+    const refreshTokenValue = tokens.refresh_token ?? snapshot.oauthRefreshToken;
     const expiresAt = computeExpiry(tokens.expires_in);
-    await saveProviderOAuthTokens(provider.id, {
+    await saveProviderOAuthTokens(snapshot.id, {
       accessToken,
       refreshToken: refreshTokenValue,
       expiresAt,
-      deviceClientId: provider.oauthDeviceClientId,
-      deviceClientSecret: provider.oauthDeviceClientSecret
-    });
+      deviceClientId: snapshot.oauthDeviceClientId,
+      deviceClientSecret: snapshot.oauthDeviceClientSecret
+    }, { accountId: account.id });
     return accessToken;
   } catch {
-    return provider.oauthAccessToken;
+    return snapshot.oauthAccessToken;
   }
 }
 

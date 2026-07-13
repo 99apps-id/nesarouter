@@ -31,6 +31,12 @@ embedded client IDs as private API keys.
 | Kiro (AWS Builder ID) | AWS SSO OIDC dynamic registration | Client id/secret registered at connect time |
 | Cursor IDE | Local Cursor `state.vscdb` import | No browser OAuth client; imports local IDE tokens |
 
+### Keyless free endpoints
+
+| Provider preset | Upstream product | Notes |
+| --- | --- | --- |
+| OpenCode Free | OpenCode Zen (`opencode.ai`) | Uses publicly documented `Bearer public` + desktop client header; no NesaRouter-issued secret |
+
 Upstream trademarks and services remain the property of their respective owners.
-NesaRouter is not affiliated with Anthropic, OpenAI, Google, GitHub, Amazon, or
-Cursor except as an independent local gateway that can call their APIs.
+NesaRouter is not affiliated with Anthropic, OpenAI, Google, GitHub, Amazon,
+Cursor, or OpenCode except as an independent local gateway that can call their APIs.

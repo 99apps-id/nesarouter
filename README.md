@@ -8,14 +8,17 @@ NesaRouter is designed for a laptop or small VPS. It runs as one Next.js service
 
 - Serves OpenAI-compatible chat, responses, messages, embeddings, image, audio, search, and web-fetch endpoints.
 - Routes by mode: auto, free-first, cheapest, best, or manual.
-- Supports fallback chains, combos, model aliases, and round-robin provider accounts.
+- Supports fallback chains, combos, model aliases, and round-robin across API keys or OAuth accounts.
+- Supports **multi-account OAuth** per provider (add / remove / use; round-robin; skip fatal-error accounts).
+- Shows per-account connection health on the provider detail page (green / red, with periodic status probe).
 - Enforces a daily budget, warning thresholds, provider token quotas, and paid-provider blocking.
 - Caches equivalent requests and records routing reason, usage, and estimated or provider-reported cost.
 - Encrypts provider API keys, OAuth tokens, client `/v1` keys, MCP env values, and short-lived OAuth pending secrets at rest (AES-256-GCM).
 - Saves tokens with **Caveman** (default lite) and full **RTK** compression on tool results (git / grep / ls / logs / builds).
 - Connects subscription accounts via OAuth or local IDE import (Claude, ChatGPT/Codex, Gemini CLI, GitHub Copilot, Kiro, Antigravity, Cursor).
-- Supports short provider prefixes in `model` (`cx/gpt-5.5`, `cc/...`, full provider id also works).
-- Includes a dashboard for providers, keys, routing, usage, MCP, tunnels, Headroom, and CLI configuration.
+- Includes keyless free-tier providers such as **OpenCode Free** (`oc/` / `opencode/` prefix; no API key required).
+- Supports short provider prefixes in `model` (`cx/gpt-5.5`, `cc/...`, `oc/...`, full provider id also works).
+- Includes a dashboard for providers, keys, routing, usage (live provider flow map), MCP, tunnels, Headroom, and CLI configuration.
 - Locks the dashboard until the bootstrap admin password is changed; admin sessions are random and revocable.
 - Shows an update banner when a newer GitHub Release exists than the installed version.
 
@@ -35,8 +38,11 @@ NesaRouter intentionally keeps subscription sign-in separate from usage-billed A
 | Kiro | OAuth | AWS Builder ID device flow |
 | Antigravity | OAuth | Google OAuth with PKCE |
 | Cursor IDE | OAuth / Import | Auto-import from local `state.vscdb` or paste token |
+| OpenCode Free | Provider | Keyless Zen endpoint (`Bearer public`); optional paid OpenCode Go with API key |
 
 Provider subscriptions, API products, and their quotas are different products. Configure each route you are entitled to use and review the relevant vendor terms. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for public CLI OAuth client identifiers.
+
+For OAuth providers, open the provider detail page to connect **multiple accounts**, set the active account, and watch live connection status. Routing round-robins across healthy accounts and skips accounts marked with fatal auth/quota errors.
 
 ## Quick Start
 
@@ -72,6 +78,8 @@ Then:
    - **Claude / Gemini CLI**: Connect opens the vendor page; paste the authorization code back into NesaRouter.
    - **ChatGPT / Codex**: uses `http://localhost:1455/auth/callback`. On a remote VPS, tunnel first: `ssh -L 1455:127.0.0.1:1455 user@vps`.
    - **Copilot / Kiro**: device-code flow (no localhost redirect).
+   - **OpenCode Free**: no key or OAuth — enable the preset and Test; it should show connected.
+   - **Multi-account OAuth**: on the provider detail page, use **Add account** to attach another subscription login; Use / Remove per account.
 3. Open **Keys** and create a NesaRouter client key (the full token is shown once).
 4. Point an app or CLI tool to `http://localhost:20129/v1`.
 
@@ -152,7 +160,7 @@ All `/v1` endpoints require a NesaRouter client key created in **Keys**. The das
 | Provider id | `oauth-claude/claude-sonnet-4` | Explicit provider + model |
 | Alias / combo | `fast`, `my-chain` | Custom alias or combo name |
 
-Common prefixes: `cx`/`chatgpt`, `cc`/`claude`, `gemini`/`gcli`, `copilot`, `kiro`, `cursor`, `or`/`openrouter`, `ollama`, `ds`/`deepseek`.
+Common prefixes: `cx`/`chatgpt`, `cc`/`claude`, `gemini`/`gcli`, `copilot`, `kiro`, `cursor`, `oc`/`opencode`, `or`/`openrouter`, `ollama`, `ds`/`deepseek`.
 
 Response headers may include routing and saver metadata such as `x-nesa-cache` and `x-nesa-rtk-saved`.
 
@@ -160,8 +168,8 @@ Response headers may include routing and saver metadata such as `x-nesa-cache` a
 
 - **Routing**: mode, strategy, fallback, cache, budget, token savers (Caveman / RTK), and admin password.
 - **Combos**: named fallback or round-robin chains; aliases map friendly model names to targets.
-- **Usage**: provider, model, tokens, cost source, cache status, and routing reason per request.
-- **Providers**: API keys or OAuth / IDE import. Tokens are encrypted and refreshed where supported.
+- **Usage**: live provider-flow map (NesaRouter hub with spaced provider ring). It polls real request logs and animates the provider used by a recent request; idle links do not animate.
+- **Providers**: API keys, keyless free presets, or OAuth / IDE import. OAuth tokens are encrypted; multi-account pools round-robin and skip unhealthy accounts.
 - **Keys**: create/revoke client Bearer keys for `/v1` (preview only after create).
 - **MCP**: bridge configured stdio servers over SSE and RPC (trusted binaries only).
 - **Tunnel**: optional Cloudflare quick tunnel or Tailscale for controlled remote access.
@@ -175,12 +183,12 @@ Do not expose the dashboard publicly without a reverse proxy, TLS, and an access
 npm run typecheck
 npm test
 npm run build
-npm run dev
-# In another terminal after the server is ready:
+npm run start
+# In another terminal after the production server is ready:
 npm run smoke
 ```
 
-CI runs type checking, unit tests, production build, and the smoke suite. Docker images are published to GHCR when a `v*` tag is pushed.
+Do not run `npm run dev` while `npm run build` or `npm run start` uses the same `.next` directory. CI runs type checking, unit tests, production build, and the smoke suite. Docker images are published to GHCR when a `v*` tag is pushed.
 
 ## Project Docs
 
@@ -199,4 +207,4 @@ NesaRouter is released under the [MIT License](LICENSE).
 
 ## Disclaimer
 
-NesaRouter is an independent open-source project and is not affiliated with OpenAI, Anthropic, Google, AWS, GitHub, Cursor, or any other provider. Provider names and marks identify compatible upstream services and remain the property of their respective owners. Subscription OAuth or IDE token import can be subject to vendor terms and plan restrictions.
+NesaRouter is an independent open-source project and is not affiliated with OpenAI, Anthropic, Google, AWS, GitHub, Cursor, OpenCode, or any other provider. Provider names and marks identify compatible upstream services and remain the property of their respective owners. Subscription OAuth or IDE token import can be subject to vendor terms and plan restrictions.

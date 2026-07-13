@@ -5,7 +5,7 @@ export type ProviderGroupId = "oauth" | "free" | "free_tier" | "paid";
 export const providerGroupMeta: Record<ProviderGroupId, { title: string; hint: string; tone: string }> = {
   oauth: {
     title: "OAuth / account sign-in",
-    hint: "GitHub Copilot, ChatGPT, Kiro, Antigravity, Cursor — Connect / import, no API key.",
+    hint: "GitHub Copilot, Codex (cx), Kiro, Antigravity, Cursor — Connect / import, no API key.",
     tone: "oauth"
   },
   free: {

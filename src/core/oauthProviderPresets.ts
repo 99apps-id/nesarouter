@@ -93,7 +93,7 @@ export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
   },
   openai_codex: {
     profile: "openai_codex",
-    displayName: "ChatGPT (Codex)",
+    displayName: "Codex",
     clientId: "app_EMoamEEZ73f0CkXaXp7hrann",
     authorizeUrl: "https://auth.openai.com/oauth/authorize",
     tokenUrl: "https://auth.openai.com/oauth/token",
@@ -103,6 +103,22 @@ export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
     providerType: "openai_responses",
     baseUrl: "https://chatgpt.com/backend-api/codex/responses",
     defaultModel: "gpt-5.6-sol",
+    models: [
+      "gpt-5.6-sol",
+      "gpt-5.6-sol-review",
+      "gpt-5.6-terra",
+      "gpt-5.6-terra-review",
+      "gpt-5.6-luna",
+      "gpt-5.6-luna-review",
+      "gpt-5.5",
+      "gpt-5.5-review",
+      "gpt-5.4",
+      "gpt-5.4-review",
+      "gpt-5.4-mini",
+      "gpt-5.4-mini-review",
+      "gpt-5.3-codex-spark",
+      "gpt-5.3-codex-spark-review"
+    ],
     upstreamHeaders: {
       originator: "codex_cli_rs",
       "User-Agent": "codex_cli_rs/0.136.0"

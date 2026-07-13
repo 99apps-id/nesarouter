@@ -25,7 +25,7 @@ NesaRouter is intended to run on a trusted machine or private network. The admin
 | --- | --- | --- |
 | Dashboard + `/api/*` (except public auth) | Admin session cookie | Random id, HMAC-signed, hashed in SQLite; revocable |
 | `/v1/*` | Client Bearer key | Empty key list = deny; keys encrypted at rest |
-| Provider OAuth / IDE import | Operator action | Tokens encrypted; pending PKCE/device secrets encrypted |
+| Provider OAuth / IDE import | Operator action | Tokens (including multi-account pools) encrypted; pending PKCE/device secrets encrypted |
 | MCP bridge | Admin-configured | Spawns local commands — trusted binaries only |
 
 ## Operational Guidance

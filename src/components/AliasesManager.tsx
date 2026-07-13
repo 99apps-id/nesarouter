@@ -68,8 +68,8 @@ export default function AliasesManager({
         </div>
       </div>
       <p className="compact-copy">
-        Map <code>model: &quot;fast&quot;</code> to a provider model or combo. You can also call providers with a short prefix
-        without an alias, e.g. <code>cx/gpt-5.5</code>, <code>cc/claude-sonnet-4</code>, or <code>oauth-chatgpt/gpt-5.5</code>.
+        Map <code>model: &quot;fast&quot;</code> to a provider model or combo. Call Codex with <code>cx/gpt-…</code>
+        (e.g. <code>cx/gpt-5.6-sol</code>), Claude with <code>cc/…</code>, and other providers with their short prefixes.
       </p>
       <div className="combo-list">
         {items.length === 0 ? <p className="subtle">No aliases yet.</p> : null}

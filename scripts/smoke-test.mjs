@@ -220,7 +220,17 @@ async function cleanup(server) {
     db.close();
   } catch {}
 
-  await Promise.all(server.map((item) => new Promise((resolve) => item.close(resolve))));
+  await Promise.all(
+    server.map(
+      (item) =>
+        new Promise((resolve) => {
+          // Undici keeps upstream connections alive. Explicitly close them so
+          // a successful smoke test cannot hang while mock servers drain.
+          item.closeAllConnections?.();
+          item.close(resolve);
+        })
+    )
+  );
 }
 
 function assert(condition, message) {
@@ -600,6 +610,13 @@ try {
   const stats = await request("/api/usage/stats");
   assert(stats.response.ok, "/api/usage/stats failed");
   assert(typeof stats.json?.totalRequests === "number" && stats.json.totalRequests > 0, "usage stats totalRequests missing");
+
+  const liveUsage = await request("/api/usage");
+  assert(liveUsage.response.ok && Array.isArray(liveUsage.json), "/api/usage failed");
+  assert(
+    liveUsage.json.some((entry) => entry.providerId === providerId && entry.status === "success"),
+    "live usage feed is missing the routed provider"
+  );
 
   const chart = await request("/api/usage/chart?days=7");
   assert(chart.response.ok, "/api/usage/chart failed");

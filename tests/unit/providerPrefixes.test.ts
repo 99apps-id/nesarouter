@@ -6,7 +6,7 @@ import { ProviderConfig } from "@/core/types";
 const providers = [
   {
     id: "oauth-chatgpt",
-    name: "ChatGPT",
+    name: "Codex",
     type: "openai_responses",
     tier: "premium",
     status: "active",
@@ -35,8 +35,9 @@ const providers = [
 ] as ProviderConfig[];
 
 describe("provider prefixes", () => {
-  it("resolves short oauth prefixes", () => {
+  it("resolves cx prefix for Codex", () => {
     expect(resolvePrefixToProviderId("cx", providers)).toBe("oauth-chatgpt");
+    expect(resolvePrefixToProviderId("codex", providers)).toBeUndefined();
     expect(parsePrefixedModel("cx/gpt-5.5", providers)).toEqual({
       prefix: "cx",
       providerId: "oauth-chatgpt",

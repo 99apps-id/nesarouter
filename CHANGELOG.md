@@ -2,6 +2,24 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.12 - 2026-07-14
+
+### Features
+
+- **Multi-account OAuth** per provider: add/remove accounts, pick the active one, round-robin across healthy accounts, and skip accounts with fatal auth/quota errors.
+- Provider detail shows **live OAuth account health** (connected vs error) with lightweight status polling and probe.
+- **OpenCode Free** executor (`type: "opencode"`) talks to OpenCode Zen with keyless `Bearer public` (replacing the broken Kiro-bound preset path). Model prefixes: `oc/`, `opencode/`.
+- Keyless providers are treated as credentialed for routing / Test when no API key is required.
+- Usage **live map** layout: NesaRouter hub centered, providers spaced on a growing ellipse (9router-style), including dual-ring for large catalogs.
+- The live map now polls real usage logs and animates only the provider that handled a recent request; idle connections stay still.
+
+### Fixes
+
+- OpenCode Free no longer routes through the Kiro/AWS executor (403 / “not connected”).
+- Live map no longer collapses provider nodes into a pile or leaves the hub in the corner after CSS/positioning regressions.
+- Standalone startup now copies the Next server manifests required by middleware, preventing production endpoints from returning `500` after a successful start.
+- Smoke cleanup closes mock-provider keep-alive connections, so CI completes after end-to-end routing checks.
+
 ## 0.1.11
 
 ### Fixes

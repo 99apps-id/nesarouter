@@ -15,10 +15,30 @@ export type CostSource = "provider_usage" | "estimated" | "cached" | "free";
 
 export type TaskType = "chat" | "coding_light" | "coding_heavy" | "analysis";
 
+export interface OAuthAccount {
+  id: string;
+  name?: string;
+  oauthAccessToken?: string;
+  oauthRefreshToken?: string;
+  oauthTokenExpiresAt?: string;
+  oauthLastRefreshAt?: string;
+  oauthCopilotToken?: string;
+  oauthCopilotTokenExpiresAt?: string;
+  oauthProjectId?: string;
+  oauthDeviceClientId?: string;
+  oauthDeviceClientSecret?: string;
+  oauthMachineId?: string;
+  connectionStatus?: ProviderConnectionStatus;
+  lastError?: string;
+  lastCheckedAt?: string;
+  rateLimitedUntil?: string;
+  createdAt?: string;
+}
+
 export interface ProviderConfig {
   id: string;
   name: string;
-  type: "openai_compatible" | "gemini" | "gemini_cli" | "anthropic_messages" | "openai_responses" | "github_copilot" | "kiro" | "cursor";
+  type: "openai_compatible" | "gemini" | "gemini_cli" | "anthropic_messages" | "openai_responses" | "github_copilot" | "kiro" | "opencode" | "cursor";
   tier: ProviderTier;
   status: ProviderStatus;
   baseUrl: string;
@@ -41,6 +61,8 @@ export interface ProviderConfig {
   proxyUrl?: string;
   /** OAuth subscription auth (e.g. Claude/ChatGPT/Gemini CLI/GitHub Copilot/Kiro/Antigravity/Cursor). */
   oauthProfile?: "anthropic_claude" | "openai_codex" | "gemini_cli" | "github_copilot" | "kiro" | "antigravity" | "cursor";
+  /** Multiple OAuth accounts per provider (round-robin + per-account cooldown). */
+  oauthAccounts?: OAuthAccount[];
   oauthAccessToken?: string;
   oauthRefreshToken?: string;
   oauthTokenExpiresAt?: string;

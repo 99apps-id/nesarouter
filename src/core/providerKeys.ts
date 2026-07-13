@@ -1,4 +1,5 @@
 import { ProviderConfig } from "@/core/types";
+import { isKeylessProvider } from "@/core/providerCredentials";
 
 interface KeyCooldown {
   until: number;
@@ -58,7 +59,12 @@ export function pickActiveKeys(provider: ProviderConfig): PickedKey[] {
     if (cd && cd.until > now) continue;
     active.push(entry);
   }
-  if (active.length <= 1) return active;
+  if (active.length <= 1) {
+    if (active.length === 0 && isKeylessProvider(provider)) {
+      return [{ key: "", index: 0 }];
+    }
+    return active;
+  }
 
   const lastIndex = lastUsedIndex.get(provider.id) ?? -1;
   const start = active.findIndex((entry) => entry.index > lastIndex);

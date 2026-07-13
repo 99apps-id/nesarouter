@@ -1,5 +1,16 @@
-import { ProviderConfig } from "@/core/types";
+import { ProviderConfig, OAuthAccount } from "@/core/types";
 import { redactSecret } from "@/lib/crypto";
+
+function redactOAuthAccount(account: OAuthAccount): OAuthAccount {
+  return {
+    ...account,
+    oauthAccessToken: account.oauthAccessToken ? "********" : undefined,
+    oauthRefreshToken: account.oauthRefreshToken ? "********" : undefined,
+    oauthCopilotToken: account.oauthCopilotToken ? "********" : undefined,
+    oauthDeviceClientSecret: account.oauthDeviceClientSecret ? "********" : undefined,
+    oauthMachineId: account.oauthMachineId ? "********" : undefined
+  };
+}
 
 /** Strip live secrets before JSON/SSR so admin cookies cannot exfiltrate them via XSS or over-broad UI. */
 export function redactProviderForClient(provider: ProviderConfig): ProviderConfig {
@@ -7,6 +18,7 @@ export function redactProviderForClient(provider: ProviderConfig): ProviderConfi
     ...provider,
     apiKey: provider.apiKey ? redactSecret(provider.apiKey) : "",
     apiKeys: provider.apiKeys?.length ? provider.apiKeys.map(() => "********") : [],
+    oauthAccounts: provider.oauthAccounts?.length ? provider.oauthAccounts.map(redactOAuthAccount) : [],
     oauthAccessToken: provider.oauthAccessToken ? "********" : undefined,
     oauthRefreshToken: provider.oauthRefreshToken ? "********" : undefined,
     oauthCopilotToken: provider.oauthCopilotToken ? "********" : undefined,

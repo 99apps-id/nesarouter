@@ -8,12 +8,16 @@ export default function ProviderCard({
   provider,
   hasApiKey,
   hasExtraKeys,
-  hasOAuthToken
+  hasOAuthToken,
+  oauthAccountCount = 0,
+  routableOAuthCount = 0
 }: {
   provider: ProviderConfig;
   hasApiKey: boolean;
   hasExtraKeys: boolean;
   hasOAuthToken: boolean;
+  oauthAccountCount?: number;
+  routableOAuthCount?: number;
 }) {
   const keyCount = (hasApiKey ? 1 : 0) + (provider.apiKeys?.length ?? 0);
   const isAccountProvider = Boolean(provider.oauthProfile);
@@ -32,7 +36,13 @@ export default function ProviderCard({
           <span className={`status ${statusTone}`}>{statusLabel}</span>
           <span className={`status ${provider.status === "active" ? "success" : "neutral"}`}>{provider.status}</span>
           {isAccountProvider ? (
-            <span className={`status ${hasOAuthToken ? "success" : "neutral"}`}>{hasOAuthToken ? "OAuth connected" : "OAuth not connected"}</span>
+            <span className={`status ${routableOAuthCount > 0 ? "success" : hasOAuthToken ? "error" : "neutral"}`}>
+              {routableOAuthCount > 0
+                ? `OAuth ${routableOAuthCount} ok`
+                : hasOAuthToken
+                  ? "OAuth error"
+                  : "OAuth not connected"}
+            </span>
           ) : (
             <span className={`status ${keyCount > 0 ? "success" : "neutral"}`}>
               <KeyRound size={12} /> {keyCount} key{keyCount === 1 ? "" : "s"}

@@ -39,7 +39,6 @@ export const providerPresets: ProviderConfig[] = [
   oauthPreset("oauth-antigravity", "antigravity", 8),
   oauthPreset("oauth-cursor", "cursor", 9),
   oauthPreset("oauth-claude", "anthropic_claude", 10),
-  oauthPreset("oauth-codex", "openai_codex", 11),
   oauthPreset("oauth-gemini-cli", "gemini_cli", 12),
 
   // --- Free / local ---
@@ -68,8 +67,9 @@ export const providerPresets: ProviderConfig[] = [
   preset({
     id: "opencode-free",
     name: "OpenCode Free",
-    type: "kiro",
+    type: "opencode",
     tier: "free",
+    status: "active",
     baseUrl: "https://opencode.ai",
     model: "auto",
     models: ["auto"],
@@ -781,7 +781,6 @@ export const providerPresetGroups: Array<{ label: string; ids: string[] }> = [
       "oauth-antigravity",
       "oauth-cursor",
       "oauth-claude",
-      "oauth-codex",
       "oauth-gemini-cli"
     ]
   },

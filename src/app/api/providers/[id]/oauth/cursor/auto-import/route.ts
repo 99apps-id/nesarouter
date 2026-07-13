@@ -45,7 +45,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         accessToken: tokens.accessToken,
         expiresAt,
         machineId: tokens.machineId
-      });
+      }, { createNew: false });
       return finalizeAdminResponse(
         NextResponse.json({ found: true, imported: true, expiresAt, dbPath }),
         request

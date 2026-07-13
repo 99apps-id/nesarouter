@@ -45,6 +45,8 @@ Use a system sans stack. Product UI uses a tight fixed rem scale: 12px metadata,
 - Alert banner: used for must-change-password and similar blocking operator tasks — clear, not decorative.
 - Login: temporary default-password hint only while still on bootstrap; disappear after password change.
 - Provider groups: separate OAuth / account sign-in from API-key / free / paid pools.
+- Provider detail OAuth account list: status text plus color (never color alone); Add account / Use / Remove without echoing tokens.
+- Usage live map: hub-centered provider topology; nodes spaced so labels remain readable; animate only a recent, logged route and keep idle links still; respect `prefers-reduced-motion`.
 
 ## Motion
 
@@ -55,3 +57,4 @@ Use short 150-220ms transitions for state changes, counters, and live routing ev
 - Until the admin password is changed, navigation is limited to **Routing** and a persistent banner explains why.
 - Secrets in forms and lists show masks (`********`) or previews — never full tokens after create.
 - OAuth connect flows should show clear success / error states without echoing tokens back into the browser.
+- Multi-account OAuth status probes must not print access tokens, refresh tokens, or device client secrets into the UI or logs.

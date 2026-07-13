@@ -51,8 +51,18 @@ if (!resolved) {
 const { server, cwd, build } = resolved;
 const appVersion = process.env.NESA_APP_VERSION || readAppVersion(root);
 
-// Next standalone excludes browser assets by design. Copy them next to server.js
-// so local and VPS runs serve the same CSS, scripts, and favicon files.
+// Next standalone excludes browser assets by design. With newer Next releases
+// the middleware manifests also remain in .next/server, so copy both build
+// surfaces before launching. Without the server directory every route starts
+// but responds 500 when middleware is loaded.
+const serverSource = join(build, "server");
+if (existsSync(serverSource)) {
+  mkdirSync(join(cwd, ".next"), { recursive: true });
+  cpSync(serverSource, join(cwd, ".next", "server"), { recursive: true, force: true });
+}
+
+// Copy browser assets next to server.js so local and VPS runs serve the same
+// CSS, scripts, and favicon files.
 const staticSource = join(build, "static");
 if (existsSync(staticSource)) {
   mkdirSync(join(cwd, ".next"), { recursive: true });

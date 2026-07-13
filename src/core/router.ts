@@ -3,6 +3,8 @@ import { resolveModelAlias } from "@/core/aliases";
 import { getBudgetStatus } from "@/core/budget";
 import { detectTaskType, estimateCost, estimateOutputTokens, estimateTokens, extractRequestText } from "@/core/estimation";
 import { parsePrefixedModel } from "@/core/providerPrefixes";
+import { hasRoutableOAuthConnection } from "@/core/oauthAccounts";
+import { providerHasCredential } from "@/core/providerCredentials";
 import { getProviderQuotaState, providerQuotaReason } from "@/core/quota";
 import { providerGroup } from "@/lib/providerGroups";
 
@@ -21,9 +23,8 @@ const taskMaxTier: Record<TaskType, ProviderTier[]> = {
 };
 
 function providerHasKey(provider: ProviderConfig) {
-  if (provider.apiKey) return true;
-  if (provider.oauthAccessToken) return true;
-  return Array.isArray(provider.apiKeys) && provider.apiKeys.some((key) => typeof key === "string" && key.trim());
+  if (provider.oauthProfile) return hasRoutableOAuthConnection(provider);
+  return providerHasCredential(provider);
 }
 
 function isProviderUsable(provider: ProviderConfig) {

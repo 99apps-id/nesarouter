@@ -11,8 +11,10 @@ import { compressWithHeadroom } from "@/core/headroomCompress";
 import { compressWithPxpipe } from "@/core/pxpipe";
 import { resolveModelAlias } from "@/core/aliases";
 import { ensureFreshAccessToken } from "@/core/providerOAuthFlow";
+import { isOAuthAccountFatalError } from "@/core/oauthAccountHealth";
+import { clearOAuthAccountCooldown, markOAuthAccountCooldown, pickActiveOAuthAccounts, providerForOAuthAccount, rememberOAuthAccountUse } from "@/core/oauthAccounts";
 import { clearKeyCooldown, markKeyCooldown, pickActiveKeys, rememberKeyUse } from "@/core/providerKeys";
-import { appendUsage, clearProviderCooldown, markProviderFailure, readStore, saveCacheEntry } from "@/lib/store";
+import { appendUsage, clearProviderCooldown, markProviderFailure, markOAuthAccountConnection, readStore, saveCacheEntry } from "@/lib/store";
 import { Combo, NesaStore, ProviderConfig, RouteDecision, UsageLog } from "@/core/types";
 
 export const runtime = "nodejs";
@@ -182,57 +184,93 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
       }
     }
 
+    let providerFailed = true;
+
     if (decision.provider.oauthProfile) {
-      const fresh = await ensureFreshAccessToken(decision.provider);
-      if (!fresh) {
+      const accounts = pickActiveOAuthAccounts(decision.provider);
+      if (!accounts.length) {
         failedProviderIds.push(decision.provider.id);
-        errors.push(`${decision.provider.name}: OAuth not connected (no access token).`);
+        errors.push(`${decision.provider.name}: OAuth not connected (no active account).`);
         await markProviderFailure(decision.provider.id, "OAuth not connected.", 5 * 60_000);
         if (store.router.fallbackMode === "off") {
           return NextResponse.json({ error: { message: "OAuth not connected.", attempts: errors } }, { status: 502 });
         }
         continue;
       }
-      decision.provider = { ...decision.provider, oauthAccessToken: fresh };
-    }
 
-    const keys = pickActiveKeys(decision.provider);
-    if (keys.length === 0) {
-      failedProviderIds.push(decision.provider.id);
-      errors.push(`${decision.provider.name}: no active API key (all keys in cooldown).`);
-      await markProviderFailure(decision.provider.id, "All API keys in cooldown.", 5 * 60_000);
-      if (store.router.fallbackMode === "off") {
-        return NextResponse.json({ error: { message: "All keys in cooldown.", attempts: errors } }, { status: 502 });
-      }
-      continue;
-    }
-
-    let providerFailed = true;
-    for (const picked of keys) {
-      try {
-        const upstream = await callProvider(decision.provider, body, picked.key);
-        rememberKeyUse(decision.provider.id, picked.index);
-        clearKeyCooldown(decision.provider.id, picked.index);
-        await clearProviderCooldown(decision.provider.id);
-        providerFailed = false;
-
-        if (upstream instanceof ReadableStream) {
-          return finalizeStream(store, decision, upstream, key, body);
-        }
-
-        return finalizeJson(store, decision, upstream, key, body);
-      } catch (error) {
-        if (error instanceof UpstreamProviderError) {
-          const keyCooldown = keyFailureCooldown(error);
-          if (keyCooldown) markKeyCooldown(decision.provider.id, picked.index, keyCooldown);
-          errors.push(`${decision.provider.name} (key #${picked.index + 1}): ${error.message}`);
-          // try next key for this provider
+      for (const account of accounts) {
+        const fresh = await ensureFreshAccessToken(decision.provider, account.id);
+        if (!fresh) {
+          errors.push(`${decision.provider.name} (${account.name ?? `account ${account.index + 1}`}): OAuth token unavailable.`);
           continue;
         }
-        errors.push(`${decision.provider.name}: ${error instanceof Error ? error.message : "Unknown error."}`);
-        await markProviderFailure(decision.provider.id, error instanceof Error ? error.message : "Unknown error.", 3 * 60_000);
-        providerFailed = true;
-        break;
+        const oauthProvider = { ...providerForOAuthAccount(decision.provider, account), oauthAccessToken: fresh };
+        try {
+          const upstream = await callProvider(oauthProvider, body);
+          rememberOAuthAccountUse(decision.provider.id, account.index);
+          clearOAuthAccountCooldown(decision.provider.id, account.index);
+          await markOAuthAccountConnection(decision.provider.id, account.id, true);
+          await clearProviderCooldown(decision.provider.id);
+          providerFailed = false;
+
+          if (upstream instanceof ReadableStream) {
+            return finalizeStream(store, decision, upstream, key, body);
+          }
+          return finalizeJson(store, decision, upstream, key, body);
+        } catch (error) {
+          if (error instanceof UpstreamProviderError) {
+            const keyCooldown = keyFailureCooldown(error);
+            if (isOAuthAccountFatalError(error)) {
+              await markOAuthAccountConnection(decision.provider.id, account.id, false, error.message);
+            } else if (keyCooldown) {
+              markOAuthAccountCooldown(decision.provider.id, account.index, keyCooldown);
+            }
+            errors.push(`${decision.provider.name} (${account.name ?? `account ${account.index + 1}`}): ${error.message}`);
+            continue;
+          }
+          errors.push(`${decision.provider.name}: ${error instanceof Error ? error.message : "Unknown error."}`);
+          await markProviderFailure(decision.provider.id, error instanceof Error ? error.message : "Unknown error.", 3 * 60_000);
+          providerFailed = true;
+          break;
+        }
+      }
+    } else {
+      const keys = pickActiveKeys(decision.provider);
+      if (keys.length === 0) {
+        failedProviderIds.push(decision.provider.id);
+        errors.push(`${decision.provider.name}: no active API key (all keys in cooldown).`);
+        await markProviderFailure(decision.provider.id, "All API keys in cooldown.", 5 * 60_000);
+        if (store.router.fallbackMode === "off") {
+          return NextResponse.json({ error: { message: "All keys in cooldown.", attempts: errors } }, { status: 502 });
+        }
+        continue;
+      }
+
+      for (const picked of keys) {
+        try {
+          const upstream = await callProvider(decision.provider, body, picked.key);
+          rememberKeyUse(decision.provider.id, picked.index);
+          clearKeyCooldown(decision.provider.id, picked.index);
+          await clearProviderCooldown(decision.provider.id);
+          providerFailed = false;
+
+          if (upstream instanceof ReadableStream) {
+            return finalizeStream(store, decision, upstream, key, body);
+          }
+
+          return finalizeJson(store, decision, upstream, key, body);
+        } catch (error) {
+          if (error instanceof UpstreamProviderError) {
+            const keyCooldown = keyFailureCooldown(error);
+            if (keyCooldown) markKeyCooldown(decision.provider.id, picked.index, keyCooldown);
+            errors.push(`${decision.provider.name} (key #${picked.index + 1}): ${error.message}`);
+            continue;
+          }
+          errors.push(`${decision.provider.name}: ${error instanceof Error ? error.message : "Unknown error."}`);
+          await markProviderFailure(decision.provider.id, error instanceof Error ? error.message : "Unknown error.", 3 * 60_000);
+          providerFailed = true;
+          break;
+        }
       }
     }
 
