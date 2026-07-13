@@ -117,7 +117,8 @@ function envValue(key) {
 
 async function request(path, options = {}) {
   const headers = new Headers(options.headers ?? {});
-  if (adminCookie && path.startsWith("/api/") && !path.startsWith("/api/auth/")) {
+  // Attach admin session for all dashboard APIs, including password change under /api/auth.
+  if (adminCookie && path.startsWith("/api/") && !path.startsWith("/api/auth/login") && !path.startsWith("/api/auth/oauth")) {
     headers.set("cookie", adminCookie);
   }
   const response = await fetch(`${appUrl}${path}`, { ...options, headers });
@@ -126,9 +127,20 @@ async function request(path, options = {}) {
   return { response, json };
 }
 
+function captureAdminCookie(response) {
+  const raw = response.headers.get("set-cookie");
+  if (!raw) return;
+  const part = raw.split(";")[0]?.trim();
+  if (part) adminCookie = part;
+}
+
 async function loginAdminIfNeeded() {
   const session = await request("/api/auth/session");
-  if (!session.json?.authEnabled || session.json?.authenticated) return;
+  if (!session.json?.authEnabled) return;
+  if (session.json?.authenticated && adminCookie) {
+    await unlockAdminIfNeeded();
+    return;
+  }
 
   const password = envValue("NESA_ADMIN_PASSWORD");
   const login = await request("/api/auth/login", {
@@ -137,8 +149,27 @@ async function loginAdminIfNeeded() {
     body: JSON.stringify({ password })
   });
   assert(login.response.ok, "admin login failed for smoke test");
-  adminCookie = login.response.headers.get("set-cookie")?.split(";")[0] ?? "";
+  captureAdminCookie(login.response);
   assert(adminCookie, "admin login cookie missing");
+  await unlockAdminIfNeeded();
+}
+
+/** Complete bootstrap must-change so admin APIs are usable in CI. */
+async function unlockAdminIfNeeded() {
+  const session = await request("/api/auth/session");
+  if (!session.json?.mustChangePassword) return;
+
+  const current = envValue("NESA_ADMIN_PASSWORD");
+  const nextPassword = process.env.NESA_SMOKE_NEW_PASSWORD || `${current}-unlocked`;
+  assert(nextPassword.length >= 8, "smoke unlock password must be at least 8 characters");
+  const changed = await request("/api/auth/password", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ currentPassword: current, newPassword: nextPassword })
+  });
+  assert(changed.response.ok, `failed to change bootstrap password for smoke (${changed.response.status})`);
+  captureAdminCookie(changed.response);
+  assert(adminCookie, "admin cookie missing after password change");
 }
 
 async function provisionSmokeKey() {
