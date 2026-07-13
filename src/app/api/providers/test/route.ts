@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { finalizeAdminResponse, requireAdmin } from "@/lib/adminApi";
 import { testProviderConnection } from "@/core/providerClient";
 import { configuredProviderKeys } from "@/core/providerKeys";
 import { ProviderConfig } from "@/core/types";
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
     store.providers.find((item) => item.id === body.providerId);
 
   if (!provider) {
-    return NextResponse.json({ ok: false, error: "Provider not found." }, { status: 404 });
+    return finalizeAdminResponse(NextResponse.json({ ok: false, error: "Provider not found." }, { status: 404 }), request);
   }
 
   const keylessAllowed =
@@ -28,7 +28,10 @@ export async function POST(request: Request) {
     /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(provider.baseUrl);
 
   if (!provider.apiKey && !keylessAllowed) {
-    return NextResponse.json({ ok: false, error: "Provider API key is empty." }, { status: 400 });
+    return finalizeAdminResponse(
+      NextResponse.json({ ok: false, error: "Provider API key is empty." }, { status: 400 }),
+      request
+    );
   }
 
   try {
@@ -45,21 +48,33 @@ export async function POST(request: Request) {
         }));
         const connected = results.filter((result) => result.ok).length;
         await markProviderConnection(provider.id, connected > 0, connected ? undefined : results[0]?.message);
-        return NextResponse.json({
-          ok: connected > 0,
-          message: `${connected}/${results.length} accounts connected.`,
-          accounts: results
-        }, { status: connected > 0 ? 200 : 502 });
+        return finalizeAdminResponse(
+          NextResponse.json(
+            {
+              ok: connected > 0,
+              message: `${connected}/${results.length} accounts connected.`,
+              accounts: results
+            },
+            { status: connected > 0 ? 200 : 502 }
+          ),
+          request
+        );
       }
     }
     const result = await testProviderConnection(provider);
     await markProviderConnection(provider.id, true);
-    return NextResponse.json({ ok: true, message: `${provider.name} connected. ${result?.message ?? ""}`.trim(), models: result?.models ?? [] });
+    return finalizeAdminResponse(
+      NextResponse.json({ ok: true, message: `${provider.name} connected. ${result?.message ?? ""}`.trim(), models: result?.models ?? [] }),
+      request
+    );
   } catch (error) {
     await markProviderConnection(provider.id, false, error instanceof Error ? error.message : "Provider test failed.");
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Provider test failed." },
-      { status: 502 }
+    return finalizeAdminResponse(
+      NextResponse.json(
+        { ok: false, error: error instanceof Error ? error.message : "Provider test failed." },
+        { status: 502 }
+      ),
+      request
     );
   }
 }

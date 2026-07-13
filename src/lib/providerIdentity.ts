@@ -36,22 +36,30 @@ export function providerIdentity(input: ProviderIdentityInput | ProviderConfig):
   const title = input.name ?? providerName ?? input.id ?? "Provider";
 
   // Prefer the configured provider brand over a model hosted by that provider.
-  // If no provider is recognised, the model name below still gives usage rows a useful icon.
   if (has(providerText, /dashscope|alibaba/)) return { key: "qwen", label: "Q", title, iconPath: "/providers/qwen.png" };
-  if (has(providerText, /xiaomi/)) return { key: "xiaomi", label: "MI", title, iconPath: "/providers/xiaomi.svg" };
-  if (has(providerText, /moonshot/)) return { key: "moonshot", label: "MS", title, iconPath: "/providers/moonshot.svg" };
-  if (has(providerText, /kimi/)) return { key: "kimi", label: "K", title, iconPath: "/providers/kimi.svg" };
-  if (has(providerText, /zhipu|bigmodel/)) return { key: "zhipu", label: "Z", title };
-  if (has(providerText, /minimax/)) return { key: "minimax", label: "MM", title, iconPath: "/providers/minimax.svg" };
-  if (has(providerText, /volcengine|doubao/)) return { key: "volcengine", label: "DB", title };
-  if (has(providerText, /siliconflow/)) return { key: "siliconflow", label: "SF", title };
+  if (has(providerText, /xiaomi/)) return { key: "xiaomi", label: "MI", title, iconPath: "/providers/xiaomi.png" };
+  if (has(providerText, /moonshot/)) return { key: "moonshot", label: "MS", title, iconPath: "/providers/moonshot.png" };
+  if (has(providerText, /kimi/)) return { key: "kimi", label: "K", title, iconPath: "/providers/kimi.png" };
+  if (has(providerText, /zhipu|bigmodel/)) return { key: "zhipu", label: "Z", title, iconPath: "/providers/zhipu.png" };
+  if (has(providerText, /minimax/)) return { key: "minimax", label: "MM", title, iconPath: "/providers/minimax.png" };
+  if (has(providerText, /volcengine|doubao/)) return { key: "volcengine", label: "DB", title, iconPath: "/providers/volcengine.png" };
+  if (has(providerText, /siliconflow/)) return { key: "siliconflow", label: "SF", title, iconPath: "/providers/siliconflow.png" };
   if (has(providerText, /baidu|qianfan/)) return { key: "baidu", label: "BD", title, iconPath: "/providers/baidu.svg" };
   if (has(providerText, /stepfun/)) return { key: "stepfun", label: "ST", title };
   if (has(providerText, /together/)) return { key: "together", label: "TO", title, iconPath: "/providers/together.svg" };
   if (has(providerText, /runware/)) return { key: "runware", label: "RW", title, iconPath: "/providers/runware.svg" };
-  if (has(providerText, /fireworks/)) return { key: "fireworks", label: "FW", title };
+  if (has(providerText, /fireworks/)) return { key: "fireworks", label: "FW", title, iconPath: "/providers/fireworks.png" };
   if (has(providerText, /cerebras/)) return { key: "cerebras", label: "CB", title, iconPath: "/providers/cerebras.svg" };
-  if (has(providerText, /xai|grok/)) return { key: "xai", label: "X", title, iconPath: "/providers/xai.svg" };
+  if (has(providerText, /xai|grok/)) return { key: "xai", label: "X", title, iconPath: "/providers/xai.png" };
+  if (has(providerText, /perplexity/)) return { key: "perplexity", label: "PX", title, iconPath: "/providers/perplexity.png" };
+  if (has(providerText, /replicate/)) return { key: "replicate", label: "RP", title, iconPath: "/providers/replicate.png" };
+  if (has(providerText, /fal\.ai|fal-ai|\bfal\b/)) return { key: "fal", label: "F", title, iconPath: "/providers/fal-ai.png" };
+  if (has(providerText, /huggingface|hf\.co/)) return { key: "huggingface", label: "HF", title, iconPath: "/providers/huggingface.png" };
+  if (has(providerText, /cohere/)) return { key: "cohere", label: "CO", title, iconPath: "/providers/cohere.png" };
+  if (has(providerText, /hyperbolic/)) return { key: "hyperbolic", label: "HB", title, iconPath: "/providers/hyperbolic.png" };
+  if (has(providerText, /nebius/)) return { key: "nebius", label: "NB", title, iconPath: "/providers/nebius.png" };
+  if (has(providerText, /chutes/)) return { key: "chutes", label: "CH", title, iconPath: "/providers/chutes.png" };
+  if (has(providerText, /meta\.ai|llama/)) return { key: "meta", label: "M", title };
 
   if (has(text, /openrouter/)) return { key: "openrouter", label: "OR", title, iconPath: "/providers/openrouter.png" };
   if (has(text, /deepseek/)) return { key: "deepseek", label: "DS", title, iconPath: "/providers/deepseek.png" };
@@ -71,21 +79,6 @@ export function providerIdentity(input: ProviderIdentityInput | ProviderConfig):
   if (has(text, /opencode/)) return { key: "opencode", label: "OC", title, iconPath: "/providers/opencode.png" };
   if (has(text, /mimo/)) return { key: "mimo-free", label: "MI", title, iconPath: "/providers/mimo-free.png" };
   if (has(text, /nvidia|nim/)) return { key: "nvidia", label: "NV", title, iconPath: "/providers/nvidia.png" };
-  if (has(text, /dashscope|alibaba|qwen/)) return { key: "qwen", label: "Q", title, iconPath: "/providers/qwen.png" };
-  if (has(text, /moonshot/)) return { key: "moonshot", label: "MS", title, iconPath: "/providers/moonshot.svg" };
-  if (has(text, /kimi/)) return { key: "kimi", label: "K", title, iconPath: "/providers/kimi.svg" };
-  if (has(text, /minimax/)) return { key: "minimax", label: "MM", title, iconPath: "/providers/minimax.svg" };
-  if (has(text, /baidu|qianfan|ernie/)) return { key: "baidu", label: "BD", title, iconPath: "/providers/baidu.svg" };
-  if (has(text, /xai|grok/)) return { key: "xai", label: "X", title, iconPath: "/providers/xai.svg" };
-  if (has(text, /xiaomi/)) return { key: "xiaomi", label: "MI", title, iconPath: "/providers/xiaomi.svg" };
-  if (has(text, /zhipu|bigmodel|\bglm\b/)) return { key: "zhipu", label: "Z", title };
-  if (has(text, /volcengine|doubao/)) return { key: "volcengine", label: "DB", title };
-  if (has(text, /siliconflow/)) return { key: "siliconflow", label: "SF", title };
-  if (has(text, /stepfun|step[- ]/)) return { key: "stepfun", label: "ST", title };
-  if (has(text, /together/)) return { key: "together", label: "TO", title };
-  if (has(text, /runware/)) return { key: "runware", label: "RW", title };
-  if (has(text, /fireworks/)) return { key: "fireworks", label: "FW", title };
-  if (has(text, /cerebras/)) return { key: "cerebras", label: "CB", title };
 
   return { key: "custom", label: initials(title), title };
 }

@@ -83,6 +83,16 @@ export interface BudgetSettings {
   onExceeded: "block_paid" | "allow_with_warning";
 }
 
+export interface MediaRoutingSettings {
+  /** Empty = use routing engine (auto). */
+  imagesProviderId?: string;
+  speechProviderId?: string;
+  transcriptionsProviderId?: string;
+  embeddingsProviderId?: string;
+  /** Built-in DuckDuckGo search is always used today; reserved for future provider override. */
+  searchMode?: "builtin";
+}
+
 export interface RouterSettings {
   routingMode: RoutingMode;
   providerStrategy?: ProviderStrategy;
@@ -91,6 +101,7 @@ export interface RouterSettings {
   preferFreeTier: boolean;
   cacheEnabled: boolean;
   manualProviderId?: string;
+  mediaRouting?: MediaRoutingSettings;
   rtkEnabled?: boolean;
   tokenSaver?: TokenSaverSettings;
   /** When true, chat pipeline POSTs messages to Headroom `/v1/compress` before cache/upstream. Fail-open. */
@@ -104,6 +115,8 @@ export interface RouterSettings {
    * Prefer this (or NESA_PUBLIC_URL) when NesaRouter sits behind a reverse proxy.
    */
   publicBaseUrl?: string;
+  /** Saved CLI wizard preferences per tool id. */
+  cliTools?: Record<string, { modelTarget?: string }>;
 }
 
 export interface UsageLog {

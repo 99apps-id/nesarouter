@@ -4,7 +4,17 @@
  */
 
 export const adminCookieName = "nesa_admin_session";
-export const SESSION_TTL_MS = 60 * 60 * 12;
+const DEFAULT_SESSION_TTL_HOURS = 24 * 7;
+
+function readSessionTtlHours() {
+  const raw = process.env.NESA_SESSION_TTL_HOURS?.trim();
+  if (!raw) return DEFAULT_SESSION_TTL_HOURS;
+  const hours = Number(raw);
+  return Number.isFinite(hours) && hours > 0 ? hours : DEFAULT_SESSION_TTL_HOURS;
+}
+
+/** Sliding admin session lifetime (default 7 days). Override with NESA_SESSION_TTL_HOURS. */
+export const SESSION_TTL_MS = readSessionTtlHours() * 60 * 60 * 1000;
 export const COOKIE_PREFIX = "nesa1";
 
 function sessionHmacSecret() {
@@ -94,6 +104,26 @@ export function hasAdminSessionCookieShape(cookieValue?: string | null): boolean
   return Number.isFinite(expMs) && expMs > Date.now();
 }
 
+/**
+ * Edge middleware gate: format + HMAC fields only (no embedded expMs check).
+ * Node handlers verify DB expiry and refresh the cookie on activity.
+ */
+export function hasAdminSessionCookieLenientShape(cookieValue?: string | null): boolean {
+  if (!cookieValue) return false;
+  const parts = cookieValue.split(".");
+  if (parts.length !== 4 || parts[0] !== COOKIE_PREFIX) return false;
+  const [, token, expRaw, sig] = parts;
+  if (!token || !sig || !/^[A-Za-z0-9_-]{32,}$/.test(token)) return false;
+  if (!/^[A-Za-z0-9_-]+$/.test(sig)) return false;
+  return Number.isFinite(Number(expRaw));
+}
+
+export function isMalformedAdminSessionCookie(cookieValue?: string | null): boolean {
+  if (!cookieValue) return false;
+  const parts = cookieValue.split(".");
+  return parts.length !== 4 || parts[0] !== COOKIE_PREFIX;
+}
+
 /** Edge-safe shape + HMAC check (no DB). Full revoke still happens in verifyAdminToken. */
 export async function peekAdminCookie(cookieValue?: string | null): Promise<{ token: string; expMs: number } | null> {
   if (!hasAdminSessionCookieShape(cookieValue)) return null;
@@ -105,4 +135,18 @@ export async function peekAdminCookie(cookieValue?: string | null): Promise<{ to
   // String compare of the HMAC is sufficient; SubtleCrypto.verify is best-effort
   // (padding/encoding differences behind some runtimes previously rejected valid cookies).
   return { token: token!, expMs };
+}
+
+/** HMAC verify without rejecting on embedded cookie expMs (DB expiry is authoritative). */
+export async function peekAdminCookieLenient(cookieValue?: string | null): Promise<{ token: string; expMs: number } | null> {
+  if (!cookieValue) return null;
+  const parts = cookieValue.split(".");
+  if (parts.length !== 4 || parts[0] !== COOKIE_PREFIX) return null;
+  const [, token, expRaw, sig] = parts;
+  const expMs = Number(expRaw);
+  if (!token || !sig || !/^[A-Za-z0-9_-]{32,}$/.test(token)) return null;
+  if (!/^[A-Za-z0-9_-]+$/.test(sig) || !Number.isFinite(expMs)) return null;
+  const expected = await signSessionPayload(token, expMs);
+  if (!(await timingSafeEqualString(sig, expected))) return null;
+  return { token, expMs };
 }

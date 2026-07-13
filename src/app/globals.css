@@ -185,13 +185,10 @@ a {
 }
 
 .provider-icon.has-logo {
-  background: color-mix(in oklch, var(--surface) 78%, white 22%);
+  /* Bundled brand SVGs are monochrome; keep a neutral canvas in every theme. */
+  background: white;
   border-color: color-mix(in oklch, var(--provider-accent) 42%, var(--border) 58%);
   padding: 3px;
-}
-
-:root[data-theme="light"] .provider-icon.has-logo {
-  background: white;
 }
 
 .provider-icon.has-logo img {
@@ -934,6 +931,12 @@ button:focus-visible {
   margin: 0;
 }
 
+.label-with-icon {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
 .body-copy {
   line-height: 1.65;
   max-width: 70ch;
@@ -1223,6 +1226,137 @@ button:focus-visible {
   transform-origin: 50% 50%;
   transition: transform 180ms ease;
   width: 100%;
+}
+
+.router-map-interactive {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.router-map-interactive.dragging {
+  cursor: grabbing;
+}
+
+.router-map-stage {
+  height: 100%;
+  position: relative;
+  transform-origin: center center;
+  transition: transform 60ms linear;
+  width: 100%;
+}
+
+.router-map-orbit {
+  animation: map-orbit-spin 28s linear infinite;
+  border: 1px dashed oklch(0.73 0.14 54 / 0.18);
+  border-radius: 999px;
+  inset: 12% 18%;
+  pointer-events: none;
+  position: absolute;
+}
+
+.map-hint {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  font-size: 11px;
+  gap: 4px;
+  margin-right: 4px;
+}
+
+.map-flow-dot,
+.map-pulse-dot {
+  fill: var(--accent);
+  opacity: 0.9;
+}
+
+.map-pulse-dot {
+  filter: drop-shadow(0 0 4px oklch(0.73 0.14 54 / 0.55));
+}
+
+.pulse-hub {
+  animation: map-hub-pulse 2.8s ease-in-out infinite;
+}
+
+.map-provider.has-traffic {
+  border-color: oklch(0.73 0.14 54 / 0.45);
+}
+
+.map-provider-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.map-provider-copy small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.usage-live-meta {
+  color: var(--ink);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 12px;
+  gap: 10px 14px;
+  margin-bottom: 12px;
+}
+
+.usage-live-meta span {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.usage-live-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.usage-live-grid h3 {
+  font-size: 12px;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.usage-live-row {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: grid;
+  font-size: 12px;
+  gap: 8px;
+  grid-template-columns: 1.4fr 0.7fr 0.7fr;
+  padding: 6px 0;
+}
+
+.provider-usage-row {
+  grid-template-columns: 1.6fr 0.6fr 0.8fr 0.8fr 0.7fr;
+}
+
+@keyframes map-orbit-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes map-hub-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px oklch(0.73 0.14 54 / 0.2),
+      0 12px 28px oklch(0.73 0.14 54 / 0.12);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px oklch(0.73 0.14 54 / 0.42),
+      0 16px 34px oklch(0.73 0.14 54 / 0.2);
+  }
 }
 
 .router-map-lines {
@@ -2219,6 +2353,15 @@ button:focus-visible {
   background: var(--control-bg);
 }
 
-.oauth-import input {
+.oauth-import input,
+.oauth-import textarea {
   width: 100%;
+}
+
+.oauth-callback-paste {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  min-height: 4.5rem;
+  resize: vertical;
 }

@@ -1,11 +1,17 @@
-import { cookies } from "next/headers";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { NextResponse } from "next/server";
 import {
   adminCookieName,
   adminPasswordMustChange,
-  adminTokenFromRequest,
-  verifyAdminToken
+  refreshAdminSessionCookie,
+  resolveVerifiedAdminSessionToken
 } from "@/core/adminAuth";
+
+const adminSessionContext = new AsyncLocalStorage<{ sessionToken: string }>();
+
+function verifiedSessionToken() {
+  return adminSessionContext.getStore()?.sessionToken;
+}
 
 /**
  * Admin gate for dashboard APIs. While the bootstrap password is still in use,
@@ -15,17 +21,8 @@ export async function requireAdmin(
   request: Request,
   options?: { allowDuringMustChange?: boolean }
 ): Promise<NextResponse | null> {
-  // Prefer next/headers cookies() (same path AppShell uses) — more reliable than
-  // regex-parsing Cookie behind some proxies than adminTokenFromRequest alone.
-  let token: string | undefined;
-  try {
-    token = (await cookies()).get(adminCookieName)?.value;
-  } catch {
-    token = undefined;
-  }
-  if (!token) token = adminTokenFromRequest(request);
-
-  if (!(await verifyAdminToken(token))) {
+  const sessionToken = await resolveVerifiedAdminSessionToken(request);
+  if (!sessionToken) {
     return NextResponse.json({ error: "Admin authentication required." }, { status: 401 });
   }
   if (!options?.allowDuringMustChange && (await adminPasswordMustChange())) {
@@ -37,5 +34,20 @@ export async function requireAdmin(
       { status: 403 }
     );
   }
+  adminSessionContext.enterWith({ sessionToken });
   return null;
+}
+
+/** Extend the sliding admin session cookie on successful dashboard API responses. */
+export async function finalizeAdminResponse(response: NextResponse, request: Request) {
+  const sessionToken = verifiedSessionToken() ?? (await resolveVerifiedAdminSessionToken(request));
+  if (!sessionToken) return response;
+  const refreshed = await refreshAdminSessionCookie(sessionToken, request);
+  if (refreshed) response.cookies.set(adminCookieName, refreshed.value, refreshed.options);
+  return response;
+}
+
+/** JSON response helper that also slides the admin session cookie. */
+export async function adminJson(request: Request, body: unknown, init?: ResponseInit) {
+  return finalizeAdminResponse(NextResponse.json(body, init), request);
 }

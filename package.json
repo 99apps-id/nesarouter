@@ -12,6 +12,7 @@
     "build": "next build",
     "start": "node scripts/start-standalone.mjs",
     "smoke": "node scripts/smoke-test.mjs",
+    "cursor:export": "node scripts/cursor-export.mjs",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

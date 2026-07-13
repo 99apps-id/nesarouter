@@ -1,13 +1,21 @@
 import { NextResponse } from "next/server";
-import { adminAuthEnabled, adminPasswordMustChange, adminTokenFromRequest, verifyAdminToken } from "@/core/adminAuth";
+import {
+  adminAuthEnabled,
+  adminPasswordMustChange,
+  resolveVerifiedAdminSessionToken
+} from "@/core/adminAuth";
+import { finalizeAdminResponse } from "@/lib/adminApi";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  return NextResponse.json({
+  const authenticated = Boolean(await resolveVerifiedAdminSessionToken(request));
+  const response = NextResponse.json({
     authEnabled: await adminAuthEnabled(),
-    authenticated: await verifyAdminToken(adminTokenFromRequest(request)),
+    authenticated,
     mustChangePassword: await adminPasswordMustChange()
   });
+  if (authenticated) return finalizeAdminResponse(response, request);
+  return response;
 }

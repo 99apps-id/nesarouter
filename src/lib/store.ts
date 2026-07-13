@@ -658,6 +658,14 @@ function readRouterSettings(database: Database.Database) {
     tokenSaver: {
       ...defaultStore.router.tokenSaver!,
       ...(saved.tokenSaver ?? {})
+    },
+    mediaRouting: {
+      ...defaultStore.router.mediaRouting,
+      ...(saved.mediaRouting ?? {})
+    },
+    cliTools: {
+      ...defaultStore.router.cliTools,
+      ...(saved.cliTools ?? {})
     }
   };
 }
@@ -713,6 +721,10 @@ export async function deleteAdminSessionByHash(tokenHash: string) {
 
 export async function deleteAllAdminSessions() {
   getDb().prepare("DELETE FROM admin_sessions").run();
+}
+
+export async function touchAdminSessionExpiry(tokenHash: string, expiresAt: string) {
+  getDb().prepare("UPDATE admin_sessions SET expires_at = ? WHERE token_hash = ?").run(expiresAt, tokenHash);
 }
 
 export interface LoginLockState {

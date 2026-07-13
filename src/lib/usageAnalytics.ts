@@ -23,7 +23,8 @@ export function usageByModel(usage: UsageLog[]) {
     string,
     {
       model: string;
-      provider: string;
+      providerId: string;
+      providerName: string;
       requests: number;
       inputTokens: number;
       outputTokens: number;
@@ -38,7 +39,8 @@ export function usageByModel(usage: UsageLog[]) {
       rows.get(key) ??
       {
         model: item.model,
-        provider: item.providerName,
+        providerId: item.providerId,
+        providerName: item.providerName,
         requests: 0,
         inputTokens: 0,
         outputTokens: 0,
@@ -67,6 +69,7 @@ export interface UsageStats {
   outputTokens: number;
   totalCostUsd: number;
   byProvider: Array<{ providerId: string; providerName: string; requests: number; totalCostUsd: number; inputTokens: number; outputTokens: number }>;
+  byModel: Array<{ model: string; providerId: string; providerName: string; requests: number; inputTokens: number; outputTokens: number; totalCostUsd: number; lastUsed: string }>;
   byStatus: Array<{ status: "success" | "error"; count: number }>;
 }
 
@@ -108,6 +111,7 @@ export function usageStats(usage: UsageLog[]): UsageStats {
     outputTokens,
     totalCostUsd,
     byProvider: [...byProvider.values()].sort((a, b) => b.requests - a.requests),
+    byModel: usageByModel(usage),
     byStatus: [
       { status: "success", count: successCount },
       { status: "error", count: errorCount }

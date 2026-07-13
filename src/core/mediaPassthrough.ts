@@ -3,9 +3,15 @@ import { authorizeRequest } from "@/core/auth";
 import { ensureFreshAccessToken } from "@/core/providerOAuthFlow";
 import { clearKeyCooldown, markKeyCooldown, pickActiveKeys, rememberKeyUse } from "@/core/providerKeys";
 import { baseUrl, cleanApiKey, openRouterHeaders, proxyFetch, upstreamError } from "@/core/providers/shared";
-import { chooseProvider } from "@/core/router";
+import { chooseMediaProvider } from "@/core/mediaRouting";
 import { ProviderConfig, RouteDecision } from "@/core/types";
-import { clearProviderCooldown, markProviderFailure, readStore } from "@/lib/store";
+import { appendUsage, clearProviderCooldown, markProviderFailure, readStore } from "@/lib/store";
+import { estimateCost } from "@/core/estimation";
+import { UsageLog } from "@/core/types";
+
+function mediaRequestId() {
+  return `media_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
 
 export type MediaKind = "embeddings" | "images" | "speech" | "transcriptions";
 
@@ -56,9 +62,9 @@ export async function handleMediaPassthrough(
 
   let decision: RouteDecision;
   try {
-    decision = chooseProvider(store, {
+    decision = chooseMediaProvider(store, kind, {
       model: modelHint,
-      messages: [{ role: "user", content: options.probeText }]
+      probeText: options.probeText
     });
   } catch (error) {
     return NextResponse.json(
@@ -114,6 +120,40 @@ export async function handleMediaPassthrough(
       rememberKeyUse(provider.id, picked.index);
       clearKeyCooldown(provider.id, picked.index);
       await clearProviderCooldown(provider.id);
+
+      const requestedModel =
+        options.isFormData && options.body instanceof FormData
+          ? String(options.body.get("model") || modelHint)
+          : typeof (options.body as any)?.model === "string"
+            ? (options.body as any).model
+            : provider.model;
+
+      const usageLog: UsageLog = {
+        id: mediaRequestId(),
+        createdAt: new Date().toISOString(),
+        providerId: provider.id,
+        providerName: provider.name,
+        model: requestedModel,
+        tier: provider.tier,
+        taskType: kind === "embeddings" ? "analysis" : "chat",
+        inputTokens: kind === "embeddings" ? 0 : decision.estimatedInputTokens,
+        outputTokens: kind === "images" ? 0 : decision.estimatedOutputTokens,
+        totalCostUsd:
+          provider.tier === "free"
+            ? 0
+            : estimateCost(
+                decision.estimatedInputTokens,
+                decision.estimatedOutputTokens,
+                provider.inputCostPerMTok,
+                provider.outputCostPerMTok
+              ),
+        costSource: provider.tier === "free" ? "free" : "estimated",
+        cacheStatus: "skipped",
+        budgetStatus: decision.budgetStatus,
+        routingReason: `${kind} via ${provider.name}`,
+        status: "success"
+      };
+      await appendUsage(usageLog);
 
       const outHeaders = {
         "x-nesa-provider": provider.id,

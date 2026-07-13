@@ -25,7 +25,10 @@ export const defaultStore: NesaStore = {
     headroomEnabled: false,
     headroomUrl: "http://localhost:8787",
     headroomCompressUserMessages: false,
-    pxpipeEnabled: false
+    pxpipeEnabled: false,
+    mediaRouting: {
+      searchMode: "builtin"
+    }
   },
   usage: [],
   cache: [],

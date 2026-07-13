@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { adminCookieName, hasAdminSessionCookieShape } from "@/core/adminSessionCookie";
-import { publicLoginRedirectUrl } from "@/core/publicUrl";
+import {
+  adminCookieName,
+  hasAdminSessionCookieLenientShape,
+  isMalformedAdminSessionCookie
+} from "@/core/adminSessionCookie";
 
 const PUBLIC_PAGES = ["/login"];
 
@@ -22,7 +25,6 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Admin JSON APIs are gated in Node via requireAdmin (cookies() + DB).
-  // Edge middleware cookie parsing was returning false 401s for /api/* while SSR pages worked.
   if (pathname.startsWith("/api/") || pathname.startsWith("/_next") || pathname.startsWith("/favicon") || pathname.startsWith("/v1")) {
     return NextResponse.next();
   }
@@ -31,12 +33,23 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const cookieOk = hasAdminSessionCookieShape(sessionCookieValue(request));
+  const sessionCookie = sessionCookieValue(request);
+  const cookieOk = hasAdminSessionCookieLenientShape(sessionCookie);
   if (!cookieOk && !pathname.startsWith("/login")) {
-    return NextResponse.redirect(publicLoginRedirectUrl(request, pathname));
+    const login = new URL("/login", request.url);
+    login.searchParams.set("next", pathname);
+    const response = NextResponse.redirect(login);
+    // Only drop cookies that cannot possibly verify (wrong shape). Stale expMs is
+    // refreshed by /api/auth/session while the DB session is still valid.
+    if (isMalformedAdminSessionCookie(sessionCookie)) {
+      response.cookies.set(adminCookieName, "", { path: "/", maxAge: 0 });
+    }
+    return response;
   }
 
-  return NextResponse.next();
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-nesa-pathname", pathname);
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 export const config = {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { finalizeAdminResponse, requireAdmin } from "@/lib/adminApi";
 import { registerKiroOidcClient, startDeviceFlow, startKiroDeviceFlow } from "@/core/oauthPkce";
 import { getPreset } from "@/core/oauthProviderPresets";
 import { deleteDevicePending, readProviderById, saveDevicePending } from "@/lib/store";
@@ -34,24 +34,33 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         clientSecret: info.clientSecret,
         region: info.region
       });
-      return NextResponse.json({
-        user_code: info.user_code,
-        verification_uri: info.verification_uri,
-        expires_in: info.expires_in,
-        interval: info.interval
-      });
+      return finalizeAdminResponse(
+        NextResponse.json({
+          user_code: info.user_code,
+          verification_uri: info.verification_uri,
+          expires_in: info.expires_in,
+          interval: info.interval
+        }),
+        request
+      );
     }
 
     const info = await startDeviceFlow(preset);
     await saveDevicePending(id, { deviceCode: info.device_code, createdAt: new Date().toISOString() });
-    return NextResponse.json({
-      user_code: info.user_code,
-      verification_uri: info.verification_uri,
-      expires_in: info.expires_in,
-      interval: info.interval
-    });
+    return finalizeAdminResponse(
+      NextResponse.json({
+        user_code: info.user_code,
+        verification_uri: info.verification_uri,
+        expires_in: info.expires_in,
+        interval: info.interval
+      }),
+      request
+    );
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Device flow start failed." }, { status: 502 });
+    return finalizeAdminResponse(
+      NextResponse.json({ error: error instanceof Error ? error.message : "Device flow start failed." }, { status: 502 }),
+      request
+    );
   }
 }
 
@@ -60,5 +69,5 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   if (unauthorized) return unauthorized;
   const { id } = await context.params;
   await deleteDevicePending(id);
-  return NextResponse.json({ ok: true });
+  return finalizeAdminResponse(NextResponse.json({ ok: true }), request);
 }

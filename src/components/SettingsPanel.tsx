@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Save, SlidersHorizontal } from "lucide-react";
+import { Image, Mic, Save, Search, SlidersHorizontal, Sparkles, Waves } from "lucide-react";
 import { BudgetSettings, ProviderConfig, RouterSettings } from "@/core/types";
 import { SaverLevel } from "@/core/tokenSaver";
+import { adminFetch } from "@/lib/adminFetch";
 
 const saverLevels: SaverLevel[] = ["off", "lite", "full", "ultra"];
 
@@ -25,14 +26,18 @@ export default function SettingsPanel({
     headroomUrl: router.headroomUrl ?? "http://localhost:8787",
     headroomCompressUserMessages: router.headroomCompressUserMessages ?? false,
     pxpipeEnabled: router.pxpipeEnabled ?? false,
-    publicBaseUrl: router.publicBaseUrl ?? ""
+    publicBaseUrl: router.publicBaseUrl ?? "",
+    mediaRouting: {
+      searchMode: "builtin" as const,
+      ...router.mediaRouting
+    }
   });
   const [saved, setSaved] = useState(false);
 
   async function save() {
     setSaved(false);
     const publicBaseUrl = routerDraft.publicBaseUrl?.trim() || undefined;
-    const response = await fetch("/api/state", {
+    const response = await adminFetch("/api/state", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -259,6 +264,71 @@ export default function SettingsPanel({
         />
         pxpipe-lite (in-process tool compress)
       </label>
+      <div className="panel-heading" style={{ marginTop: "1.5rem" }}>
+        <div>
+          <p className="subtle">Media APIs</p>
+          <h2>Media routing</h2>
+        </div>
+        <Sparkles size={18} />
+      </div>
+      <p className="compact-copy">
+        Pin images, speech, transcriptions, and embeddings to a specific OpenAI-compatible provider, or leave on Auto to use the main routing engine.
+        Web search uses the built-in DuckDuckGo endpoint (no provider key).
+      </p>
+      <div className="settings-grid">
+        <MediaProviderSelect
+          label="Images"
+          icon={<Image size={15} />}
+          value={routerDraft.mediaRouting?.imagesProviderId ?? ""}
+          providers={providers}
+          onChange={(imagesProviderId) =>
+            setRouterDraft({
+              ...routerDraft,
+              mediaRouting: { ...routerDraft.mediaRouting, imagesProviderId: imagesProviderId || undefined }
+            })
+          }
+        />
+        <MediaProviderSelect
+          label="Speech (TTS)"
+          icon={<Mic size={15} />}
+          value={routerDraft.mediaRouting?.speechProviderId ?? ""}
+          providers={providers}
+          onChange={(speechProviderId) =>
+            setRouterDraft({
+              ...routerDraft,
+              mediaRouting: { ...routerDraft.mediaRouting, speechProviderId: speechProviderId || undefined }
+            })
+          }
+        />
+        <MediaProviderSelect
+          label="Transcriptions (STT)"
+          icon={<Waves size={15} />}
+          value={routerDraft.mediaRouting?.transcriptionsProviderId ?? ""}
+          providers={providers}
+          onChange={(transcriptionsProviderId) =>
+            setRouterDraft({
+              ...routerDraft,
+              mediaRouting: { ...routerDraft.mediaRouting, transcriptionsProviderId: transcriptionsProviderId || undefined }
+            })
+          }
+        />
+        <MediaProviderSelect
+          label="Embeddings"
+          icon={<Sparkles size={15} />}
+          value={routerDraft.mediaRouting?.embeddingsProviderId ?? ""}
+          providers={providers}
+          onChange={(embeddingsProviderId) =>
+            setRouterDraft({
+              ...routerDraft,
+              mediaRouting: { ...routerDraft.mediaRouting, embeddingsProviderId: embeddingsProviderId || undefined }
+            })
+          }
+        />
+        <label>
+          <span className="label-with-icon"><Search size={15} /> Web search</span>
+          <input readOnly value="Built-in (DuckDuckGo)" />
+        </label>
+      </div>
       <label>
         Caveman
         <select
@@ -282,5 +352,34 @@ export default function SettingsPanel({
         {saved ? "Saved" : "Save"}
       </button>
     </section>
+  );
+}
+
+function MediaProviderSelect({
+  label,
+  icon,
+  value,
+  providers,
+  onChange
+}: {
+  label: string;
+  icon: React.ReactNode;
+  value: string;
+  providers: ProviderConfig[];
+  onChange: (value: string) => void;
+}) {
+  const openAiProviders = providers.filter((provider) => provider.type === "openai_compatible");
+  return (
+    <label>
+      <span className="label-with-icon">{icon} {label}</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)}>
+        <option value="">Auto (routing engine)</option>
+        {openAiProviders.map((provider) => (
+          <option value={provider.id} key={provider.id}>
+            {provider.name} ({provider.status})
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

@@ -33,7 +33,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ error: "Invalid or expired OAuth state. Click Connect again." }, { status: 400 });
   }
   const pendingAgeMs = Date.now() - new Date(pending.createdAt).getTime();
-  if (pendingAgeMs > 10 * 60_000) {
+  if (pendingAgeMs > 30 * 60_000) {
     await deleteOAuthPending(parsed.state);
     return NextResponse.json({ error: "OAuth state expired. Click Connect again." }, { status: 400 });
   }

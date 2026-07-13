@@ -1,7 +1,7 @@
 "use client";
 
 import { LogIn } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { OAuthProviderInfo } from "@/core/oauth";
 
 type LoginLock = {
@@ -36,6 +36,12 @@ export default function LoginForm({
   );
   const [locked, setLocked] = useState(Boolean(initialLock?.locked));
   const [loading, setLoading] = useState(false);
+  const nextPath = useMemo(() => {
+    if (typeof window === "undefined") return "/";
+    const next = new URLSearchParams(window.location.search).get("next")?.trim();
+    if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/login")) return "/";
+    return next;
+  }, []);
 
   async function login() {
     setLoading(true);
@@ -49,7 +55,7 @@ export default function LoginForm({
 
     const result = await response.json().catch(() => ({}));
     if (response.ok) {
-      window.location.href = result.mustChangePassword ? "/routing" : "/";
+      window.location.href = result.mustChangePassword ? "/routing" : nextPath;
       return;
     }
 
