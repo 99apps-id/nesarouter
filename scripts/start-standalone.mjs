@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 
@@ -29,6 +29,16 @@ function resolveStandaloneServer(root) {
   return null;
 }
 
+function readAppVersion(root) {
+  try {
+    const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+    if (typeof pkg.version === "string" && pkg.version.trim()) return pkg.version.trim();
+  } catch {
+    /* ignore */
+  }
+  return undefined;
+}
+
 const root = process.cwd();
 const resolved = resolveStandaloneServer(root);
 
@@ -39,6 +49,7 @@ if (!resolved) {
 }
 
 const { server, cwd, build } = resolved;
+const appVersion = process.env.NESA_APP_VERSION || readAppVersion(root);
 
 // Next standalone excludes browser assets by design. Copy them next to server.js
 // so local and VPS runs serve the same CSS, scripts, and favicon files.
@@ -52,12 +63,24 @@ if (existsSync(publicSource)) {
   cpSync(publicSource, join(cwd, "public"), { recursive: true, force: true });
 }
 
+// Ensure package.json is visible next to the standalone server for version reads.
+const rootPackage = join(root, "package.json");
+const cwdPackage = join(cwd, "package.json");
+if (existsSync(rootPackage) && !existsSync(cwdPackage)) {
+  try {
+    cpSync(rootPackage, cwdPackage);
+  } catch {
+    /* ignore */
+  }
+}
+
 const child = spawn(process.execPath, [server], {
   cwd,
   env: {
     ...process.env,
     PORT: process.env.PORT || "20129",
-    HOSTNAME: process.env.HOSTNAME || "0.0.0.0"
+    HOSTNAME: process.env.HOSTNAME || "0.0.0.0",
+    ...(appVersion ? { NESA_APP_VERSION: appVersion } : {})
   },
   stdio: "inherit"
 });

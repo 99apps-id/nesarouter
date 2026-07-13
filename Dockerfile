@@ -24,6 +24,7 @@ ENV DATA_DIR=/app/data
 RUN groupadd --system --gid 1001 nesa && useradd --system --uid 1001 --gid nesa nesa
 
 # Keep the full Next standalone tree (may nest under app/ or repo folder name).
+COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./standalone
 COPY --from=builder /app/.next/static ./standalone-static
