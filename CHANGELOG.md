@@ -2,6 +2,12 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.2
+
+### Fixes
+
+- `scripts/start-standalone.mjs` auto-detects nested Next standalone output (e.g. `.next/standalone/nesarouter/server.js`) so VPS/Docker starts no longer miss `server.js`.
+
 ## 0.1.1
 
 ### Features
