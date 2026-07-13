@@ -16,7 +16,8 @@ jobs:
       NESA_ADMIN_PASSWORD: ci-admin-password-2026
       NESA_ENCRYPTION_KEY: ci-only-secret-key-change-me-123456
       DATA_DIR: ${{ github.workspace }}/data-ci
-    steps:
+      PORT: "20129"
+      HOSTNAME: "0.0.0.0"    steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -29,10 +30,11 @@ jobs:
       - name: Start app
         run: |
           npm run start > nesa-router.log 2>&1 &
-          for i in {1..30}; do
-            if curl -fsS http://localhost:20129/login >/dev/null; then exit 0; fi
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:20129/login >/dev/null; then exit 0; fi
             sleep 1
           done
-          cat nesa-router.log
+          echo "---- nesa-router.log ----"
+          cat nesa-router.log || true
           exit 1
       - run: npm run smoke
