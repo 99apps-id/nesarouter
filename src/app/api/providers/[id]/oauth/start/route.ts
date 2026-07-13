@@ -57,7 +57,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     hint: preset.manualCodeFlow
       ? "Authorize in the new tab, copy the code shown there, and paste it back here."
       : preset.loopbackPort
-        ? `Authorize in the new tab. NesaRouter is listening on localhost:${preset.loopbackPort}${preset.loopbackPath} — this page updates when the token arrives.`
-        : "Authorize in the new tab. If a code is shown, paste it here."
+        ? `After ChatGPT redirects to http://localhost:${preset.loopbackPort}${preset.loopbackPath} (the page may fail to load), copy the FULL URL from the address bar — including ?code=…&state=… — paste it below, then Save. Same flow as 9router.`
+        : "Authorize in the new tab. If a code or callback URL is shown, paste it here."
   });
 }

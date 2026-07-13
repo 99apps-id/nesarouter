@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/adminApi";
+import { parseOAuthCallbackPaste } from "@/core/oauthCallbackPaste";
 import { exchangeCode, loadAntigravityProjectId } from "@/core/oauthPkce";
 import { getPreset } from "@/core/oauthProviderPresets";
 import { deleteOAuthPending, readOAuthPending, readProviderById, saveProviderOAuthTokens } from "@/lib/store";
@@ -7,31 +8,24 @@ import { deleteOAuthPending, readOAuthPending, readProviderById, saveProviderOAu
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Parse Claude-style `code#state` paste blobs; otherwise use body fields. */
-function parsePastedCode(raw: string, fallbackState?: string) {
-  const trimmed = raw.trim();
-  const hashIdx = trimmed.indexOf("#");
-  if (hashIdx > 0) {
-    return {
-      code: trimmed.slice(0, hashIdx).trim(),
-      state: trimmed.slice(hashIdx + 1).trim() || fallbackState
-    };
-  }
-  return { code: trimmed, state: fallbackState };
-}
-
 /**
- * POST /api/providers/:id/oauth/complete — finish a manual-code OAuth flow
- * (Claude console callback / Gemini codeassist paste).
+ * POST /api/providers/:id/oauth/complete — finish paste-code / paste-callback-URL OAuth.
  */
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
   const { id } = await context.params;
-  const body = (await request.json().catch(() => ({}))) as { code?: string; state?: string };
-  const parsed = parsePastedCode(body.code ?? "", body.state);
+  const body = (await request.json().catch(() => ({}))) as { code?: string; state?: string; callbackUrl?: string };
+  const raw = (body.callbackUrl ?? body.code ?? "").trim();
+  const parsed = parseOAuthCallbackPaste(raw, body.state);
   if (!parsed.code || !parsed.state) {
-    return NextResponse.json({ error: "Paste the authorization code (and state if separate)." }, { status: 400 });
+    return NextResponse.json(
+      {
+        error:
+          "Paste the full callback URL from the browser (e.g. http://localhost:1455/auth/callback?code=...&state=...), or a vendor code."
+      },
+      { status: 400 }
+    );
   }
 
   const pending = await readOAuthPending(parsed.state);
