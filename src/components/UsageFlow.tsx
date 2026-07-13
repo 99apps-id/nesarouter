@@ -9,8 +9,8 @@ import ProviderIcon from "@/components/ProviderIcon";
 const maxVisibleNodes = 24;
 const outerRingLimit = 14;
 const MAP_COORD_DECIMALS = 2;
-const LIVE_WINDOW_MS = 20_000;
-const LIVE_REFRESH_MS = 4_000;
+const LIVE_WINDOW_MS = 60_000;
+const LIVE_REFRESH_MS = 1_500;
 
 /** Stable coords for SSR + client (avoids hydration drift from float math). */
 function mapCoord(value: number) {
@@ -327,7 +327,17 @@ export default function UsageFlow({
                 const path = curvePath(center, point, index);
                 return (
                   <g key={`line-${node.id}`}>
-                    <path d={path} className={`map-line ${active ? "active" : ""} ${node.kind === "overflow" ? "overflow" : ""}`} pathLength="1" />
+                    <path d={path} className={`map-line ${active ? "active" : ""} ${node.kind === "overflow" ? "overflow" : ""}`} pathLength="1">
+                      {active ? (
+                        <animate
+                          attributeName="stroke-dashoffset"
+                          dur="1.1s"
+                          from="0"
+                          repeatCount="indefinite"
+                          to="-0.26"
+                        />
+                      ) : null}
+                    </path>
                     {active ? (
                       <circle r="4" className="map-pulse-dot">
                         <animateMotion dur="1.6s" repeatCount="indefinite" path={path} />
@@ -352,7 +362,7 @@ export default function UsageFlow({
             const stats = node.kind === "provider" ? usageMap.get(node.id) : undefined;
             return (
               <div
-                className={`map-provider ${node.status} ${node.kind === "overflow" ? "overflow" : ""} ${connected ? "connected" : ""} ${active ? "active" : ""} ${stats ? "has-traffic" : ""}`}
+                className={`map-provider ${node.status} ${node.kind === "overflow" ? "overflow" : ""} ${connected ? "connected" : ""} ${active ? "live" : ""} ${stats ? "has-traffic" : ""}`}
                 style={{
                   left: `calc(50% + ${mapCoordText(point.x)}px)`,
                   top: `calc(50% + ${mapCoordText(point.y)}px)`
