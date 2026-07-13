@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { adminCookieName, hasAdminSessionCookieShape } from "@/core/adminSessionCookie";
+import { publicLoginRedirectUrl } from "@/core/publicUrl";
 
 const PUBLIC_API_PREFIXES = [
   "/api/auth/login",
@@ -38,10 +39,8 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!cookieOk && !pathname.startsWith("/login")) {
-    const login = request.nextUrl.clone();
-    login.pathname = "/login";
-    login.searchParams.set("next", pathname);
-    return NextResponse.redirect(login);
+    // Absolute public URL so reverse-proxy installs do not bounce to localhost:20129.
+    return NextResponse.redirect(publicLoginRedirectUrl(request, pathname));
   }
 
   return NextResponse.next();

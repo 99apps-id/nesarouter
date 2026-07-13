@@ -2,6 +2,12 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.5
+
+### Fixes
+
+- Middleware login redirect uses `NESA_PUBLIC_URL` / `X-Forwarded-*` / public Host so unauthenticated users are sent to the real domain instead of `localhost:20129`.
+
 ## 0.1.4
 
 ### Fixes
