@@ -1,0 +1,115 @@
+"use client";
+
+import { LogIn } from "lucide-react";
+import { useState } from "react";
+import type { OAuthProviderInfo } from "@/core/oauth";
+
+type LoginLock = {
+  locked?: boolean;
+  lockedUntil?: string;
+  remainingMs?: number;
+  failedAttempts?: number;
+};
+
+function minutesLeft(ms = 0) {
+  return Math.max(1, Math.ceil(ms / 60_000));
+}
+
+export default function LoginForm({
+  defaultPassword,
+  initialLock,
+  oauthProviders,
+  oauthError
+}: {
+  /** Only set while still on the temporary local bootstrap password. */
+  defaultPassword?: string;
+  initialLock?: LoginLock;
+  oauthProviders: OAuthProviderInfo[];
+  oauthError?: string;
+}) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState(
+    initialLock?.locked ? `Login locked. Try again in ${minutesLeft(initialLock.remainingMs)} minutes.` : (oauthError ?? "")
+  );
+  const [locked, setLocked] = useState(Boolean(initialLock?.locked));
+  const [loading, setLoading] = useState(false);
+
+  async function login() {
+    setLoading(true);
+    setError("");
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password })
+    });
+
+    const result = await response.json().catch(() => ({}));
+    if (response.ok) {
+      window.location.href = result.mustChangePassword ? "/routing" : "/";
+      return;
+    }
+
+    if (response.status === 423) {
+      setLocked(true);
+      setError(`Login locked. Try again in ${minutesLeft(result.remainingMs)} minutes.`);
+    } else {
+      const remainingAttempts = Math.max(0, 3 - Number(result.failedAttempts ?? 0));
+      setError(remainingAttempts ? `${result.error ?? "Login failed."} ${remainingAttempts} tries left.` : (result.error ?? "Login failed."));
+    }
+    setLoading(false);
+  }
+
+  return (
+    <main className="login-shell">
+      <section className="login-panel">
+        <div className="brand-mark">
+          <div className="brand-icon">
+            <span className="brand-letter">N</span>
+          </div>
+          <div>
+            <strong>NesaRouter</strong>
+            <span>Admin access</span>
+          </div>
+        </div>
+        {defaultPassword ? (
+          <div className="default-password-box">
+            <span>Temporary default password</span>
+            <code>{defaultPassword}</code>
+            <small>Shown only until you change it under Routing → Password.</small>
+          </div>
+        ) : null}
+        <label>
+          Password
+          <input
+            autoFocus
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") login();
+            }}
+            placeholder="Admin password"
+            disabled={locked}
+          />
+        </label>
+        <button className="button primary" type="button" onClick={login} disabled={loading || locked}>
+          <LogIn size={16} />
+          {loading ? "Checking" : "Login"}
+        </button>
+        {oauthProviders.some((provider) => provider.enabled) ? (
+          <div className="oauth-stack">
+            <span>OAuth</span>
+            {oauthProviders
+              .filter((provider) => provider.enabled)
+              .map((provider) => (
+                <a className="button" href={`/api/auth/oauth/${provider.id}/start`} key={provider.id}>
+                  Login with {provider.label}
+                </a>
+              ))}
+          </div>
+        ) : null}
+        {error ? <p className="test-message error">{error}</p> : null}
+      </section>
+    </main>
+  );
+}

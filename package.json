@@ -1,0 +1,40 @@
+{
+  "name": "nesa-router",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "NesaRouter - Next Smart Adaptive Router",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev --port 20129",
+    "build": "next build",
+    "start": "node scripts/start-standalone.mjs",
+    "smoke": "node scripts/smoke-test.mjs",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "lucide-react": "^0.468.0",
+    "next": "^15.1.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "socks-proxy-agent": "^8.0.5",
+    "undici": "^6.27.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "postcss": "^8.5.10"
+  }
+}

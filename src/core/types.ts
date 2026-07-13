@@ -1,0 +1,155 @@
+import type { SaverLevel, TokenSaverSettings } from "@/core/tokenSaver";
+import type { ModelAlias } from "@/core/aliases";
+
+export type ProviderTier = "free" | "cheap" | "balanced" | "premium";
+
+export type RoutingMode = "auto" | "free_first" | "cheapest" | "best" | "manual";
+export type ProviderStrategy = "priority" | "round_robin";
+export type FallbackMode = "auto" | "off";
+
+export type ProviderStatus = "active" | "disabled" | "cooldown";
+
+export type ProviderConnectionStatus = "unknown" | "connected" | "error";
+
+export type CostSource = "provider_usage" | "estimated" | "cached" | "free";
+
+export type TaskType = "chat" | "coding_light" | "coding_heavy" | "analysis";
+
+export interface ProviderConfig {
+  id: string;
+  name: string;
+  type: "openai_compatible" | "gemini" | "gemini_cli" | "anthropic_messages" | "openai_responses" | "github_copilot" | "kiro" | "cursor";
+  tier: ProviderTier;
+  status: ProviderStatus;
+  baseUrl: string;
+  apiKey: string;
+  /** Additional API keys for multi-account round-robin. */
+  apiKeys?: string[];
+  model: string;
+  /** All models this provider can serve (model is the primary/first entry). */
+  models?: string[];
+  priority: number;
+  inputCostPerMTok: number;
+  outputCostPerMTok: number;
+  rateLimitedUntil?: string;
+  lastError?: string;
+  connectionStatus?: ProviderConnectionStatus;
+  lastCheckedAt?: string;
+  /** Daily token quota cap per provider (0/undefined = unlimited). */
+  quotaLimitTokens?: number;
+  /** Outbound proxy URL applied to this provider's upstream calls (http/https/socks). */
+  proxyUrl?: string;
+  /** OAuth subscription auth (e.g. Claude/ChatGPT/Gemini CLI/GitHub Copilot/Kiro/Antigravity/Cursor). */
+  oauthProfile?: "anthropic_claude" | "openai_codex" | "gemini_cli" | "github_copilot" | "kiro" | "antigravity" | "cursor";
+  oauthAccessToken?: string;
+  oauthRefreshToken?: string;
+  oauthTokenExpiresAt?: string;
+  oauthLastRefreshAt?: string;
+  /** GitHub Copilot short-lived session token (derived from the GitHub access token). */
+  oauthCopilotToken?: string;
+  oauthCopilotTokenExpiresAt?: string;
+  /** Antigravity / Gemini CLI Cloud Code project id from loadCodeAssist. */
+  oauthProjectId?: string;
+  /** Kiro AWS OIDC registered client (Builder ID device flow). */
+  oauthDeviceClientId?: string;
+  oauthDeviceClientSecret?: string;
+  /** Cursor IDE machine id from state.vscdb (checksum). */
+  oauthMachineId?: string;
+}
+
+export interface Combo {
+  id: string;
+  name: string;
+  /** Ordered provider ids that form the combo chain. */
+  providerIds: string[];
+  strategy: "fallback" | "round_robin";
+}
+
+export interface McpServer {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  env: Record<string, string>;
+}
+
+export interface BudgetSettings {
+  dailyBudgetUsd: number;
+  warningThresholdPercent: number;
+  criticalThresholdPercent: number;
+  hardLimitPercent: number;
+  onWarning: "prefer_cheaper" | "notify_only";
+  onCritical: "free_tier_only" | "prefer_cheaper";
+  onExceeded: "block_paid" | "allow_with_warning";
+}
+
+export interface RouterSettings {
+  routingMode: RoutingMode;
+  providerStrategy?: ProviderStrategy;
+  fallbackMode?: FallbackMode;
+  evaluatorEnabled?: boolean;
+  preferFreeTier: boolean;
+  cacheEnabled: boolean;
+  manualProviderId?: string;
+  rtkEnabled?: boolean;
+  tokenSaver?: TokenSaverSettings;
+  /** When true, chat pipeline POSTs messages to Headroom `/v1/compress` before cache/upstream. Fail-open. */
+  headroomEnabled?: boolean;
+  headroomUrl?: string;
+  headroomCompressUserMessages?: boolean;
+  /** Optional in-process pxpipe-style compression (fail-open). */
+  pxpipeEnabled?: boolean;
+}
+
+export interface UsageLog {
+  id: string;
+  createdAt: string;
+  providerId: string;
+  providerName: string;
+  model: string;
+  tier: ProviderTier;
+  taskType: TaskType;
+  inputTokens: number;
+  outputTokens: number;
+  totalCostUsd: number;
+  costSource: CostSource;
+  cacheStatus: "hit" | "miss" | "skipped";
+  budgetStatus: "ok" | "warning" | "critical" | "exceeded";
+  routingReason: string;
+  status: "success" | "error";
+  error?: string;
+  skippedProviders?: Array<{ providerId: string; reason: string }>;
+}
+
+export interface CacheEntry {
+  key: string;
+  createdAt: string;
+  providerId: string;
+  model: string;
+  response: unknown;
+  inputTokens: number;
+  outputTokens: number;
+  savedCostUsd: number;
+}
+
+export interface NesaStore {
+  providers: ProviderConfig[];
+  budget: BudgetSettings;
+  router: RouterSettings;
+  usage: UsageLog[];
+  cache: CacheEntry[];
+  localApiKeys: string[];
+  combos: Combo[];
+  aliases?: ModelAlias[];
+}
+
+export interface RouteDecision {
+  provider: ProviderConfig;
+  taskType: TaskType;
+  estimatedInputTokens: number;
+  estimatedOutputTokens: number;
+  estimatedCostUsd: number;
+  budgetStatus: UsageLog["budgetStatus"];
+  routingReason: string;
+  skippedProviders: Array<{ providerId: string; reason: string }>;
+}

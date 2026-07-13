@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="nesa-stroke" x1="20" x2="44" y1="18" y2="47" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5eead4" />
+      <stop offset="0.42" stop-color="#22d3ee" />
+      <stop offset="0.68" stop-color="#f7c56b" />
+      <stop offset="1" stop-color="#d36a2d" />
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="30" fill="#06090a" />
+  <circle cx="32" cy="32" r="27" fill="none" stroke="#2d3033" stroke-width="3" />
+  <path d="M21 45V19h7v26z" fill="#5eead4" />
+  <path d="M37 19h7v26h-7z" fill="#d36a2d" />
+  <path d="M25 19h7l17 26h-7z" fill="url(#nesa-stroke)" />
+</svg>

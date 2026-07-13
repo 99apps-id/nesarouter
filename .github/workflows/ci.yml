@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      NESA_ADMIN_PASSWORD: ci-admin-password-2026
+      NESA_ENCRYPTION_KEY: ci-only-secret-key-change-me-123456
+      DATA_DIR: ${{ github.workspace }}/data-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Start app
+        run: |
+          npm run start > nesa-router.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://localhost:20129/login >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          cat nesa-router.log
+          exit 1
+      - run: npm run smoke
