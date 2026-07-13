@@ -15,6 +15,7 @@ export default function AdminPasswordPanel() {
     const response = await fetch("/api/auth/password", {
       method: "PUT",
       headers: { "content-type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({ currentPassword, newPassword })
     });
     const result = await response.json().catch(() => ({}));
@@ -22,7 +23,11 @@ export default function AdminPasswordPanel() {
       setCurrentPassword("");
       setNewPassword("");
       setStatus("ok");
-      setMessage("Password updated.");
+      setMessage("Password updated. Reloading…");
+      // Apply the new session cookie with a full navigation (avoids stale revoked cookie).
+      window.setTimeout(() => {
+        window.location.assign("/routing");
+      }, 400);
       return;
     }
     setStatus("error");

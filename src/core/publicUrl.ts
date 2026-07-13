@@ -83,15 +83,48 @@ export function publicUrl(pathname: string, request?: Request): string {
   return new URL(pathname.startsWith("/") ? pathname : `/${pathname}`, `${base}/`).toString();
 }
 
-/** Whether Set-Cookie should use the Secure flag. */
+/** Whether Set-Cookie should use the Secure flag (must match the browser scheme). */
 export function cookieSecurePreferred(request?: Request): boolean {
   const override = process.env.NESA_COOKIE_SECURE?.trim().toLowerCase();
   if (override === "true" || override === "1") return true;
   if (override === "false" || override === "0") return false;
+
+  if (request) {
+    const forwardedProto = request.headers
+      .get("x-forwarded-proto")
+      ?.split(",")[0]
+      ?.trim()
+      ?.replace(/:$/, "")
+      .toLowerCase();
+    if (forwardedProto === "https") return true;
+    if (forwardedProto === "http") return false;
+
+    const forwarded = request.headers.get("forwarded");
+    const forwardedMatch = forwarded?.match(/proto=(https?)/i);
+    if (forwardedMatch?.[1]) return forwardedMatch[1].toLowerCase() === "https";
+
+    try {
+      const proto = new URL(request.url).protocol;
+      if (proto === "https:") return true;
+      // request.url is often http://127.0.0.1 behind TLS — do not treat that as insecure
+      // when the public Host is a real domain (assume TLS terminator).
+      if (proto === "http:") {
+        const host = (request.headers.get("x-forwarded-host") || request.headers.get("host") || "")
+          .split(",")[0]
+          ?.trim();
+        if (host && !isLoopbackHost(host) && !host.includes(":")) return true;
+        if (host && !isLoopbackHost(host)) return false;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+
   try {
-    if (publicOrigin(request).startsWith("https://")) return true;
+    if (originFromEnv(process.env.NESA_PUBLIC_URL)?.startsWith("https://")) return true;
   } catch {
     /* ignore */
   }
+
   return process.env.NODE_ENV === "production";
 }

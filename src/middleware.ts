@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { adminCookieName, peekAdminCookie } from "@/core/adminSessionCookie";
+import { adminCookieName, hasAdminSessionCookieShape } from "@/core/adminSessionCookie";
 
 const PUBLIC_API_PREFIXES = [
   "/api/auth/login",
@@ -15,7 +15,9 @@ const PUBLIC_PAGES = ["/login"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const cookieOk = Boolean(await peekAdminCookie(request.cookies.get(adminCookieName)?.value));
+  // Shape-only here: HMAC needs NESA_ENCRYPTION_KEY which Edge middleware often
+  // does not see at runtime after image builds. Node handlers still verify fully.
+  const cookieOk = hasAdminSessionCookieShape(request.cookies.get(adminCookieName)?.value);
 
   if (pathname.startsWith("/api/")) {
     if (PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
