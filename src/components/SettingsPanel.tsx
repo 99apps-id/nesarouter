@@ -82,15 +82,18 @@ export default function SettingsPanel({
       </div>
       <div className="settings-grid">
         <label>
-          Daily budget
-          <input
-            suppressHydrationWarning
-            type="number"
-            min="0"
-            step="0.1"
-            value={budgetDraft.dailyBudgetUsd}
-            onChange={(event) => setBudgetDraft({ ...budgetDraft, dailyBudgetUsd: Number(event.target.value) })}
-          />
+          Daily budget (USD)
+          <span className="money-input">
+            <span aria-hidden="true">$</span>
+            <input
+              suppressHydrationWarning
+              type="number"
+              min="0"
+              step="0.1"
+              value={budgetDraft.dailyBudgetUsd}
+              onChange={(event) => setBudgetDraft({ ...budgetDraft, dailyBudgetUsd: Number(event.target.value) })}
+            />
+          </span>
         </label>
         <label>
           Warning %
