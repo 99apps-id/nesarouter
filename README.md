@@ -71,6 +71,15 @@ If the dashboard is reached via a domain (e.g. `https://router.example.com`), se
 
 so OAuth and login redirects return to that domain instead of `localhost`.
 
+For a reverse proxy, also forward the original host and HTTPS scheme. With Caddy this is normally automatic. For Nginx, include:
+
+```nginx
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-Host $host;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+```
+
 Then:
 
 1. Open **Providers** and choose either an API-key provider or the **OAuth / account sign-in** group.
