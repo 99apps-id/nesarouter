@@ -33,6 +33,9 @@ export const PROVIDER_PREFIXES: Record<string, string> = {
   xai: "xai-grok",
   grok: "xai-grok",
   geminiapi: "gemini-flash",
+  mimo: "xiaomi-mimo",
+  xiaomi: "xiaomi-mimo",
+  xmtp: "xiaomi-tokenplan",
   oa: "openai-compatible",
   openai: "openai-compatible",
   anthropic: "anthropic-messages"

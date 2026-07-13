@@ -13,3 +13,15 @@ Preferred options:
 3. Never claim the app “auto-changed” the password — only `.env` / dashboard password change does.
 
 Local development (`npm run dev`) may omit `NESA_ADMIN_PASSWORD` and use `nesa123456` with an on-screen hint.
+
+## DATA_DIR / SQLite
+
+Default database is `./data/nesa-router.sqlite`.
+
+Do **not** leave `DATA_DIR` set to smoke/test folders (e.g. `data-test-version`, `data/smoke-*`) in the agent shell when starting the app. That makes login/session look broken (wrong DB, must-change loops, false 401s) while real data stays in `./data`.
+
+Before diagnosing auth or middleware issues:
+
+1. Confirm `DATA_DIR` is unset or points at the real data folder.
+2. Confirm login is not locked (`npm run unlock-admin` should print a path under `.../data`).
+3. Only then dig into middleware / session HMAC.

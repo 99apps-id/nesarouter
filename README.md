@@ -137,6 +137,8 @@ After three wrong password attempts, the dashboard locks for 30 minutes. An oper
 npm run unlock-admin
 ```
 
+The command prints which data directory it cleared. If that path is `data-test-version` or a smoke folder, unset `DATA_DIR` and run it again against `./data`.
+
 Details: [SECURITY.md](SECURITY.md).
 
 ## Docker

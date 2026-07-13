@@ -96,6 +96,8 @@ function budgetAllowsProvider(settings: BudgetSettings, provider: ProviderConfig
 }
 
 function effectiveRoutingMode(store: NesaStore): NesaStore["router"]["routingMode"] {
+  // Explicit manual pin must not be overridden by budget/prefer-free heuristics.
+  if (store.router.routingMode === "manual") return "manual";
   const currentBudgetStatus = getBudgetStatus(store);
   if (store.router.preferFreeTier && store.router.routingMode === "auto") return "free_first";
   if (currentBudgetStatus === "warning" && store.budget.onWarning === "prefer_cheaper") return "cheapest";
@@ -182,9 +184,16 @@ export function chooseProvider(
       .sort((a, b) => comboConstraint.providerIds.indexOf(a.id) - comboConstraint.providerIds.indexOf(b.id));
     candidates = applyComboStrategy(ordered, store, comboConstraint.strategy);
   } else {
-    const manual = requestedProvider ?? (store.router.manualProviderId
-      ? activeProviders.find((provider) => provider.id === store.router.manualProviderId)
-      : undefined);
+    const pinManual =
+      mode === "manual" && store.router.manualProviderId
+        ? activeProviders.find((provider) => provider.id === store.router.manualProviderId)
+        : undefined;
+    if (mode === "manual" && store.router.manualProviderId && !pinManual && !requestedProvider) {
+      throw new Error(
+        `Manual provider '${store.router.manualProviderId}' is not active or has no usable credentials. Activate it under Providers, or pick another Manual provider.`
+      );
+    }
+    const manual = requestedProvider ?? pinManual;
     candidates = manual ? [manual] : applyProviderStrategy(sortProviders(activeProviders, mode, taskType), store);
   }
 

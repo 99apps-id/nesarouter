@@ -1,9 +1,21 @@
 import { ProviderConfig } from "@/core/types";
-import { baseUrl, cleanApiKey, openRouterHeaders, ProviderExecutor, proxyFetch, sortModelIds, upstreamError } from "@/core/providers/shared";
+import {
+  baseUrl,
+  cleanApiKey,
+  openRouterHeaders,
+  ProviderExecutor,
+  proxyFetch,
+  sortModelIds,
+  upstreamError,
+  xiaomiMimoAuthHeaders,
+  xiaomiMimoCredentialHint
+} from "@/core/providers/shared";
 
 export class OpenAiCompatibleExecutor implements ProviderExecutor {
   async call(provider: ProviderConfig, body: any, apiKey?: string) {
     const token = cleanApiKey(apiKey ?? provider.apiKey);
+    const mismatch = xiaomiMimoCredentialHint(provider, token);
+    if (mismatch) throw new Error(mismatch);
     const authHeaders: Record<string, string> = token ? { authorization: `Bearer ${token}` } : {};
     const upstreamBody: Record<string, unknown> = {
       ...body,
@@ -20,6 +32,7 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
       headers: {
         "content-type": "application/json",
         ...authHeaders,
+        ...xiaomiMimoAuthHeaders(token, provider),
         ...openRouterHeaders(provider)
       },
       body: JSON.stringify(upstreamBody)
@@ -33,6 +46,8 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
   async listModels(provider: ProviderConfig) {
     const urls = this.modelUrls(provider);
     const token = cleanApiKey(provider.apiKey);
+    const mismatch = xiaomiMimoCredentialHint(provider, token);
+    if (mismatch) throw new Error(mismatch);
     const authHeaders: Record<string, string> = token ? { authorization: `Bearer ${token}` } : {};
     let lastError: unknown;
 
@@ -41,6 +56,7 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
         headers: {
           "content-type": "application/json",
           ...authHeaders,
+          ...xiaomiMimoAuthHeaders(token, provider),
           ...openRouterHeaders(provider)
         }
       });
