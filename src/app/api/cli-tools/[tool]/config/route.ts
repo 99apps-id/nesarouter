@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/adminApi";
+import { publicOrigin } from "@/core/publicUrl";
 import { readStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -8,9 +9,7 @@ export const dynamic = "force-dynamic";
 type ToolId = "claude-code" | "codex" | "cursor" | "cline" | "openclaw" | "opencode" | "generic";
 
 function originFrom(request: Request) {
-  const url = new URL(request.url);
-  const host = request.headers.get("x-forwarded-host") ?? url.host;
-  return `${url.protocol}//${host}`;
+  return publicOrigin(request);
 }
 
 function buildConfig(tool: ToolId, baseUrl: string, apiKey: string, model: string) {

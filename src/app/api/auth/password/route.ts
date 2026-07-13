@@ -34,6 +34,6 @@ export async function PUT(request: Request) {
   await writeAdminPasswordHash(hashAdminPassword(nextPassword));
   await revokeAllAdminSessions();
   const response = NextResponse.json({ ok: true });
-  response.cookies.set(adminCookieName, await createAdminSession(), adminCookieOptions());
+  response.cookies.set(adminCookieName, await createAdminSession(), adminCookieOptions(request));
   return response;
 }

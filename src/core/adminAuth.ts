@@ -17,6 +17,7 @@ import {
   SESSION_TTL_MS,
   timingSafeEqualString
 } from "@/core/adminSessionCookie";
+import { cookieSecurePreferred } from "@/core/publicUrl";
 
 export { adminCookieName, peekAdminCookie, timingSafeEqualString } from "@/core/adminSessionCookie";
 
@@ -147,11 +148,11 @@ export async function revokeAllAdminSessions() {
   await deleteAllAdminSessions();
 }
 
-export function adminCookieOptions() {
+export function adminCookieOptions(request?: Request) {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: cookieSecurePreferred(request),
     path: "/",
     maxAge: SESSION_TTL_MS / 1000
   };

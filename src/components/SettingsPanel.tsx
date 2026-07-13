@@ -24,16 +24,21 @@ export default function SettingsPanel({
     headroomEnabled: router.headroomEnabled ?? false,
     headroomUrl: router.headroomUrl ?? "http://localhost:8787",
     headroomCompressUserMessages: router.headroomCompressUserMessages ?? false,
-    pxpipeEnabled: router.pxpipeEnabled ?? false
+    pxpipeEnabled: router.pxpipeEnabled ?? false,
+    publicBaseUrl: router.publicBaseUrl ?? ""
   });
   const [saved, setSaved] = useState(false);
 
   async function save() {
     setSaved(false);
+    const publicBaseUrl = routerDraft.publicBaseUrl?.trim() || undefined;
     const response = await fetch("/api/state", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ budget: budgetDraft, router: routerDraft })
+      body: JSON.stringify({
+        budget: budgetDraft,
+        router: { ...routerDraft, publicBaseUrl }
+      })
     });
     if (response.ok) {
       setSaved(true);
@@ -44,6 +49,26 @@ export default function SettingsPanel({
   return (
     <section className="panel compact">
       <div className="panel-heading">
+        <div>
+          <p className="subtle">Public URL</p>
+          <h2>Domain</h2>
+        </div>
+      </div>
+      <p className="compact-copy">
+        Set this to the HTTPS URL you open in the browser (e.g. <code>https://nesa.example.com</code>).
+        OAuth and post-login redirects use it so the app returns to your domain instead of localhost.
+      </p>
+      <label>
+        Public base URL
+        <input
+          suppressHydrationWarning
+          type="url"
+          placeholder="https://nesa.example.com"
+          value={routerDraft.publicBaseUrl ?? ""}
+          onChange={(event) => setRouterDraft({ ...routerDraft, publicBaseUrl: event.target.value })}
+        />
+      </label>
+      <div className="panel-heading" style={{ marginTop: "1.5rem" }}>
         <div>
           <p className="subtle">Budget</p>
           <h2>Limits</h2>

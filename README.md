@@ -58,12 +58,24 @@ Production requires a unique `NESA_ADMIN_PASSWORD` (not `nesa123456`). Installer
 
 Do not expose the dashboard on a public tunnel until that password is changed.
 
+If the dashboard is reached via a domain (e.g. `https://router.example.com`), set either:
+
+- env: `NESA_PUBLIC_URL=https://router.example.com`, or
+- **Routing → Domain → Public base URL** to the same value
+
+so OAuth and login redirects return to that domain instead of `localhost`.
+
 Then:
 
 1. Open **Providers** and choose either an API-key provider or the **OAuth / account sign-in** group.
 2. Connect or test the provider and set it active.
+   - **Claude / Gemini CLI**: Connect opens the vendor page; paste the authorization code back into NesaRouter.
+   - **ChatGPT / Codex**: uses `http://localhost:1455/auth/callback`. On a remote VPS, tunnel first: `ssh -L 1455:127.0.0.1:1455 user@vps`.
+   - **Copilot / Kiro**: device-code flow (no localhost redirect).
 3. Open **Keys** and create a NesaRouter client key (the full token is shown once).
 4. Point an app or CLI tool to `http://localhost:20129/v1`.
+
+For dashboard Google/GitHub login, set `NESA_PUBLIC_URL` to the URL you open in the browser and register the same origin’s `/api/auth/oauth/{github|google}/callback` in the OAuth app settings.
 
 ```bash
 curl http://localhost:20129/v1/models \
@@ -81,6 +93,8 @@ Copy `.env.example` to `.env`. The important production variables are:
 | `DATA_DIR` | Recommended | Persistent location for the SQLite database. Defaults to `data`. |
 | `NESA_ADMIN_SESSION_SECRET` | Optional | Separate admin-session HMAC secret. Falls back to `NESA_ENCRYPTION_KEY`. |
 | `NESA_OAUTH_ALLOWED_EMAILS` | Optional | Comma-separated allowlist for Google or GitHub **dashboard** OAuth login. |
+| `NESA_PUBLIC_URL` | Recommended behind proxy | Public origin (`https://host` or `http://ip:20129`) used for OAuth redirects and post-login URLs. |
+| `NESA_COOKIE_SECURE` | Optional | Force `Secure` cookies on/off (`true`/`false`). Default: on for https public URL or production. |
 
 Generate an encryption key:
 

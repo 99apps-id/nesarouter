@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { exchangeCode, loadAntigravityProjectId } from "@/core/oauthPkce";
 import { getPreset } from "@/core/oauthProviderPresets";
+import { publicUrl } from "@/core/publicUrl";
 import { deleteOAuthPending, readOAuthPending, readProviderById, saveProviderOAuthTokens } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -13,29 +14,29 @@ export async function GET(request: Request) {
   const errorParam = url.searchParams.get("error");
 
   if (errorParam) {
-    return NextResponse.redirect(new URL(`/providers?oauth_error=${encodeURIComponent(errorParam)}`, url.origin));
+    return NextResponse.redirect(publicUrl(`/providers?oauth_error=${encodeURIComponent(errorParam)}`, request));
   }
   if (!code || !state) {
-    return NextResponse.redirect(new URL("/providers?oauth_error=missing_code", url.origin));
+    return NextResponse.redirect(publicUrl("/providers?oauth_error=missing_code", request));
   }
 
   const pending = await readOAuthPending(state);
   if (!pending) {
-    return NextResponse.redirect(new URL("/providers?oauth_error=invalid_state", url.origin));
+    return NextResponse.redirect(publicUrl("/providers?oauth_error=invalid_state", request));
   }
   await deleteOAuthPending(state);
   const pendingAgeMs = Date.now() - new Date(pending.createdAt).getTime();
   if (pendingAgeMs > 10 * 60_000) {
-    return NextResponse.redirect(new URL("/providers?oauth_error=state_expired", url.origin));
+    return NextResponse.redirect(publicUrl("/providers?oauth_error=state_expired", request));
   }
 
   const provider = await readProviderById(pending.providerId);
   if (!provider) {
-    return NextResponse.redirect(new URL("/providers?oauth_error=provider_missing", url.origin));
+    return NextResponse.redirect(publicUrl("/providers?oauth_error=provider_missing", request));
   }
   const preset = getPreset(provider.oauthProfile);
   if (!preset) {
-    return NextResponse.redirect(new URL("/providers?oauth_error=no_preset", url.origin));
+    return NextResponse.redirect(publicUrl("/providers?oauth_error=no_preset", request));
   }
 
   try {
@@ -50,9 +51,9 @@ export async function GET(request: Request) {
       expiresAt,
       projectId
     });
-    return NextResponse.redirect(new URL("/providers?oauth=connected", url.origin));
+    return NextResponse.redirect(publicUrl("/providers?oauth=connected", request));
   } catch (error) {
     const message = error instanceof Error ? error.message : "exchange failed";
-    return NextResponse.redirect(new URL(`/providers?oauth_error=${encodeURIComponent(message)}`, url.origin));
+    return NextResponse.redirect(publicUrl(`/providers?oauth_error=${encodeURIComponent(message)}`, request));
   }
 }

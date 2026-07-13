@@ -42,7 +42,13 @@ export interface OAuthTokens {
   scope?: string;
 }
 
-export async function exchangeCode(preset: OAuthPreset, code: string, redirectUri: string, codeVerifier: string): Promise<OAuthTokens> {
+export async function exchangeCode(
+  preset: OAuthPreset,
+  code: string,
+  redirectUri: string,
+  codeVerifier: string,
+  state?: string
+): Promise<OAuthTokens> {
   const body: Record<string, string> = {
     grant_type: "authorization_code",
     code,
@@ -51,6 +57,7 @@ export async function exchangeCode(preset: OAuthPreset, code: string, redirectUr
     code_verifier: codeVerifier
   };
   if (preset.clientSecret) body.client_secret = preset.clientSecret;
+  if (state && preset.tokenEncoding === "json") body.state = state;
   const response = await fetch(preset.tokenUrl, {
     method: "POST",
     headers: preset.tokenEncoding === "json"

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, KeyRound, Layers, ListRestart, PlugZap, Plus, Save, Star, Trash2 } from "lucide-react";
 import { ProviderConfig } from "@/core/types";
 import ProviderIcon from "@/components/ProviderIcon";
@@ -40,12 +40,61 @@ export default function ProviderDetail({
   const [modelsMessage, setModelsMessage] = useState("");
   const [oauthMessage, setOauthMessage] = useState("");
   const [showImport, setShowImport] = useState(false);
+  const [oauthPaste, setOauthPaste] = useState<{ state: string; hint?: string } | null>(null);
+  const [oauthCode, setOauthCode] = useState("");
+  const [oauthWaiting, setOauthWaiting] = useState(false);
+  const oauthPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [importTok, setImportTok] = useState({ accessToken: "", refreshToken: "", expiresIn: "", machineId: "" });
   const [device, setDevice] = useState<{ userCode: string; verificationUri: string; interval: number } | null>(null);
   const [devicePolling, setDevicePolling] = useState(false);
   const [cursorImporting, setCursorImporting] = useState(false);
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    return () => {
+      if (oauthPollRef.current) clearInterval(oauthPollRef.current);
+    };
+  }, []);
+
+  function stopOauthPoll() {
+    if (oauthPollRef.current) {
+      clearInterval(oauthPollRef.current);
+      oauthPollRef.current = null;
+    }
+    setOauthWaiting(false);
+  }
+
+  function startOauthPoll(baseline?: { expiresAt?: string; lastRefreshAt?: string; hadToken: boolean }) {
+    stopOauthPoll();
+    setOauthWaiting(true);
+    const startedAt = Date.now();
+    oauthPollRef.current = setInterval(async () => {
+      if (Date.now() - startedAt > 10 * 60_000) {
+        stopOauthPoll();
+        setOauthMessage("Timed out waiting for OAuth. Click Connect and try again.");
+        return;
+      }
+      try {
+        const response = await fetch("/api/providers");
+        if (!response.ok) return;
+        const list = (await response.json()) as ProviderConfig[];
+        const current = list.find((item) => item.id === draft.id);
+        if (!current?.oauthAccessToken) return;
+        const changed =
+          !baseline?.hadToken ||
+          current.oauthTokenExpiresAt !== baseline.expiresAt ||
+          current.oauthLastRefreshAt !== baseline.lastRefreshAt;
+        if (!changed) return;
+        stopOauthPoll();
+        setOauthPaste(null);
+        setOauthCode("");
+        setOauthMessage("Connected.");
+        router.refresh();
+      } catch {
+        /* ignore transient poll errors */
+      }
+    }, 2000);
+  }
   async function addKey() {
     setError("");
     const key = newKey.trim().replace(/^Bearer\s+/i, "").trim();
@@ -170,11 +219,69 @@ export default function ProviderDetail({
   }
 
   async function connectOAuth() {
-    setOauthMessage("Opening provider authorization…");
+    setError("");
+    setOauthMessage("Opening provider authorization in a new tab…");
+    setOauthPaste(null);
+    setOauthCode("");
+    stopOauthPoll();
     const response = await fetch(`/api/providers/${draft.id}/oauth/start`, { method: "POST" });
     const result = await response.json().catch(() => ({}));
-    if (result.authorizeUrl) window.location.href = result.authorizeUrl;
-    else setOauthMessage(result.error ?? "Failed to start OAuth flow.");
+    if (!result.authorizeUrl) {
+      setOauthMessage(result.error ?? "Failed to start OAuth flow.");
+      return;
+    }
+
+    const popup = window.open(result.authorizeUrl, "_blank", "noopener,noreferrer");
+    if (!popup) {
+      setError("Pop-up blocked. Allow pop-ups for this site, then click Connect again.");
+      setOauthMessage("");
+      return;
+    }
+
+    // Keep this tab on NesaRouter (9router-style): paste code here and/or wait for loopback.
+    setOauthPaste({
+      state: result.state,
+      hint:
+        result.hint ??
+        (result.manualCode
+          ? "Authorize in the other tab, then paste the code here."
+          : "Authorize in the other tab. If a code is shown, paste it here — otherwise this page updates when the login finishes.")
+    });
+    setOauthMessage(
+      result.manualCode
+        ? "Authorize in the new tab, then paste the code below."
+        : "Authorize in the new tab. Waiting for token…"
+    );
+    startOauthPoll({
+      hadToken: Boolean(draft.oauthAccessToken),
+      expiresAt: draft.oauthTokenExpiresAt,
+      lastRefreshAt: draft.oauthLastRefreshAt
+    });
+  }
+
+  async function submitOAuthCode() {
+    setError("");
+    if (!oauthPaste || !oauthCode.trim()) {
+      setError("Paste the authorization code first.");
+      return;
+    }
+    setOauthMessage("Exchanging code…");
+    const response = await fetch(`/api/providers/${draft.id}/oauth/complete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code: oauthCode.trim(), state: oauthPaste.state })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (response.ok) {
+      stopOauthPoll();
+      setOauthPaste(null);
+      setOauthCode("");
+      setOauthMessage("Connected.");
+      router.refresh();
+    } else {
+      setError(result.error ?? "Failed to complete OAuth.");
+      setOauthMessage("");
+    }
   }
 
   async function disconnectOAuth() {
@@ -465,7 +572,7 @@ export default function ProviderDetail({
                 ? `Not connected — start the device flow, then authorize NesaRouter with ${deviceVendorLabel} in a browser.`
                 : usesCursorImport
                   ? "Not connected — import the token from this machine's Cursor IDE (state.vscdb), or paste access token + machine id."
-                  : "Not connected — click Connect to authorize with the vendor in your browser."}
+                  : "Not connected — Connect opens the vendor login in a new tab. Paste the code here (Claude / Gemini), or wait while this page picks up the token."}
           </p>
           {usesCursorImport ? (
             <>
@@ -547,6 +654,32 @@ export default function ProviderDetail({
                   </button>
                 ) : null}
               </div>
+              {oauthPaste ? (
+                <div className="oauth-import">
+                  <p className="subtle">
+                    {oauthPaste.hint ??
+                      "Paste the authorization code from the other tab (Claude may use code#state)."}
+                    {oauthWaiting ? " Waiting for completion…" : ""}
+                  </p>
+                  <input
+                    suppressHydrationWarning
+                    placeholder="Authorization code (from the other tab)"
+                    value={oauthCode}
+                    onChange={(e) => setOauthCode(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submitOAuthCode(); } }}
+                  />
+                  <div className="button-row">
+                    <button className="button primary" type="button" onClick={submitOAuthCode} disabled={!oauthCode.trim()}>
+                      <Save size={14} /> Submit code
+                    </button>
+                    {oauthWaiting ? (
+                      <button className="button" type="button" onClick={stopOauthPoll}>
+                        Cancel wait
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
               {showImport ? (
                 <div className="oauth-import">
                   <p className="subtle">Paste an existing token pair (e.g. from 9router or the vendor CLI).</p>

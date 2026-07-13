@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { cookieSecurePreferred, publicUrl } from "@/core/publicUrl";
 
 export type OAuthProviderId = "github" | "google";
 
@@ -47,18 +48,18 @@ export function assertOAuthEmailAllowed(email?: string) {
   if (!allowed.includes(email.toLowerCase())) throw new Error("OAuth email is not allowed.");
 }
 
-export function oauthCookieOptions() {
+export function oauthCookieOptions(request?: Request) {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: cookieSecurePreferred(request),
     path: "/",
     maxAge: 10 * 60
   };
 }
 
 export function oauthCallbackUrl(request: Request, provider: OAuthProviderId) {
-  return new URL(`/api/auth/oauth/${provider}/callback`, request.url).toString();
+  return publicUrl(`/api/auth/oauth/${provider}/callback`, request);
 }
 
 export function oauthAuthorizeUrl(provider: OAuthProviderId, request: Request, state: string) {

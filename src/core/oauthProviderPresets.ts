@@ -56,6 +56,13 @@ export interface OAuthPreset {
   skipPkce?: boolean;
   /** Cursor IDE: import token from local state.vscdb (no browser OAuth). */
   importTokenFlow?: boolean;
+  /** When set, use this redirect_uri instead of the NesaRouter callback URL (CLI public clients). */
+  fixedRedirectUri?: string;
+  /** After authorize, user pastes the code shown by the vendor (Claude / Gemini remote flows). */
+  manualCodeFlow?: boolean;
+  /** Fixed loopback listener for CLI clients that only allow localhost redirects (e.g. Codex :1455). */
+  loopbackPort?: number;
+  loopbackPath?: string;
   cursorClientVersion?: string;
   cursorClientType?: string;
 }
@@ -78,6 +85,10 @@ export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
       "anthropic-beta": "claude-code-20250219,oauth-2025-04-20",
       "anthropic-dangerous-direct-browser-access": "true"
     },
+    // Claude Code public client — console page shows a pasteable code (works on VPS too).
+    fixedRedirectUri: "https://console.anthropic.com/oauth/code/callback",
+    manualCodeFlow: true,
+    extraAuthorizeParams: { code: "true" },
     refreshLeadMs: 15 * 60_000
   },
   openai_codex: {
@@ -101,6 +112,10 @@ export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
       codex_cli_simplified_flow: "true",
       originator: "codex_cli_rs"
     },
+    // Codex public client only allows this exact loopback redirect.
+    fixedRedirectUri: "http://localhost:1455/auth/callback",
+    loopbackPort: 1455,
+    loopbackPath: "/auth/callback",
     refreshLeadMs: 60 * 60_000
   },
   gemini_cli: {
@@ -121,6 +136,9 @@ export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
       "User-Agent": "google-genai-sdk/1.41.0 gl-node/v22.19.0"
     },
     extraAuthorizeParams: { access_type: "offline", prompt: "consent" },
+    // Gemini CLI remote / headless flow — paste the code from Google's page.
+    fixedRedirectUri: "https://codeassist.google.com/authcode",
+    manualCodeFlow: true,
     refreshLeadMs: 10 * 60_000
   },
   github_copilot: {
@@ -222,6 +240,10 @@ export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
     },
     extraAuthorizeParams: { access_type: "offline", prompt: "consent" },
     loadCodeAssistUrl: "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+    // Google installed-app clients require a loopback redirect (any free port).
+    fixedRedirectUri: "http://127.0.0.1:51121/oauth2callback",
+    loopbackPort: 51121,
+    loopbackPath: "/oauth2callback",
     refreshLeadMs: 5 * 60_000
   },
   cursor: {

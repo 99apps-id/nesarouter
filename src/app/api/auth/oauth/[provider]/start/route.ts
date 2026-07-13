@@ -11,6 +11,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ prov
 
   const state = createOAuthState(info.id);
   const response = NextResponse.redirect(oauthAuthorizeUrl(info.id, request, state));
-  response.cookies.set(oauthStateCookieName, state, oauthCookieOptions());
+  response.cookies.set(oauthStateCookieName, state, oauthCookieOptions(request));
   return response;
 }
