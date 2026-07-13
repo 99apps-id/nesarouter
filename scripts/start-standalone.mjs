@@ -26,7 +26,11 @@ if (existsSync(publicSource)) {
 
 const child = spawn(process.execPath, [server], {
   cwd: standalone,
-  env: { ...process.env },
+  env: {
+    ...process.env,
+    PORT: process.env.PORT || "20129",
+    HOSTNAME: process.env.HOSTNAME || "0.0.0.0"
+  },
   stdio: "inherit"
 });
 child.on("exit", (code) => process.exit(code ?? 0));
