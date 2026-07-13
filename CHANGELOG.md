@@ -2,6 +2,12 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.13 - 2026-07-14
+
+### Fixes
+
+- Dashboard middleware now builds unauthenticated login redirects from `NESA_PUBLIC_URL` or reverse-proxy headers, rather than the internal upstream URL. This prevents VPS deployments from redirecting visitors to `localhost:20129`.
+
 ## 0.1.12 - 2026-07-14
 
 ### Features

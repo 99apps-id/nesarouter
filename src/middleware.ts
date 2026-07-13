@@ -5,6 +5,7 @@ import {
   hasAdminSessionCookieLenientShape,
   isMalformedAdminSessionCookie
 } from "@/core/adminSessionCookie";
+import { publicLoginRedirectUrl } from "@/core/publicUrl";
 
 const PUBLIC_PAGES = ["/login"];
 
@@ -36,9 +37,9 @@ export async function middleware(request: NextRequest) {
   const sessionCookie = sessionCookieValue(request);
   const cookieOk = hasAdminSessionCookieLenientShape(sessionCookie);
   if (!cookieOk && !pathname.startsWith("/login")) {
-    const login = new URL("/login", request.url);
-    login.searchParams.set("next", pathname);
-    const response = NextResponse.redirect(login);
+    // request.url is the internal upstream URL behind Caddy/Nginx. Resolve the
+    // public origin so an unauthenticated visitor never gets sent to localhost.
+    const response = NextResponse.redirect(publicLoginRedirectUrl(request, pathname));
     // Only drop cookies that cannot possibly verify (wrong shape). Stale expMs is
     // refreshed by /api/auth/session while the DB session is still valid.
     if (isMalformedAdminSessionCookie(sessionCookie)) {

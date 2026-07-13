@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { NextRequest } from "next/server";
+import { middleware } from "@/middleware";
 import {
   cookieSecurePreferred,
   publicLoginRedirectUrl,
@@ -68,6 +70,16 @@ describe("publicUrl", () => {
       }
     });
     expect(publicLoginRedirectUrl(request, "/keys")).toBe("https://nesa.example.com/login?next=%2Fkeys");
+  });
+
+  it("middleware itself redirects to the public URL behind a proxy", async () => {
+    process.env.NESA_PUBLIC_URL = "https://router.kliimora.id";
+    const request = new NextRequest("http://127.0.0.1:20129/providers", {
+      headers: { host: "127.0.0.1:20129" }
+    });
+
+    const response = await middleware(request);
+    expect(response.headers.get("location")).toBe("https://router.kliimora.id/login?next=%2Fproviders");
   });
 
   it("cookieSecurePreferred follows https public URL", () => {
