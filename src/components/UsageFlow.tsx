@@ -9,7 +9,9 @@ import ProviderIcon from "@/components/ProviderIcon";
 const maxVisibleNodes = 24;
 const outerRingLimit = 14;
 const MAP_COORD_DECIMALS = 2;
-const LIVE_WINDOW_MS = 60_000;
+// Keep the last real upstream route visible long enough to inspect it. Cache
+// hits are excluded below because they never establish a provider connection.
+const LIVE_WINDOW_MS = 5 * 60_000;
 const LIVE_REFRESH_MS = 1_500;
 
 /** Stable coords for SSR + client (avoids hydration drift from float math). */
