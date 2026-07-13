@@ -24,7 +24,10 @@ export default function UsageTable({ usage }: { usage: UsageLog[] }) {
             <span>{new Date(item.createdAt).toLocaleTimeString()}</span>
             <span className="provider-cell">
               <ProviderIcon provider={{ providerName: item.providerName, model: item.model }} size="sm" active={item.status === "success"} />
-              <span>{item.providerName}</span>
+              <span className="usage-provider-copy">
+                <span>{item.providerName}</span>
+                <small>{item.taskType}</small>
+              </span>
             </span>
             <span>{item.taskType}</span>
             <span>{money(item.totalCostUsd)}</span>

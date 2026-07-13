@@ -1134,6 +1134,7 @@ button:focus-visible {
 .usage-table {
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  container-type: inline-size;
   overflow: hidden;
 }
 
@@ -1617,9 +1618,39 @@ button:focus-visible {
   align-items: center;
   display: grid;
   gap: 10px;
-  grid-template-columns: 0.8fr 1.2fr 1fr 0.8fr 1fr 0.7fr;
+  grid-template-columns: minmax(62px, 0.8fr) minmax(0, 1.2fr) minmax(0, 1fr) minmax(72px, 0.8fr) minmax(0, 1fr) minmax(74px, 0.7fr);
   min-height: 42px;
   padding: 0 12px;
+}
+
+.usage-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-row > .provider-cell {
+  display: flex;
+  width: 100%;
+}
+
+.usage-provider-copy {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.usage-provider-copy > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-provider-copy small {
+  color: var(--muted);
+  display: none;
+  font-size: 10px;
 }
 
 .usage-row:not(:last-child) {
@@ -1631,6 +1662,30 @@ button:focus-visible {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
+}
+
+@container (max-width: 720px) {
+  .usage-row {
+    gap: 8px;
+    grid-template-columns: 66px minmax(0, 1fr) 78px 74px;
+    padding-inline: 10px;
+  }
+
+  .usage-row > :nth-child(3),
+  .usage-row > :nth-child(5) {
+    display: none;
+  }
+
+  .usage-provider-copy small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .usage-row:not(.header) {
+    min-height: 56px;
+  }
 }
 
 .inspector-list {
