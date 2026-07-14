@@ -20,7 +20,7 @@ function upstreamModel(model: string) {
   return model.replace(/-(thinking|agentic)(-agentic)?$/i, "");
 }
 
-function kiroRequest(body: any, model: string) {
+function kiroRequest(body: any, model: string, profileArn?: string) {
   const messages = Array.isArray(body?.messages) ? body.messages : [];
   const transcript = messages
     .map((message: any) => {
@@ -45,6 +45,7 @@ function kiroRequest(body: any, model: string) {
       },
       history: []
     },
+    ...(profileArn ? { profileArn } : {}),
     inferenceConfig: {
       maxTokens: Math.min(Math.max(Number(body?.max_tokens ?? 8192), 1), 32000),
       ...(typeof body?.temperature === "number" ? { temperature: body.temperature } : {}),
@@ -53,12 +54,23 @@ function kiroRequest(body: any, model: string) {
   };
 }
 
-function kiroHeaders(token: string, apiKeyMode: boolean, accept = "application/vnd.amazon.eventstream", includeTarget = true) {
+function kiroAmzTarget(apiKeyMode: boolean, useAmazonQFallback: boolean) {
+  if (useAmazonQFallback) return "AmazonQDeveloperStreamingService.SendMessage";
+  return "AmazonCodeWhispererStreamingService.GenerateAssistantResponse";
+}
+
+function kiroHeaders(
+  token: string,
+  apiKeyMode: boolean,
+  accept = "application/vnd.amazon.eventstream",
+  includeTarget = true,
+  useAmazonQFallback = false
+) {
   return {
     authorization: `Bearer ${cleanApiKey(token)}`,
     "content-type": "application/json",
     accept,
-    ...(includeTarget ? { "x-amz-target": "AmazonCodeWhispererStreamingService.GenerateAssistantResponse" } : {}),
+    ...(includeTarget ? { "x-amz-target": kiroAmzTarget(apiKeyMode, useAmazonQFallback) } : {}),
     "user-agent": "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0",
     "x-amz-user-agent": "aws-sdk-js/3.0.0 kiro-ide/1.0.0",
     "amz-sdk-request": "attempt=1; max=1",
@@ -67,14 +79,34 @@ function kiroHeaders(token: string, apiKeyMode: boolean, accept = "application/v
   };
 }
 
-function endpointFor(provider: ProviderConfig, apiKeyMode: boolean) {
+/** Builder ID OAuth accounts often have no profileArn; runtime.kiro.dev then 400s. */
+export function shouldUseKiroAmazonQFallback(provider: ProviderConfig, apiKeyMode: boolean, profileArn?: string) {
+  if (apiKeyMode || profileArn) return false;
+  if (provider.oauthProfile !== "kiro") return false;
+  return /runtime\..*\.kiro\.dev/i.test(baseUrl(provider));
+}
+
+export function endpointFor(provider: ProviderConfig, apiKeyMode: boolean, useAmazonQFallback = false) {
   const configured = baseUrl(provider);
   // Kiro API keys authenticate against the CodeWhisperer surface. OAuth tokens
   // can use the Kiro runtime URL configured by the user.
   if (apiKeyMode && /runtime\..*\.kiro\.dev/i.test(configured)) {
     return "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse";
   }
+  if (useAmazonQFallback) {
+    return "https://q.us-east-1.amazonaws.com";
+  }
   return configured;
+}
+
+function resolveKiroProfileArn(provider: ProviderConfig): string | undefined {
+  const fromProvider = (provider as ProviderConfig & { oauthProfileArn?: string }).oauthProfileArn?.trim();
+  if (fromProvider) return fromProvider;
+  for (const account of provider.oauthAccounts ?? []) {
+    const arn = (account as { oauthProfileArn?: string }).oauthProfileArn?.trim();
+    if (arn) return arn;
+  }
+  return undefined;
 }
 
 function parseHeaders(bytes: Uint8Array<ArrayBufferLike>): Record<string, string> {
@@ -182,10 +214,12 @@ export class KiroExecutor implements ProviderExecutor {
     if (!token) throw new UpstreamProviderError(`${provider.name} needs a Kiro API key or access token.`, 400);
     // OAuth Builder ID tokens must not send tokentype=API_KEY.
     const apiKeyMode = !provider.oauthProfile && Boolean(cleanApiKey(provider.apiKey) || (apiKey && apiKey !== provider.oauthAccessToken));
-    const response = await proxyFetch(provider, endpointFor(provider, apiKeyMode), {
+    const profileArn = resolveKiroProfileArn(provider);
+    const useAmazonQFallback = shouldUseKiroAmazonQFallback(provider, apiKeyMode, profileArn);
+    const response = await proxyFetch(provider, endpointFor(provider, apiKeyMode, useAmazonQFallback), {
       method: "POST",
-      headers: kiroHeaders(token, apiKeyMode),
-      body: JSON.stringify(kiroRequest(body, provider.model))
+      headers: kiroHeaders(token, apiKeyMode, "application/vnd.amazon.eventstream", true, useAmazonQFallback),
+      body: JSON.stringify(kiroRequest(body, provider.model, profileArn))
     });
     if (!response.ok) throw await upstreamError(provider, response);
     if (!response.body) throw new UpstreamProviderError(`${provider.name} returned no event stream.`, 502);

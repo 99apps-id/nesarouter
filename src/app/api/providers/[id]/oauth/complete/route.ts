@@ -48,7 +48,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const tokens = await exchangeCode(preset, parsed.code, pending.redirectUri, pending.codeVerifier, parsed.state);
     const expiresAt = tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : undefined;
     const projectId =
-      preset.profile === "antigravity" && tokens.access_token
+      preset.loadCodeAssistUrl && tokens.access_token
         ? await loadAntigravityProjectId(preset, tokens.access_token)
         : undefined;
     await saveProviderOAuthTokens(provider.id, {

@@ -2,6 +2,15 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.23 - 2026-07-14
+
+### Fixes
+
+- **Codex OAuth** ([#2](https://github.com/99apps-id/nesarouter/issues/2), [#4](https://github.com/99apps-id/nesarouter/issues/4)): force `store: false`, SSE-only stream, default `instructions`, typed Responses `input`, strip rejected sampling params.
+- **Kiro Builder ID** ([#3](https://github.com/99apps-id/nesarouter/issues/3)): fallback OAuth chat to `q.us-east-1.amazonaws.com` when no `profileArn` (runtime endpoint 400).
+- **DeepSeek V4** ([#1](https://github.com/99apps-id/nesarouter/issues/1)): auto-inject `thinking: { type: "disabled" }` on DeepSeek hosts/models unless the client sets `thinking`.
+- **Gemini CLI / Antigravity** ([#5](https://github.com/99apps-id/nesarouter/issues/5)): resolve/persist Cloud Code `projectId` via `loadCodeAssist`; clear error when missing.
+
 ## 0.1.22 - 2026-07-14
 
 ### Fixes

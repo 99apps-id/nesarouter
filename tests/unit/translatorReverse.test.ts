@@ -130,6 +130,29 @@ describe("translatorReverse: responses", () => {
     expect(req.max_output_tokens).toBe(64);
   });
 
+  it("normalizes Codex Responses requests (store false, typed input, default instructions)", () => {
+    const req = openAiChatToResponsesRequest(
+      {
+        model: "gpt-5.6-sol",
+        messages: [{ role: "user", content: "Ping" }],
+        temperature: 0.2,
+        max_tokens: 64,
+        stream: false
+      },
+      { codex: true }
+    );
+    expect(req.store).toBe(false);
+    expect(req.stream).toBe(true);
+    expect(req.instructions).toBeTruthy();
+    expect(req.temperature).toBeUndefined();
+    expect(req.max_output_tokens).toBeUndefined();
+    expect(req.input[0]).toEqual({
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: "Ping" }]
+    });
+  });
+
   it("converts responses payload to openai chat", () => {
     const out = responsesResponseToOpenAi(
       {

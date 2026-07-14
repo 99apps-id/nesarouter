@@ -215,25 +215,97 @@ export function claudeSseToOpenAiSse(claudeSse: ReadableStream<Uint8Array>, mode
 
 /* ----------------------- OpenAI chat -> Responses request ------------------ */
 
-export function openAiChatToResponsesRequest(body: any): any {
+const CODEX_UNSUPPORTED_PARAMS = [
+  "temperature",
+  "top_p",
+  "max_output_tokens",
+  "metadata",
+  "safety_identifier",
+  "prompt_cache_retention",
+  "truncation"
+] as const;
+
+const CODEX_DEFAULT_INSTRUCTIONS = "You are a helpful coding assistant.";
+
+function textFromMessageContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.map((part: any) => (typeof part?.text === "string" ? part.text : "")).filter(Boolean).join("\n");
+}
+
+function responsesInputContent(text: string, role: "user" | "assistant") {
+  return [{ type: role === "assistant" ? "output_text" : "input_text", text }];
+}
+
+export function openAiChatToResponsesRequest(body: any, options?: { codex?: boolean }): any {
+  const codex = Boolean(options?.codex);
   let instructions: string | undefined;
   const input: any[] = [];
   for (const message of body?.messages ?? []) {
     if (message?.role === "system") {
-      if (typeof message.content === "string") instructions = (instructions ? `${instructions}\n` : "") + message.content;
+      const text = textFromMessageContent(message.content);
+      if (text) instructions = (instructions ? `${instructions}\n` : "") + text;
       continue;
     }
-    const text = typeof message?.content === "string" ? message.content : Array.isArray(message?.content) ? message.content.map((p: any) => p?.text ?? "").join("\n") : "";
-    if (text) input.push({ role: message?.role === "assistant" ? "assistant" : "user", content: text });
+    if (message?.role === "tool") {
+      const text = textFromMessageContent(message.content);
+      if (!text) continue;
+      // Codex Responses expects tool results as user/input items; keep text fallback.
+      input.push({
+        type: "message",
+        role: "user",
+        content: responsesInputContent(`Tool result (${message.tool_call_id ?? "tool"}): ${text}`, "user")
+      });
+      continue;
+    }
+    const role = message?.role === "assistant" ? "assistant" : "user";
+    const text = textFromMessageContent(message?.content);
+    if (!text && !Array.isArray(message?.tool_calls)) continue;
+    if (codex) {
+      const parts = text ? responsesInputContent(text, role) : [];
+      if (Array.isArray(message?.tool_calls) && message.tool_calls.length) {
+        for (const call of message.tool_calls) {
+          parts.push({
+            type: "output_text",
+            text: `[tool_call ${call?.function?.name ?? "fn"} ${call?.id ?? ""}] ${call?.function?.arguments ?? ""}`
+          });
+        }
+      }
+      if (parts.length) input.push({ type: "message", role, content: parts });
+    } else if (text) {
+      input.push({ role, content: text });
+    }
   }
-  return {
+
+  const request: Record<string, unknown> = {
     model: body?.model ?? "gpt-5.6-sol",
     input,
     ...(instructions ? { instructions } : {}),
-    ...(body?.max_tokens ? { max_output_tokens: body.max_tokens } : {}),
-    ...(typeof body?.temperature === "number" ? { temperature: body.temperature } : {}),
     ...(body?.stream ? { stream: true } : {})
   };
+
+  if (codex) {
+    request.store = false;
+    request.stream = true;
+    if (!instructions?.trim()) request.instructions = CODEX_DEFAULT_INSTRUCTIONS;
+    // Never forward sampling / store params ChatGPT Codex rejects.
+    for (const key of CODEX_UNSUPPORTED_PARAMS) delete request[key];
+    return request;
+  }
+
+  if (body?.max_tokens) request.max_output_tokens = body.max_tokens;
+  if (typeof body?.temperature === "number") request.temperature = body.temperature;
+  return request;
+}
+
+/** Force ChatGPT subscription Codex constraints on a Responses-shaped body. */
+export function normalizeCodexResponsesRequest(request: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...request, store: false, stream: true };
+  if (typeof next.instructions !== "string" || !String(next.instructions).trim()) {
+    next.instructions = CODEX_DEFAULT_INSTRUCTIONS;
+  }
+  for (const key of CODEX_UNSUPPORTED_PARAMS) delete next[key];
+  return next;
 }
 
 /* ----------------------- Responses response -> OpenAI chat ----------------- */
