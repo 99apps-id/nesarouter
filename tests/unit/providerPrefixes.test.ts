@@ -35,14 +35,15 @@ const providers = [
 ] as ProviderConfig[];
 
 describe("provider prefixes", () => {
-  it("resolves cx prefix for Codex", () => {
+  it("resolves cx and codex prefixes for Codex", () => {
     expect(resolvePrefixToProviderId("cx", providers)).toBe("oauth-chatgpt");
-    expect(resolvePrefixToProviderId("codex", providers)).toBeUndefined();
+    expect(resolvePrefixToProviderId("codex", providers)).toBe("oauth-chatgpt");
     expect(parsePrefixedModel("cx/gpt-5.5", providers)).toEqual({
       prefix: "cx",
       providerId: "oauth-chatgpt",
       modelId: "gpt-5.5"
     });
+    expect(parsePrefixedModel("codex/gpt-5.5", providers)?.providerId).toBe("oauth-chatgpt");
   });
 
   it("keeps slash-containing configured model ids intact", () => {

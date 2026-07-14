@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Upload } from "lucide-react";
 import { ModelAlias } from "@/core/aliases";
 import { Combo, ProviderConfig } from "@/core/types";
+import { adminFetch } from "@/lib/adminFetch";
 
 export default function AliasesManager({
   aliases,
@@ -17,13 +18,16 @@ export default function AliasesManager({
   const [draft, setDraft] = useState<ModelAlias>({ id: "", alias: "", target: "" });
   const [items, setItems] = useState(aliases);
   const [saved, setSaved] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
   async function persist(next: ModelAlias[]) {
     setSaved(false);
-    const stateRes = await fetch("/api/state");
+    const stateRes = await adminFetch("/api/state");
     if (!stateRes.ok) return;
     const state = await stateRes.json();
-    const response = await fetch("/api/state", {
+    const response = await adminFetch("/api/state", {
       method: "PUT",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ budget: state.budget, router: state.router, combos: state.combos, aliases: next })
@@ -46,6 +50,41 @@ export default function AliasesManager({
 
   async function remove(id: string) {
     await persist(items.filter((item) => item.id !== id));
+  }
+
+  async function importNineRouter() {
+    setImportMsg(null);
+    const raw = importText.trim();
+    if (!raw) {
+      setImportMsg("Paste JSON from 9router GET /api/models/alias first.");
+      return;
+    }
+    let payload: unknown;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      setImportMsg("Invalid JSON.");
+      return;
+    }
+    setImporting(true);
+    try {
+      const response = await adminFetch("/api/aliases/import", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setImportMsg(typeof data?.error === "string" ? data.error : "Import failed.");
+        return;
+      }
+      if (Array.isArray(data.aliases)) setItems(data.aliases);
+      setImportMsg(`Imported: ${data.added ?? 0} added, ${data.updated ?? 0} updated, ${data.skipped ?? 0} skipped.`);
+      setImportText("");
+      setSaved(true);
+    } finally {
+      setImporting(false);
+    }
   }
 
   const targetOptions = [
@@ -107,6 +146,21 @@ export default function AliasesManager({
         <button className="button primary" type="button" onClick={add}>
           <Plus size={16} /> {saved ? "Saved" : "Add alias"}
         </button>
+      </div>
+      <div className="combo-form" style={{ marginTop: "1rem", flexDirection: "column", alignItems: "stretch" }}>
+        <label>
+          Import 9router JSON
+          <textarea
+            value={importText}
+            rows={4}
+            placeholder='{"aliases":{"fast":"or/meta-llama/..."}}'
+            onChange={(event) => setImportText(event.target.value)}
+          />
+        </label>
+        <button className="button" type="button" disabled={importing} onClick={importNineRouter}>
+          <Upload size={16} /> {importing ? "Importing…" : "Import 9router JSON"}
+        </button>
+        {importMsg ? <p className="subtle">{importMsg}</p> : null}
       </div>
     </section>
   );

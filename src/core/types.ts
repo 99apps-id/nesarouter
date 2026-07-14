@@ -139,6 +139,16 @@ export interface RouterSettings {
   publicBaseUrl?: string;
   /** Saved CLI wizard preferences per tool id. */
   cliTools?: Record<string, { modelTarget?: string }>;
+  /**
+   * Max concurrent upstream provider calls process-wide. 0 = unlimited (default).
+   */
+  maxConcurrentUpstream?: number;
+  /**
+   * Max concurrent upstream calls per provider id. 0 = unlimited (default).
+   */
+  maxConcurrentPerProvider?: number;
+  /** How long to wait for a concurrency slot before failing with 503. */
+  queueWaitMs?: number;
 }
 
 export interface UsageLog {

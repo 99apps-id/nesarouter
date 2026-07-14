@@ -27,6 +27,9 @@ export default function SettingsPanel({
     headroomCompressUserMessages: router.headroomCompressUserMessages ?? false,
     pxpipeEnabled: router.pxpipeEnabled ?? false,
     publicBaseUrl: router.publicBaseUrl ?? "",
+    maxConcurrentUpstream: router.maxConcurrentUpstream ?? 0,
+    maxConcurrentPerProvider: router.maxConcurrentPerProvider ?? 0,
+    queueWaitMs: router.queueWaitMs ?? 30_000,
     mediaRouting: {
       searchMode: "builtin" as const,
       ...router.mediaRouting
@@ -313,6 +316,46 @@ export default function SettingsPanel({
         />
         pxpipe-lite (in-process tool compress)
       </label>
+      <div className="panel-heading" style={{ marginTop: "1.5rem" }}>
+        <div>
+          <p className="subtle">Upstream load</p>
+          <h2>Concurrency queue</h2>
+        </div>
+      </div>
+      <p className="compact-copy">Limit parallel upstream calls to protect rate limits. Set a value to <code>0</code> for unlimited (default).</p>
+      <div className="form-grid">
+        <label>
+          Max concurrent (global)
+          <input
+            type="number"
+            min={0}
+            value={routerDraft.maxConcurrentUpstream ?? 0}
+            onChange={(event) =>
+              setRouterDraft({ ...routerDraft, maxConcurrentUpstream: Number(event.target.value) || 0 })
+            }
+          />
+        </label>
+        <label>
+          Max concurrent (per provider)
+          <input
+            type="number"
+            min={0}
+            value={routerDraft.maxConcurrentPerProvider ?? 0}
+            onChange={(event) =>
+              setRouterDraft({ ...routerDraft, maxConcurrentPerProvider: Number(event.target.value) || 0 })
+            }
+          />
+        </label>
+        <label>
+          Queue wait (ms)
+          <input
+            type="number"
+            min={0}
+            value={routerDraft.queueWaitMs ?? 30_000}
+            onChange={(event) => setRouterDraft({ ...routerDraft, queueWaitMs: Number(event.target.value) || 0 })}
+          />
+        </label>
+      </div>
       <div className="panel-heading" style={{ marginTop: "1.5rem" }}>
         <div>
           <p className="subtle">Media APIs</p>
