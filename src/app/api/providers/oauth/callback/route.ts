@@ -42,7 +42,7 @@ export async function GET(request: Request) {
   try {
     const tokens = await exchangeCode(preset, code, pending.redirectUri, pending.codeVerifier);
     const expiresAt = tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : undefined;
-    const projectId = preset.profile === "antigravity" && tokens.access_token
+    const projectId = preset.loadCodeAssistUrl && tokens.access_token
       ? await loadAntigravityProjectId(preset, tokens.access_token)
       : undefined;
     await saveProviderOAuthTokens(provider.id, {

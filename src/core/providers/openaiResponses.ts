@@ -1,7 +1,12 @@
 import { ProviderConfig } from "@/core/types";
 import { getPreset } from "@/core/oauthProviderPresets";
 import { loadProviderWithFreshToken } from "@/core/providerOAuthFlow";
-import { openAiChatToResponsesRequest, responsesResponseToOpenAi, responsesSseToOpenAiSse } from "@/core/translatorReverse";
+import {
+  normalizeCodexResponsesRequest,
+  openAiChatToResponsesRequest,
+  responsesResponseToOpenAi,
+  responsesSseToOpenAiSse
+} from "@/core/translatorReverse";
 import { baseUrl, cleanApiKey, ProviderExecutor, proxyFetch, upstreamError } from "@/core/providers/shared";
 
 const CODEX_MODELS_URL = "https://chatgpt.com/backend-api/codex/models?client_version=1.0.0";
@@ -38,10 +43,11 @@ export class OpenAiResponsesExecutor implements ProviderExecutor {
       ...(preset?.upstreamHeaders ?? {})
     };
 
-    const request = openAiChatToResponsesRequest({ ...body, model: provider.model });
-    const forceStream = preset?.profile === "openai_codex";
-    const wantStream = Boolean(body?.stream) || forceStream;
-    const finalRequest = wantStream && !request.stream ? { ...request, stream: true } : request;
+    const isCodex = preset?.profile === "openai_codex";
+    const request = openAiChatToResponsesRequest({ ...body, model: provider.model }, { codex: isCodex });
+    const wantStream = Boolean(body?.stream) || isCodex;
+    const streamed = wantStream && !request.stream ? { ...request, stream: true } : request;
+    const finalRequest = isCodex ? normalizeCodexResponsesRequest(streamed) : streamed;
 
     const response = await proxyFetch(provider, baseUrl(provider), {
       method: "POST",
@@ -50,7 +56,8 @@ export class OpenAiResponsesExecutor implements ProviderExecutor {
     });
 
     if (!response.ok) throw await upstreamError(provider, response);
-    if (wantStream) {
+    // Codex subscription path is SSE-only.
+    if (wantStream || isCodex) {
       if (!response.body) throw new Error(`${provider.name} returned no stream body.`);
       return responsesSseToOpenAiSse(response.body, provider.model);
     }

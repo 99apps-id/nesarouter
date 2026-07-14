@@ -147,11 +147,13 @@ export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
     providerType: "gemini_cli",
     baseUrl: "https://cloudcode-pa.googleapis.com/v1internal",
     defaultModel: "gemini-3-pro-preview",
+    models: ["gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash"],
     upstreamHeaders: {
       "X-Goog-Api-Client": "google-genai-sdk/1.41.0 gl-node/v22.19.0",
       "User-Agent": "google-genai-sdk/1.41.0 gl-node/v22.19.0"
     },
     extraAuthorizeParams: { access_type: "offline", prompt: "consent" },
+    loadCodeAssistUrl: "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
     // Gemini CLI remote / headless flow — paste the code from Google's page.
     fixedRedirectUri: "https://codeassist.google.com/authcode",
     manualCodeFlow: true,

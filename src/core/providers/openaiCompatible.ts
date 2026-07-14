@@ -11,6 +11,17 @@ import {
   xiaomiMimoCredentialHint
 } from "@/core/providers/shared";
 
+/** DeepSeek V4/reasoner defaults thinking on; agent clients often drop reasoning_content → 400. */
+export function shouldDisableDeepSeekThinking(provider: ProviderConfig, body: any): boolean {
+  if (body?.thinking != null) return false;
+  const host = baseUrl(provider).toLowerCase();
+  const model = String(provider.model ?? body?.model ?? "").toLowerCase();
+  const id = provider.id.toLowerCase();
+  const isDeepSeekHost = host.includes("deepseek.com") || id === "deepseek";
+  const isDeepSeekModel = /deepseek/.test(model) && (/reasoner|v4|thinking|:v4@/.test(model) || isDeepSeekHost);
+  return isDeepSeekHost || isDeepSeekModel;
+}
+
 export class OpenAiCompatibleExecutor implements ProviderExecutor {
   async call(provider: ProviderConfig, body: any, apiKey?: string) {
     const token = cleanApiKey(apiKey ?? provider.apiKey);
@@ -21,6 +32,10 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
       ...body,
       model: provider.model
     };
+
+    if (shouldDisableDeepSeekThinking(provider, body)) {
+      upstreamBody.thinking = { type: "disabled" };
+    }
 
     if (body?.stream) {
       const streamOptions = body.stream_options && typeof body.stream_options === "object" ? body.stream_options : {};
