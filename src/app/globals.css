@@ -612,6 +612,19 @@ code {
   width: 1px;
 }
 
+.theme-toggle {
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+}
+
 .theme-toggle:hover {
   background: var(--surface-strong);
 }
@@ -2142,7 +2155,6 @@ button:focus-visible {
 
 .combo-item.editing {
   border-color: var(--primary);
-}
 }
 
 .combo-item > div:first-child {
