@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function TunnelPage() {
   return (
-    <AppShell active="tunnel" eyebrow="Remote access" title="Tunnel">
+    <AppShell active="tunnel">
       <TunnelPanel />
     </AppShell>
   );

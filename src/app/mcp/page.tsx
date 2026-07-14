@@ -9,7 +9,7 @@ export default async function McpPage() {
   const servers = await readMcpServers();
   const baseUrl = "http://localhost:20129";
   return (
-    <AppShell active="mcp" eyebrow="Bridge" title="MCP">
+    <AppShell active="mcp">
       <McpManager servers={servers} baseUrl={baseUrl} />
     </AppShell>
   );

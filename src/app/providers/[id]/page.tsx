@@ -37,7 +37,7 @@ export default async function ProviderDetailPage({ params }: { params: Promise<{
   });
 
   return (
-    <AppShell active="providers" eyebrow="Provider" title={provider.name}>
+    <AppShell active="providers" titleOverride={provider.name}>
       <ProviderDetail
         provider={{
           ...safeProvider,

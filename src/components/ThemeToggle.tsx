@@ -2,10 +2,12 @@
 
 import { Moon, Sun } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useI18n } from "@/components/I18nProvider";
 
 type Theme = "dark" | "light";
 
 export default function ThemeToggle() {
+  const { t } = useI18n();
   const [theme, setTheme] = useState<Theme>("dark");
 
   useEffect(() => {
@@ -21,10 +23,13 @@ export default function ThemeToggle() {
     document.documentElement.dataset.theme = next;
   }
 
+  const label = theme === "dark" ? t.shell.light : t.shell.dark;
+  const aria = theme === "dark" ? t.shell.switchToLight : t.shell.switchToDark;
+
   return (
-    <button className="theme-toggle" type="button" onClick={toggleTheme} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}>
+    <button className="theme-toggle" type="button" onClick={toggleTheme} aria-label={aria}>
       {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-      <span>{theme === "dark" ? "Light" : "Dark"}</span>
+      <span>{label}</span>
     </button>
   );
 }

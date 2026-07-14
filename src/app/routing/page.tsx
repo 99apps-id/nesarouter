@@ -11,7 +11,7 @@ export default async function RoutingPage() {
   const store = await readStore();
 
   return (
-    <AppShell active="routing" eyebrow="Routing" title="Routing">
+    <AppShell active="routing">
       <section className="split-layout">
         <SettingsPanel budget={store.budget} router={store.router} providers={store.providers} />
         <RoutingPolicyPanel router={store.router} providers={store.providers} />

@@ -11,7 +11,7 @@ export default async function KeysPage() {
   const keys = keyRows(store.localApiKeys);
 
   return (
-    <AppShell active="keys" eyebrow="Keys" title="Client Keys">
+    <AppShell active="keys">
       <KeysManager initialKeys={keys} />
     </AppShell>
   );

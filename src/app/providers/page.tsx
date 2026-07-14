@@ -16,7 +16,7 @@ export default async function ProvidersPage() {
   const groups: ProviderGroupId[] = ["oauth", "free", "free_tier", "paid"];
 
   return (
-    <AppShell active="providers" eyebrow="Providers" title="Providers">
+    <AppShell active="providers">
       <div className="providers-stack">
         <NewProviderForm />
         <section className="panel">

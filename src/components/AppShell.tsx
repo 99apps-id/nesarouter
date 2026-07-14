@@ -7,21 +7,22 @@ import { publicOrigin } from "@/core/publicUrl";
 import { readStore } from "@/lib/store";
 import { readAppVersion } from "@/lib/appVersion";
 import AppNav from "@/components/AppNav";
+import BrandTagline from "@/components/BrandTagline";
 import EndpointBox from "@/components/EndpointBox";
 import LanguageSelect from "@/components/LanguageSelect";
+import MustChangePasswordBanner from "@/components/MustChangePasswordBanner";
 import ThemeToggle from "@/components/ThemeToggle";
 import UpdateBanner from "@/components/UpdateBanner";
 import SessionKeeper from "@/components/SessionKeeper";
+import WorkspaceTitle, { type ShellPageId } from "@/components/WorkspaceTitle";
 
 export default async function AppShell({
   active,
-  eyebrow,
-  title,
+  titleOverride,
   children
 }: {
-  active: "overview" | "providers" | "combos" | "keys" | "usage" | "routing" | "mcp" | "tunnel" | "headroom" | "cli";
-  eyebrow: string;
-  title: string;
+  active: ShellPageId;
+  titleOverride?: string;
   children: React.ReactNode;
 }) {
   const requestHeaders = await headers();
@@ -57,7 +58,7 @@ export default async function AppShell({
           </div>
           <div>
             <strong>NesaRouter</strong>
-            <span>Smart AI gateway · v{appVersion}</span>
+            <BrandTagline version={appVersion} />
           </div>
         </div>
         <AppNav active={active} routingOnly={mustChangePassword} />
@@ -66,10 +67,7 @@ export default async function AppShell({
 
       <section className="workspace">
         <header className="topbar">
-          <div>
-            <p className="subtle">{eyebrow}</p>
-            <h1>{title}</h1>
-          </div>
+          <WorkspaceTitle active={active} titleOverride={titleOverride} />
           <div className="topbar-actions">
             <LanguageSelect />
             <ThemeToggle />
@@ -79,17 +77,7 @@ export default async function AppShell({
             </div>
           </div>
         </header>
-        {mustChangePassword ? (
-          <section className="alert-banner">
-            <ShieldCheck size={18} />
-            <div>
-              <strong>Change temporary default password</strong>
-              <span>Use Password below. Other menus unlock after you save a new password.</span>
-            </div>
-          </section>
-        ) : (
-          <UpdateBanner />
-        )}
+        {mustChangePassword ? <MustChangePasswordBanner /> : <UpdateBanner />}
         {children}
       </section>
     </main>

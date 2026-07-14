@@ -2,6 +2,17 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.22 - 2026-07-14
+
+### Fixes
+
+- **i18n UI chrome**: Settings, Overview, Password, Aliases, shell chrome, and language picker translate for all 20 locales (not only nav/CLI); custom language dropdown readable in dark theme.
+- **Provider icons**: distinct assets/accents so Hyperbolic ≠ OpenRouter, Moonshot ≠ Kimi, Copilot ≠ GitHub, plus OpenCode Go and Xiaomi Token Plan variants.
+
+### Known
+
+- DeepSeek V4 thinking mode can 400 when agent clients omit `reasoning_content` (tracked in [#1](https://github.com/99apps-id/nesarouter/issues/1)).
+
 ## 0.1.21 - 2026-07-14
 
 ### Added

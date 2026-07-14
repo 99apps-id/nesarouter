@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { ArrowUpCircle, X } from "lucide-react";
+import { formatMessage } from "@/i18n/types";
+import { useI18n } from "@/components/I18nProvider";
 
 interface UpdateInfo {
   enabled: boolean;
@@ -15,6 +17,7 @@ interface UpdateInfo {
 const DISMISS_KEY = "nesa_update_dismissed";
 
 export default function UpdateBanner() {
+  const { t } = useI18n();
   const [info, setInfo] = useState<UpdateInfo | null>(null);
   const [hidden, setHidden] = useState(false);
 
@@ -54,19 +57,19 @@ export default function UpdateBanner() {
     <section className="alert-banner update-banner" role="status">
       <ArrowUpCircle size={18} />
       <div>
-        <strong>Update available: v{info.latestVersion}</strong>
+        <strong>{formatMessage(t.shell.updateAvailable, { version: info.latestVersion })}</strong>
         <span>
-          You are on v{info.currentVersion}.{" "}
+          {formatMessage(t.shell.youAreOn, { version: info.currentVersion })}{" "}
           {info.releaseUrl ? (
             <a href={info.releaseUrl} target="_blank" rel="noreferrer">
-              View release notes
+              {t.shell.viewReleaseNotes}
             </a>
           ) : (
-            "Check GitHub for the latest release."
+            t.shell.checkGithub
           )}
         </span>
       </div>
-      <button className="button" type="button" onClick={dismiss} aria-label="Dismiss update banner">
+      <button className="button" type="button" onClick={dismiss} aria-label={t.shell.dismissUpdate}>
         <X size={16} />
       </button>
     </section>
