@@ -19,33 +19,45 @@ export default function UsageByProviderTable({ rows }: { rows: UsageByProviderRo
           <h2>Usage by provider</h2>
         </div>
       </div>
-      <div className="model-table">
-        <div className="model-row header">
-          <span>Provider</span>
-          <span>Req</span>
-          <span>Input</span>
-          <span>Output</span>
-          <span>Cost</span>
+      {rows.length === 0 ? (
+        <div className="empty-state">
+          <strong>No provider usage recorded.</strong>
         </div>
-        {rows.length === 0 ? (
-          <div className="empty-state">
-            <strong>No provider usage recorded.</strong>
-          </div>
-        ) : (
-          rows.map((row) => (
-            <div className="model-row provider-usage-row" key={row.providerId}>
-              <span className="provider-cell">
-                <ProviderIcon provider={{ id: row.providerId, name: row.providerName, providerName: row.providerName }} size="sm" active />
-                <span>{row.providerName}</span>
-              </span>
-              <span>{row.requests}</span>
-              <span>{row.inputTokens.toLocaleString()}</span>
-              <span>{row.outputTokens.toLocaleString()}</span>
-              <span>{money(row.totalCostUsd)}</span>
-            </div>
-          ))
-        )}
-      </div>
+      ) : (
+        <div className="usage-agg-wrap">
+          <table className="usage-agg-table">
+            <thead>
+              <tr>
+                <th scope="col">Provider</th>
+                <th scope="col" className="num">Req</th>
+                <th scope="col" className="num">Input</th>
+                <th scope="col" className="num">Output</th>
+                <th scope="col" className="num">Cost</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.providerId}>
+                  <td>
+                    <span className="provider-cell">
+                      <ProviderIcon
+                        provider={{ id: row.providerId, name: row.providerName, providerName: row.providerName }}
+                        size="sm"
+                        active
+                      />
+                      <span title={row.providerName}>{row.providerName}</span>
+                    </span>
+                  </td>
+                  <td className="num">{row.requests.toLocaleString()}</td>
+                  <td className="num">{row.inputTokens.toLocaleString()}</td>
+                  <td className="num">{row.outputTokens.toLocaleString()}</td>
+                  <td className="num">{money(row.totalCostUsd)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }

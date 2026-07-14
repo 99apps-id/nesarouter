@@ -21,37 +21,47 @@ export default function UsageByModelTable({ rows }: { rows: UsageByModelRow[] })
           <h2>Usage by model</h2>
         </div>
       </div>
-      <div className="model-table">
-        <div className="model-row header">
-          <span>Model</span>
-          <span>Provider</span>
-          <span>Req</span>
-          <span>Input</span>
-          <span>Output</span>
-          <span>Cost</span>
-          <span>Last</span>
+      {rows.length === 0 ? (
+        <div className="empty-state">
+          <strong>No usage recorded.</strong>
         </div>
-        {rows.length === 0 ? (
-          <div className="empty-state">
-            <strong>No usage recorded.</strong>
-          </div>
-        ) : (
-          rows.map((row) => (
-            <div className="model-row" key={`${row.providerId}:${row.model}`}>
-              <span>{row.model}</span>
-              <span className="provider-cell">
-                <ProviderIcon provider={{ providerName: row.providerName, model: row.model }} size="sm" active />
-                <span>{row.providerName}</span>
-              </span>
-              <span>{row.requests}</span>
-              <span>{row.inputTokens.toLocaleString()}</span>
-              <span>{row.outputTokens.toLocaleString()}</span>
-              <span>{money(row.totalCostUsd)}</span>
-              <span>{new Date(row.lastUsed).toLocaleTimeString()}</span>
-            </div>
-          ))
-        )}
-      </div>
+      ) : (
+        <div className="usage-agg-wrap">
+          <table className="usage-agg-table">
+            <thead>
+              <tr>
+                <th scope="col">Model</th>
+                <th scope="col">Provider</th>
+                <th scope="col" className="num">Req</th>
+                <th scope="col" className="num">Input</th>
+                <th scope="col" className="num">Output</th>
+                <th scope="col" className="num">Cost</th>
+                <th scope="col" className="num">Last</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={`${row.providerId}:${row.model}`}>
+                  <td className="usage-agg-model" title={row.model}>
+                    {row.model}
+                  </td>
+                  <td>
+                    <span className="provider-cell">
+                      <ProviderIcon provider={{ providerName: row.providerName, model: row.model }} size="sm" active />
+                      <span title={row.providerName}>{row.providerName}</span>
+                    </span>
+                  </td>
+                  <td className="num">{row.requests.toLocaleString()}</td>
+                  <td className="num">{row.inputTokens.toLocaleString()}</td>
+                  <td className="num">{row.outputTokens.toLocaleString()}</td>
+                  <td className="num">{money(row.totalCostUsd)}</td>
+                  <td className="num">{new Date(row.lastUsed).toLocaleTimeString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }

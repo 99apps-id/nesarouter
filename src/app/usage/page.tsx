@@ -32,8 +32,10 @@ export default async function UsagePage() {
         <RecentRequestsPanel usage={store.usage} />
       </section>
       <RequestInspector usage={store.usage} />
-      <UsageByProviderTable rows={stats.byProvider} />
-      <UsageByModelTable rows={modelRows} />
+      <section className="usage-agg-grid">
+        <UsageByProviderTable rows={stats.byProvider} />
+        <UsageByModelTable rows={modelRows} />
+      </section>
       <section className="panel">
         <div className="panel-heading">
           <div>
