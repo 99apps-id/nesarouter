@@ -1,4 +1,7 @@
+"use client";
+
 import { ProviderConfig, RouterSettings } from "@/core/types";
+import { useI18n } from "@/components/I18nProvider";
 
 export default function RoutingPolicyPanel({
   router,
@@ -7,6 +10,7 @@ export default function RoutingPolicyPanel({
   router: RouterSettings;
   providers: ProviderConfig[];
 }) {
+  const { t } = useI18n();
   const activeProviders = providers.filter((provider) => provider.status === "active");
   const connectedProviders = providers.filter((provider) => provider.connectionStatus === "connected");
 
@@ -14,43 +18,45 @@ export default function RoutingPolicyPanel({
     <section className="panel">
       <div className="panel-heading">
         <div>
-          <h2>Router</h2>
+          <h2>{t.routerPanel.title}</h2>
         </div>
       </div>
-      <div className="route-lane" aria-label="Routing lane">
-        <span>User/App</span>
+      <div className="route-lane" aria-label={t.routerPanel.laneAria}>
+        <span>{t.routerPanel.userApp}</span>
         <i />
-        <span>Cache</span>
+        <span>{t.routerPanel.cache}</span>
         <i />
-        <span>Budget</span>
+        <span>{t.routerPanel.budget}</span>
         <i />
-        <span>Evaluator</span>
+        <span>{t.routerPanel.evaluator}</span>
         <i />
-        <span>Provider</span>
+        <span>{t.routerPanel.provider}</span>
       </div>
       <div className="policy-grid">
         <div>
-          <span>Mode</span>
+          <span>{t.routerPanel.mode}</span>
           <strong>{router.routingMode}</strong>
         </div>
         <div>
-          <span>Strategy</span>
-          <strong>{router.providerStrategy === "round_robin" ? "Round robin" : "Priority"}</strong>
+          <span>{t.routerPanel.strategy}</span>
+          <strong>
+            {router.providerStrategy === "round_robin" ? t.routerPanel.roundRobin : t.routerPanel.priority}
+          </strong>
         </div>
         <div>
-          <span>Fallback</span>
-          <strong>{router.fallbackMode === "off" ? "Off" : "Auto"}</strong>
+          <span>{t.routerPanel.fallback}</span>
+          <strong>{router.fallbackMode === "off" ? t.common.off : t.common.auto}</strong>
         </div>
         <div>
-          <span>Evaluator</span>
-          <strong>{router.evaluatorEnabled === false ? "Off" : "On"}</strong>
+          <span>{t.routerPanel.evaluator}</span>
+          <strong>{router.evaluatorEnabled === false ? t.common.off : t.common.on}</strong>
         </div>
         <div>
-          <span>Active</span>
+          <span>{t.routerPanel.active}</span>
           <strong>{activeProviders.length}</strong>
         </div>
         <div>
-          <span>Connected</span>
+          <span>{t.routerPanel.connected}</span>
           <strong>{connectedProviders.length}</strong>
         </div>
       </div>
@@ -58,7 +64,9 @@ export default function RoutingPolicyPanel({
         {providers.slice(0, 6).map((provider) => (
           <div key={provider.id}>
             <span>{provider.name}</span>
-            <strong>{provider.status} / {provider.connectionStatus ?? "unknown"}</strong>
+            <strong>
+              {provider.status} / {provider.connectionStatus ?? t.routerPanel.unknown}
+            </strong>
           </div>
         ))}
       </div>

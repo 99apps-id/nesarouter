@@ -5,6 +5,8 @@ import { Plus, Trash2, Upload } from "lucide-react";
 import { ModelAlias } from "@/core/aliases";
 import { Combo, ProviderConfig } from "@/core/types";
 import { adminFetch } from "@/lib/adminFetch";
+import { formatMessage } from "@/i18n/types";
+import { useI18n } from "@/components/I18nProvider";
 
 export default function AliasesManager({
   aliases,
@@ -15,6 +17,8 @@ export default function AliasesManager({
   providers: ProviderConfig[];
   combos: Combo[];
 }) {
+  const { t } = useI18n();
+  const a = t.aliases;
   const [draft, setDraft] = useState<ModelAlias>({ id: "", alias: "", target: "" });
   const [items, setItems] = useState(aliases);
   const [saved, setSaved] = useState(false);
@@ -56,14 +60,14 @@ export default function AliasesManager({
     setImportMsg(null);
     const raw = importText.trim();
     if (!raw) {
-      setImportMsg("Paste JSON from 9router GET /api/models/alias first.");
+      setImportMsg(a.importPasteFirst);
       return;
     }
     let payload: unknown;
     try {
       payload = JSON.parse(raw);
     } catch {
-      setImportMsg("Invalid JSON.");
+      setImportMsg(a.importInvalidJson);
       return;
     }
     setImporting(true);
@@ -75,11 +79,17 @@ export default function AliasesManager({
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setImportMsg(typeof data?.error === "string" ? data.error : "Import failed.");
+        setImportMsg(typeof data?.error === "string" ? data.error : a.importFailed);
         return;
       }
       if (Array.isArray(data.aliases)) setItems(data.aliases);
-      setImportMsg(`Imported: ${data.added ?? 0} added, ${data.updated ?? 0} updated, ${data.skipped ?? 0} skipped.`);
+      setImportMsg(
+        formatMessage(a.importSummary, {
+          added: data.added ?? 0,
+          updated: data.updated ?? 0,
+          skipped: data.skipped ?? 0
+        })
+      );
       setImportText("");
       setSaved(true);
     } finally {
@@ -102,16 +112,13 @@ export default function AliasesManager({
     <section className="panel">
       <div className="panel-heading">
         <div>
-          <p className="subtle">Short model names</p>
-          <h2>Aliases</h2>
+          <p className="subtle">{a.subtle}</p>
+          <h2>{a.title}</h2>
         </div>
       </div>
-      <p className="compact-copy">
-        Map <code>model: &quot;fast&quot;</code> to a provider model or combo. Call Codex with <code>cx/gpt-…</code>
-        (e.g. <code>cx/gpt-5.6-sol</code>), Claude with <code>cc/…</code>, and other providers with their short prefixes.
-      </p>
+      <p className="compact-copy">{a.body}</p>
       <div className="combo-list">
-        {items.length === 0 ? <p className="subtle">No aliases yet.</p> : null}
+        {items.length === 0 ? <p className="subtle">{a.empty}</p> : null}
         {items.map((item) => (
           <article key={item.id} className="combo-item">
             <div>
@@ -119,22 +126,22 @@ export default function AliasesManager({
               <span>→ {item.target}</span>
             </div>
             <button className="button danger-button" type="button" onClick={() => remove(item.id)}>
-              <Trash2 size={16} /> Delete
+              <Trash2 size={16} /> {a.delete}
             </button>
           </article>
         ))}
       </div>
       <div className="combo-form">
         <label>
-          Alias
+          {a.alias}
           <input value={draft.alias} placeholder="fast" onChange={(event) => setDraft({ ...draft, alias: event.target.value })} />
         </label>
         <label>
-          Target
+          {a.target}
           <input
             list="alias-targets"
             value={draft.target}
-            placeholder="provider model or combo name"
+            placeholder={a.targetPlaceholder}
             onChange={(event) => setDraft({ ...draft, target: event.target.value })}
           />
           <datalist id="alias-targets">
@@ -144,21 +151,21 @@ export default function AliasesManager({
           </datalist>
         </label>
         <button className="button primary" type="button" onClick={add}>
-          <Plus size={16} /> {saved ? "Saved" : "Add alias"}
+          <Plus size={16} /> {saved ? t.common.saved : a.add}
         </button>
       </div>
       <div className="combo-form" style={{ marginTop: "1rem", flexDirection: "column", alignItems: "stretch" }}>
         <label>
-          Import 9router JSON
+          {a.importLabel}
           <textarea
             value={importText}
             rows={4}
-            placeholder='{"aliases":{"fast":"or/meta-llama/..."}}'
+            placeholder={a.importPlaceholder}
             onChange={(event) => setImportText(event.target.value)}
           />
         </label>
         <button className="button" type="button" disabled={importing} onClick={importNineRouter}>
-          <Upload size={16} /> {importing ? "Importing…" : "Import 9router JSON"}
+          <Upload size={16} /> {importing ? a.importing : a.importButton}
         </button>
         {importMsg ? <p className="subtle">{importMsg}</p> : null}
       </div>

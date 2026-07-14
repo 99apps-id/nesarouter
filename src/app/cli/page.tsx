@@ -12,7 +12,7 @@ export default async function CliPage() {
   const baseUrl = publicOrigin(undefined, store.router.publicBaseUrl);
 
   return (
-    <AppShell active="cli" eyebrow="CLI" title="CLI Tools">
+    <AppShell active="cli">
       <CliPageContent
         baseUrl={baseUrl}
         router={store.router}

@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function HeadroomPage() {
   return (
-    <AppShell active="headroom" eyebrow="Compression proxy" title="Headroom">
+    <AppShell active="headroom">
       <HeadroomPanel />
     </AppShell>
   );

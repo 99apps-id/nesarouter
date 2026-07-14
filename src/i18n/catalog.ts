@@ -1,4 +1,5 @@
 import { DeepPartial, en, LocaleCode, mergeMessages, Messages } from "@/i18n/types";
+import { uiChromeByLocale } from "@/i18n/uiChrome";
 
 export type LocaleInfo = {
   code: LocaleCode;
@@ -45,7 +46,12 @@ const patches: Record<Exclude<LocaleCode, "en">, DeepPartial<Messages>> = {
       applying: "Menerapkan…",
       reset: "Reset",
       resetting: "Mereset…",
-      providers: "Provider"
+      providers: "Provider",
+      save: "Simpan",
+      saved: "Tersimpan",
+      auto: "Otomatis",
+      on: "Aktif",
+      off: "Mati"
     },
     nav: {
       overview: "Ringkasan",
@@ -60,6 +66,154 @@ const patches: Record<Exclude<LocaleCode, "en">, DeepPartial<Messages>> = {
       cli: "CLI",
       endpointHint: "Kelola client key di Keys.",
       mainNav: "Navigasi utama"
+    },
+    shell: {
+      dashboard: "Dasbor",
+      brandTagline: "Gateway AI cerdas",
+      light: "Terang",
+      dark: "Gelap",
+      switchToLight: "Ganti ke tema terang",
+      switchToDark: "Ganti ke tema gelap",
+      clientKeys: "Kunci klien",
+      provider: "Provider",
+      bridge: "Jembatan",
+      remoteAccess: "Akses jarak jauh",
+      compressionProxy: "Proxy kompresi",
+      updateAvailable: "Pembaruan tersedia: v{version}",
+      youAreOn: "Anda memakai v{version}.",
+      viewReleaseNotes: "Lihat catatan rilis",
+      checkGithub: "Cek GitHub untuk rilis terbaru.",
+      dismissUpdate: "Tutup banner pembaruan",
+      changePasswordTitle: "Ganti kata sandi default sementara",
+      changePasswordBody: "Gunakan Password di bawah. Menu lain terbuka setelah Anda menyimpan kata sandi baru."
+    },
+    overview: {
+      metricsAria: "Metrik ringkasan",
+      spendToday: "Belanja hari ini",
+      budgetLeft: "Sisa budget",
+      providersActive: "Provider aktif",
+      requests: "Permintaan",
+      budgetGuardActive: "Penjaga budget aktif",
+      savingsToday: "Penghematan hari ini",
+      savedAmount: "{amount} dihemat",
+      noSavingsYet: "Belum ada penghematan hari ini",
+      viaCache: "{amount} via cache",
+      freeTierReq: "{count} req free-tier",
+      cacheHits: "{count} cache hit",
+      systemStatus: "Status sistem",
+      sqlite: "SQLite",
+      encryptedKeys: "Kunci terenkripsi",
+      fallbackReady: "Fallback siap"
+    },
+    routerPanel: {
+      title: "Router",
+      laneAria: "Jalur routing",
+      userApp: "User/App",
+      cache: "Cache",
+      budget: "Budget",
+      evaluator: "Evaluator",
+      provider: "Provider",
+      mode: "Mode",
+      strategy: "Strategi",
+      fallback: "Fallback",
+      active: "Aktif",
+      connected: "Terhubung",
+      roundRobin: "Round robin",
+      priority: "Prioritas",
+      unknown: "tidak diketahui"
+    },
+    settings: {
+      publicUrlSubtle: "URL publik",
+      domain: "Domain",
+      publicUrlBody:
+        "Isi URL HTTPS yang Anda buka di browser (mis. https://nesa.example.com). OAuth dan redirect setelah login memakainya agar kembali ke domain Anda, bukan localhost.",
+      publicBaseUrl: "URL dasar publik",
+      budgetSubtle: "Budget",
+      limits: "Batas",
+      dailyBudget: "Budget harian",
+      dailyBudgetAria: "Budget harian dalam dolar AS",
+      warningPct: "Peringatan %",
+      criticalPct: "Kritis %",
+      mode: "Mode",
+      modeAuto: "Otomatis",
+      modeFree: "Gratis",
+      modeCheap: "Murah",
+      modeBest: "Terbaik",
+      modeManual: "Manual",
+      manualProvider: "Provider manual",
+      selectProvider: "Pilih provider…",
+      noActiveProviders: "Tidak ada provider aktif — aktifkan dulu di Providers.",
+      choosingSetsManual: "Memilih provider di sini otomatis mengubah Mode ke Manual. Lalu Simpan.",
+      pickProviderManual: "Pilih provider di atas, lalu Simpan. Mode Manual tidak meroute sampai provider dipilih.",
+      selectedNotActive: "Provider terpilih tidak aktif — aktifkan di Providers atau pilih yang lain.",
+      providerStrategy: "Strategi provider",
+      priority: "Prioritas",
+      roundRobin: "Round robin",
+      fallback: "Fallback",
+      evaluator: "Evaluator",
+      onWarning: "Saat peringatan",
+      preferCheaper: "Prefer yang lebih murah",
+      notifyOnly: "Hanya notifikasi",
+      onCritical: "Saat kritis",
+      freeTierOnly: "Hanya free / free-tier",
+      onExceeded: "Saat terlampaui",
+      blockPaid: "Blokir berbayar",
+      allow: "Izinkan",
+      cache: "Cache",
+      freeTier: "Free tier",
+      rtk: "RTK (kompres tool_result — git/grep/ls/logs)",
+      headroomCompress: "Kompres Headroom (proxy eksternal)",
+      headroomUrl: "URL Headroom",
+      compressUserMessages: "Juga kompres pesan user",
+      pxpipe: "pxpipe-lite (kompres tool in-process)",
+      upstreamLoad: "Beban upstream",
+      concurrencyQueue: "Antrian concurrency",
+      concurrencyBody:
+        "Batasi panggilan upstream paralel agar rate limit terjaga. Isi 0 untuk tanpa batas (default).",
+      maxConcurrentGlobal: "Maks concurrent (global)",
+      maxConcurrentPerProvider: "Maks concurrent (per provider)",
+      queueWaitMs: "Tunggu antrian (ms)",
+      mediaApis: "API media",
+      mediaRouting: "Routing media",
+      mediaBody:
+        "Kunci images, speech, transcriptions, dan embeddings ke provider OpenAI-compatible tertentu, atau biarkan Auto memakai engine routing utama. Web search memakai DuckDuckGo bawaan (tanpa kunci provider).",
+      images: "Gambar",
+      speech: "Speech (TTS)",
+      transcriptions: "Transkripsi (STT)",
+      embeddings: "Embeddings",
+      webSearch: "Pencarian web",
+      webSearchBuiltin: "Bawaan (DuckDuckGo)",
+      autoRouting: "Otomatis (engine routing)",
+      caveman: "Caveman",
+      ponytail: "Ponytail"
+    },
+    password: {
+      admin: "Admin",
+      title: "Kata sandi",
+      current: "Kata sandi saat ini",
+      next: "Kata sandi baru",
+      save: "Simpan kata sandi",
+      updated: "Kata sandi diperbarui. Memuat ulang…",
+      failed: "Gagal memperbarui kata sandi."
+    },
+    aliases: {
+      subtle: "Nama model pendek",
+      title: "Alias",
+      body: 'Petakan model: "fast" ke model provider atau combo. Panggil Codex dengan cx/gpt-… (mis. cx/gpt-5.6-sol), Claude dengan cc/…, dan provider lain dengan prefix pendek mereka.',
+      empty: "Belum ada alias.",
+      alias: "Alias",
+      target: "Target",
+      targetPlaceholder: "model provider atau nama combo",
+      add: "Tambah alias",
+      delete: "Hapus",
+      importLabel: "Impor JSON 9router",
+      importPlaceholder: '{"aliases":{"fast":"or/meta-llama/..."}}',
+      importButton: "Impor JSON 9router",
+      importing: "Mengimpor…",
+      importPasteFirst: "Tempel JSON dari 9router GET /api/models/alias dulu.",
+      importInvalidJson: "JSON tidak valid.",
+      importFailed: "Impor gagal.",
+      importSummary: "{added} ditambah, {updated} diubah, {skipped} dilewati."
     },
     cli: {
       pageEyebrow: "CLI",
@@ -1408,7 +1562,10 @@ const patches: Record<Exclude<LocaleCode, "en">, DeepPartial<Messages>> = {
 
 export function getMessages(locale: LocaleCode): Messages {
   if (locale === "en") return en;
-  return mergeMessages(en, patches[locale]);
+  const base = mergeMessages(en, patches[locale]);
+  if (locale === "id") return base;
+  const chrome = uiChromeByLocale[locale as Exclude<LocaleCode, "en" | "id">];
+  return chrome ? mergeMessages(base, chrome) : base;
 }
 
 export function isLocaleCode(value: string): value is LocaleCode {

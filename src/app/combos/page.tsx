@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function CombosPage() {
   const store = await readStore();
   return (
-    <AppShell active="combos" eyebrow="Routing" title="Combos">
+    <AppShell active="combos">
       <CombosManager combos={store.combos} providers={store.providers} />
       <AliasesManager aliases={store.aliases ?? []} providers={store.providers} combos={store.combos} />
     </AppShell>

@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --bg: oklch(0.13 0.018 245);
   --shell: oklch(0.1 0.016 245);
   --surface: oklch(0.18 0.022 245);
@@ -38,6 +39,7 @@
 }
 
 :root[data-theme="light"] {
+  color-scheme: light;
   --bg: oklch(0.982 0.012 68);
   --shell: oklch(0.95 0.018 68);
   --surface: oklch(0.995 0.006 68);
@@ -219,6 +221,11 @@ a {
   --provider-accent-2: oklch(0.78 0.14 72);
 }
 
+.provider-icon-hyperbolic {
+  --provider-accent: oklch(0.72 0.18 310);
+  --provider-accent-2: oklch(0.62 0.16 280);
+}
+
 .provider-icon-deepseek {
   --provider-accent: oklch(0.62 0.14 262);
   --provider-accent-2: oklch(0.76 0.1 220);
@@ -227,6 +234,11 @@ a {
 .provider-icon-gemini {
   --provider-accent: oklch(0.64 0.15 248);
   --provider-accent-2: oklch(0.75 0.14 150);
+}
+
+.provider-icon-gemini-cli {
+  --provider-accent: oklch(0.7 0.16 145);
+  --provider-accent-2: oklch(0.58 0.14 220);
 }
 
 .provider-icon-openai {
@@ -264,45 +276,179 @@ a {
   --provider-accent-2: oklch(0.7 0.12 205);
 }
 
-.provider-icon-github,
-.provider-icon-codex {
+.provider-icon-alibaba {
+  --provider-accent: oklch(0.68 0.18 45);
+  --provider-accent-2: oklch(0.55 0.14 25);
+}
+
+.provider-icon-github {
   --provider-accent: oklch(0.27 0.018 245);
   --provider-accent-2: oklch(0.58 0.045 230);
 }
 
-.provider-icon-cursor,
-.provider-icon-kiro,
-.provider-icon-antigravity,
-.provider-icon-opencode,
-.provider-icon-mimo-free,
+.provider-icon-github-copilot {
+  --provider-accent: oklch(0.62 0.18 300);
+  --provider-accent-2: oklch(0.7 0.14 250);
+}
+
+.provider-icon-codex {
+  --provider-accent: oklch(0.55 0.08 160);
+  --provider-accent-2: oklch(0.35 0.04 200);
+}
+
+.provider-icon-cursor {
+  --provider-accent: oklch(0.72 0.02 250);
+  --provider-accent-2: oklch(0.45 0.03 250);
+}
+
+.provider-icon-kiro {
+  --provider-accent: oklch(0.62 0.16 30);
+  --provider-accent-2: oklch(0.72 0.14 70);
+}
+
+.provider-icon-antigravity {
+  --provider-accent: oklch(0.66 0.18 310);
+  --provider-accent-2: oklch(0.55 0.14 280);
+}
+
+.provider-icon-opencode {
+  --provider-accent: oklch(0.7 0.17 145);
+  --provider-accent-2: oklch(0.4 0.08 160);
+}
+
+.provider-icon-opencode-go {
+  --provider-accent: oklch(0.78 0.16 150);
+  --provider-accent-2: oklch(0.28 0.04 250);
+}
+
+.provider-icon-mimo-free {
+  --provider-accent: oklch(0.7 0.14 200);
+  --provider-accent-2: oklch(0.55 0.12 240);
+}
+
 .provider-icon-nvidia {
-  --provider-accent: oklch(0.54 0.13 185);
-  --provider-accent-2: oklch(0.62 0.11 250);
+  --provider-accent: oklch(0.72 0.18 140);
+  --provider-accent-2: oklch(0.35 0.04 145);
 }
 
-.provider-icon-moonshot,
-.provider-icon-minimax,
-.provider-icon-volcengine,
+.provider-icon-moonshot {
+  --provider-accent: oklch(0.55 0.16 280);
+  --provider-accent-2: oklch(0.7 0.12 250);
+}
+
+.provider-icon-kimi {
+  --provider-accent: oklch(0.62 0.18 25);
+  --provider-accent-2: oklch(0.78 0.14 55);
+}
+
+.provider-icon-minimax {
+  --provider-accent: oklch(0.6 0.16 330);
+  --provider-accent-2: oklch(0.7 0.12 300);
+}
+
+.provider-icon-volcengine {
+  --provider-accent: oklch(0.58 0.17 250);
+  --provider-accent-2: oklch(0.7 0.12 210);
+}
+
+.provider-icon-byteplus {
+  --provider-accent: oklch(0.62 0.18 35);
+  --provider-accent-2: oklch(0.5 0.14 20);
+}
+
 .provider-icon-zhipu {
-  --provider-accent: oklch(0.63 0.14 330);
-  --provider-accent-2: oklch(0.7 0.14 35);
+  --provider-accent: oklch(0.58 0.14 230);
+  --provider-accent-2: oklch(0.72 0.1 200);
 }
 
-.provider-icon-baidu,
-.provider-icon-xai,
-.provider-icon-siliconflow,
+.provider-icon-baidu {
+  --provider-accent: oklch(0.55 0.18 260);
+  --provider-accent-2: oklch(0.7 0.12 250);
+}
+
+.provider-icon-xai {
+  --provider-accent: oklch(0.85 0.02 250);
+  --provider-accent-2: oklch(0.2 0.01 250);
+}
+
+.provider-icon-siliconflow {
+  --provider-accent: oklch(0.62 0.16 200);
+  --provider-accent-2: oklch(0.55 0.14 160);
+}
+
 .provider-icon-stepfun {
-  --provider-accent: oklch(0.58 0.14 252);
-  --provider-accent-2: oklch(0.68 0.12 190);
+  --provider-accent: oklch(0.65 0.15 85);
+  --provider-accent-2: oklch(0.55 0.12 40);
 }
 
-.provider-icon-together,
-.provider-icon-runware,
-.provider-icon-fireworks,
-.provider-icon-cerebras,
+.provider-icon-together {
+  --provider-accent: oklch(0.55 0.18 280);
+  --provider-accent-2: oklch(0.7 0.14 320);
+}
+
+.provider-icon-runware {
+  --provider-accent: oklch(0.7 0.16 55);
+  --provider-accent-2: oklch(0.45 0.1 30);
+}
+
+.provider-icon-fireworks {
+  --provider-accent: oklch(0.68 0.19 25);
+  --provider-accent-2: oklch(0.55 0.16 350);
+}
+
+.provider-icon-cerebras {
+  --provider-accent: oklch(0.72 0.14 80);
+  --provider-accent-2: oklch(0.4 0.08 40);
+}
+
 .provider-icon-xiaomi {
-  --provider-accent: oklch(0.63 0.16 32);
-  --provider-accent-2: oklch(0.75 0.13 70);
+  --provider-accent: oklch(0.68 0.18 45);
+  --provider-accent-2: oklch(0.55 0.14 30);
+}
+
+.provider-icon-xiaomi-tokenplan {
+  --provider-accent: oklch(0.7 0.17 55);
+  --provider-accent-2: oklch(0.5 0.12 40);
+}
+
+.provider-icon-perplexity {
+  --provider-accent: oklch(0.45 0.08 220);
+  --provider-accent-2: oklch(0.7 0.1 200);
+}
+
+.provider-icon-replicate {
+  --provider-accent: oklch(0.55 0.02 250);
+  --provider-accent-2: oklch(0.8 0.02 250);
+}
+
+.provider-icon-fal {
+  --provider-accent: oklch(0.7 0.18 320);
+  --provider-accent-2: oklch(0.55 0.14 280);
+}
+
+.provider-icon-huggingface {
+  --provider-accent: oklch(0.75 0.16 85);
+  --provider-accent-2: oklch(0.55 0.12 50);
+}
+
+.provider-icon-cohere {
+  --provider-accent: oklch(0.68 0.16 35);
+  --provider-accent-2: oklch(0.45 0.1 20);
+}
+
+.provider-icon-nebius {
+  --provider-accent: oklch(0.55 0.14 250);
+  --provider-accent-2: oklch(0.7 0.1 220);
+}
+
+.provider-icon-chutes {
+  --provider-accent: oklch(0.62 0.16 145);
+  --provider-accent-2: oklch(0.5 0.12 180);
+}
+
+.provider-icon-meta {
+  --provider-accent: oklch(0.55 0.16 250);
+  --provider-accent-2: oklch(0.7 0.12 230);
 }
 
 .brand-mark {
@@ -585,9 +731,11 @@ code {
   gap: 6px;
   min-height: 34px;
   padding: 0 10px 0 12px;
+  position: relative;
 }
 
-.language-select select {
+.language-select-trigger {
+  appearance: none;
   background: transparent;
   border: 0;
   color: var(--ink);
@@ -597,7 +745,48 @@ code {
   max-width: 11rem;
   min-height: 32px;
   outline: none;
+  overflow: hidden;
   padding: 0 4px 0 0;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.language-menu {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  list-style: none;
+  margin: 0;
+  max-height: min(20rem, 70vh);
+  min-width: 13rem;
+  overflow: auto;
+  padding: 6px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 50;
+}
+
+.language-menu button {
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ink);
+  cursor: pointer;
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 10px;
+  text-align: start;
+  width: 100%;
+}
+
+.language-menu button:hover,
+.language-menu button.is-selected {
+  background: var(--surface-strong);
 }
 
 .sr-only {

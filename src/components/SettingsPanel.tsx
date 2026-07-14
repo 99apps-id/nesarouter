@@ -5,6 +5,7 @@ import { Image, Mic, Save, Search, SlidersHorizontal, Sparkles, Waves } from "lu
 import { BudgetSettings, ProviderConfig, RouterSettings } from "@/core/types";
 import { SaverLevel } from "@/core/tokenSaver";
 import { adminFetch } from "@/lib/adminFetch";
+import { useI18n } from "@/components/I18nProvider";
 
 const saverLevels: SaverLevel[] = ["off", "lite", "full", "ultra"];
 
@@ -17,6 +18,8 @@ export default function SettingsPanel({
   router: RouterSettings;
   providers: ProviderConfig[];
 }) {
+  const { t } = useI18n();
+  const s = t.settings;
   const [budgetDraft, setBudgetDraft] = useState(budget);
   const [routerDraft, setRouterDraft] = useState({
     ...router,
@@ -58,16 +61,13 @@ export default function SettingsPanel({
     <section className="panel compact">
       <div className="panel-heading">
         <div>
-          <p className="subtle">Public URL</p>
-          <h2>Domain</h2>
+          <p className="subtle">{s.publicUrlSubtle}</p>
+          <h2>{s.domain}</h2>
         </div>
       </div>
-      <p className="compact-copy">
-        Set this to the HTTPS URL you open in the browser (e.g. <code>https://nesa.example.com</code>).
-        OAuth and post-login redirects use it so the app returns to your domain instead of localhost.
-      </p>
+      <p className="compact-copy">{s.publicUrlBody}</p>
       <label>
-        Public base URL
+        {s.publicBaseUrl}
         <input
           suppressHydrationWarning
           type="url"
@@ -78,14 +78,14 @@ export default function SettingsPanel({
       </label>
       <div className="panel-heading" style={{ marginTop: "1.5rem" }}>
         <div>
-          <p className="subtle">Budget</p>
-          <h2>Limits</h2>
+          <p className="subtle">{s.budgetSubtle}</p>
+          <h2>{s.limits}</h2>
         </div>
         <SlidersHorizontal size={18} />
       </div>
       <div className="settings-grid">
         <label>
-          Daily budget
+          {s.dailyBudget}
           <span className="money-input">
             <span className="currency-prefix" aria-hidden="true">
               $
@@ -96,7 +96,7 @@ export default function SettingsPanel({
               min="0"
               step="0.1"
               inputMode="decimal"
-              aria-label="Daily budget in US dollars"
+              aria-label={s.dailyBudgetAria}
               value={budgetDraft.dailyBudgetUsd}
               onChange={(event) => setBudgetDraft({ ...budgetDraft, dailyBudgetUsd: Number(event.target.value) })}
             />
@@ -104,7 +104,7 @@ export default function SettingsPanel({
           </span>
         </label>
         <label>
-          Warning %
+          {s.warningPct}
           <input
             suppressHydrationWarning
             type="number"
@@ -115,7 +115,7 @@ export default function SettingsPanel({
           />
         </label>
         <label>
-          Critical %
+          {s.criticalPct}
           <input
             suppressHydrationWarning
             type="number"
@@ -126,7 +126,7 @@ export default function SettingsPanel({
           />
         </label>
         <label>
-          Mode
+          {s.mode}
           <select
             value={routerDraft.routingMode}
             onChange={(event) =>
@@ -136,15 +136,15 @@ export default function SettingsPanel({
               })
             }
           >
-            <option value="auto">Auto</option>
-            <option value="free_first">Free</option>
-            <option value="cheapest">Cheap</option>
-            <option value="best">Best</option>
-            <option value="manual">Manual</option>
+            <option value="auto">{s.modeAuto}</option>
+            <option value="free_first">{s.modeFree}</option>
+            <option value="cheapest">{s.modeCheap}</option>
+            <option value="best">{s.modeBest}</option>
+            <option value="manual">{s.modeManual}</option>
           </select>
         </label>
         <label className="settings-full">
-          Manual provider
+          {s.manualProvider}
           <select
             suppressHydrationWarning
             value={
@@ -158,12 +158,11 @@ export default function SettingsPanel({
               setRouterDraft({
                 ...routerDraft,
                 manualProviderId,
-                // Always switch to Manual when a provider is pinned (dropdown is never disabled).
                 routingMode: manualProviderId ? "manual" : routerDraft.routingMode
               });
             }}
           >
-            <option value="">Select provider…</option>
+            <option value="">{s.selectProvider}</option>
             {providers
               .filter((provider) => provider.status === "active")
               .map((provider) => (
@@ -175,43 +174,43 @@ export default function SettingsPanel({
         </label>
         {providers.every((provider) => provider.status !== "active") ? (
           <p className="subtle settings-full" style={{ margin: 0 }}>
-            No active providers — enable one under Providers first.
+            {s.noActiveProviders}
           </p>
         ) : null}
         {routerDraft.routingMode !== "manual" && !routerDraft.manualProviderId ? (
           <p className="subtle settings-full" style={{ margin: 0 }}>
-            Choosing a provider here sets Mode to Manual automatically. Then Save.
+            {s.choosingSetsManual}
           </p>
         ) : null}
         {routerDraft.routingMode === "manual" && !routerDraft.manualProviderId ? (
           <p className="subtle settings-full" style={{ margin: 0 }}>
-            Pick a provider above, then Save. Manual mode will not route until a provider is selected.
+            {s.pickProviderManual}
           </p>
         ) : null}
         {routerDraft.manualProviderId &&
         providers.find((provider) => provider.id === routerDraft.manualProviderId)?.status !== "active" ? (
           <p className="subtle settings-full" style={{ margin: 0 }}>
-            Selected provider is not active — activate it under Providers or choose another one.
+            {s.selectedNotActive}
           </p>
         ) : null}
         <label className="settings-full">
-          Provider strategy
+          {s.providerStrategy}
           <select
             value={routerDraft.providerStrategy ?? "priority"}
             onChange={(event) => setRouterDraft({ ...routerDraft, providerStrategy: event.target.value as RouterSettings["providerStrategy"] })}
           >
-            <option value="priority">Priority</option>
-            <option value="round_robin">Round robin</option>
+            <option value="priority">{s.priority}</option>
+            <option value="round_robin">{s.roundRobin}</option>
           </select>
         </label>
         <label>
-          Fallback
+          {s.fallback}
           <select
             value={routerDraft.fallbackMode ?? "auto"}
             onChange={(event) => setRouterDraft({ ...routerDraft, fallbackMode: event.target.value as RouterSettings["fallbackMode"] })}
           >
-            <option value="auto">Auto</option>
-            <option value="off">Off</option>
+            <option value="auto">{t.common.auto}</option>
+            <option value="off">{t.common.off}</option>
           </select>
         </label>
         <label className="check-row">
@@ -221,36 +220,36 @@ export default function SettingsPanel({
             checked={routerDraft.evaluatorEnabled ?? true}
             onChange={(event) => setRouterDraft({ ...routerDraft, evaluatorEnabled: event.target.checked })}
           />
-          Evaluator
+          {s.evaluator}
         </label>
         <label>
-          On warning
+          {s.onWarning}
           <select
             value={budgetDraft.onWarning}
             onChange={(event) => setBudgetDraft({ ...budgetDraft, onWarning: event.target.value as BudgetSettings["onWarning"] })}
           >
-            <option value="prefer_cheaper">Prefer cheaper</option>
-            <option value="notify_only">Notify only</option>
+            <option value="prefer_cheaper">{s.preferCheaper}</option>
+            <option value="notify_only">{s.notifyOnly}</option>
           </select>
         </label>
         <label>
-          On critical
+          {s.onCritical}
           <select
             value={budgetDraft.onCritical}
             onChange={(event) => setBudgetDraft({ ...budgetDraft, onCritical: event.target.value as BudgetSettings["onCritical"] })}
           >
-            <option value="free_tier_only">Free & free tier</option>
-            <option value="prefer_cheaper">Prefer cheaper</option>
+            <option value="free_tier_only">{s.freeTierOnly}</option>
+            <option value="prefer_cheaper">{s.preferCheaper}</option>
           </select>
         </label>
         <label>
-          On exceeded
+          {s.onExceeded}
           <select
             value={budgetDraft.onExceeded}
             onChange={(event) => setBudgetDraft({ ...budgetDraft, onExceeded: event.target.value as BudgetSettings["onExceeded"] })}
           >
-            <option value="block_paid">Block paid</option>
-            <option value="allow_with_warning">Allow</option>
+            <option value="block_paid">{s.blockPaid}</option>
+            <option value="allow_with_warning">{s.allow}</option>
           </select>
         </label>
       </div>
@@ -261,7 +260,7 @@ export default function SettingsPanel({
           checked={routerDraft.cacheEnabled}
           onChange={(event) => setRouterDraft({ ...routerDraft, cacheEnabled: event.target.checked })}
         />
-        Cache
+        {s.cache}
       </label>
       <label className="check-row">
         <input
@@ -270,7 +269,7 @@ export default function SettingsPanel({
           checked={routerDraft.preferFreeTier}
           onChange={(event) => setRouterDraft({ ...routerDraft, preferFreeTier: event.target.checked })}
         />
-        Free tier
+        {s.freeTier}
       </label>
       <label className="check-row">
         <input
@@ -279,7 +278,7 @@ export default function SettingsPanel({
           checked={routerDraft.rtkEnabled ?? false}
           onChange={(event) => setRouterDraft({ ...routerDraft, rtkEnabled: event.target.checked })}
         />
-        RTK (compress tool_result — git/grep/ls/logs)
+        {s.rtk}
       </label>
       <label className="check-row">
         <input
@@ -288,10 +287,10 @@ export default function SettingsPanel({
           checked={routerDraft.headroomEnabled ?? false}
           onChange={(event) => setRouterDraft({ ...routerDraft, headroomEnabled: event.target.checked })}
         />
-        Headroom compress (external proxy)
+        {s.headroomCompress}
       </label>
       <label>
-        Headroom URL
+        {s.headroomUrl}
         <input
           value={routerDraft.headroomUrl ?? "http://localhost:8787"}
           onChange={(event) => setRouterDraft({ ...routerDraft, headroomUrl: event.target.value })}
@@ -305,7 +304,7 @@ export default function SettingsPanel({
           checked={routerDraft.headroomCompressUserMessages ?? false}
           onChange={(event) => setRouterDraft({ ...routerDraft, headroomCompressUserMessages: event.target.checked })}
         />
-        Also compress user messages
+        {s.compressUserMessages}
       </label>
       <label className="check-row">
         <input
@@ -314,18 +313,18 @@ export default function SettingsPanel({
           checked={routerDraft.pxpipeEnabled ?? false}
           onChange={(event) => setRouterDraft({ ...routerDraft, pxpipeEnabled: event.target.checked })}
         />
-        pxpipe-lite (in-process tool compress)
+        {s.pxpipe}
       </label>
       <div className="panel-heading" style={{ marginTop: "1.5rem" }}>
         <div>
-          <p className="subtle">Upstream load</p>
-          <h2>Concurrency queue</h2>
+          <p className="subtle">{s.upstreamLoad}</p>
+          <h2>{s.concurrencyQueue}</h2>
         </div>
       </div>
-      <p className="compact-copy">Limit parallel upstream calls to protect rate limits. Set a value to <code>0</code> for unlimited (default).</p>
+      <p className="compact-copy">{s.concurrencyBody}</p>
       <div className="form-grid">
         <label>
-          Max concurrent (global)
+          {s.maxConcurrentGlobal}
           <input
             type="number"
             min={0}
@@ -336,7 +335,7 @@ export default function SettingsPanel({
           />
         </label>
         <label>
-          Max concurrent (per provider)
+          {s.maxConcurrentPerProvider}
           <input
             type="number"
             min={0}
@@ -347,7 +346,7 @@ export default function SettingsPanel({
           />
         </label>
         <label>
-          Queue wait (ms)
+          {s.queueWaitMs}
           <input
             type="number"
             min={0}
@@ -358,18 +357,16 @@ export default function SettingsPanel({
       </div>
       <div className="panel-heading" style={{ marginTop: "1.5rem" }}>
         <div>
-          <p className="subtle">Media APIs</p>
-          <h2>Media routing</h2>
+          <p className="subtle">{s.mediaApis}</p>
+          <h2>{s.mediaRouting}</h2>
         </div>
         <Sparkles size={18} />
       </div>
-      <p className="compact-copy">
-        Pin images, speech, transcriptions, and embeddings to a specific OpenAI-compatible provider, or leave on Auto to use the main routing engine.
-        Web search uses the built-in DuckDuckGo endpoint (no provider key).
-      </p>
+      <p className="compact-copy">{s.mediaBody}</p>
       <div className="settings-grid">
         <MediaProviderSelect
-          label="Images"
+          label={s.images}
+          autoLabel={s.autoRouting}
           icon={<Image size={15} />}
           value={routerDraft.mediaRouting?.imagesProviderId ?? ""}
           providers={providers}
@@ -381,7 +378,8 @@ export default function SettingsPanel({
           }
         />
         <MediaProviderSelect
-          label="Speech (TTS)"
+          label={s.speech}
+          autoLabel={s.autoRouting}
           icon={<Mic size={15} />}
           value={routerDraft.mediaRouting?.speechProviderId ?? ""}
           providers={providers}
@@ -393,7 +391,8 @@ export default function SettingsPanel({
           }
         />
         <MediaProviderSelect
-          label="Transcriptions (STT)"
+          label={s.transcriptions}
+          autoLabel={s.autoRouting}
           icon={<Waves size={15} />}
           value={routerDraft.mediaRouting?.transcriptionsProviderId ?? ""}
           providers={providers}
@@ -405,7 +404,8 @@ export default function SettingsPanel({
           }
         />
         <MediaProviderSelect
-          label="Embeddings"
+          label={s.embeddings}
+          autoLabel={s.autoRouting}
           icon={<Sparkles size={15} />}
           value={routerDraft.mediaRouting?.embeddingsProviderId ?? ""}
           providers={providers}
@@ -417,12 +417,12 @@ export default function SettingsPanel({
           }
         />
         <label>
-          <span className="label-with-icon"><Search size={15} /> Web search</span>
-          <input readOnly value="Built-in (DuckDuckGo)" />
+          <span className="label-with-icon"><Search size={15} /> {s.webSearch}</span>
+          <input readOnly value={s.webSearchBuiltin} />
         </label>
       </div>
       <label>
-        Caveman
+        {s.caveman}
         <select
           value={routerDraft.tokenSaver?.caveman ?? "off"}
           onChange={(event) => setRouterDraft({ ...routerDraft, tokenSaver: { ...routerDraft.tokenSaver!, caveman: event.target.value as SaverLevel } })}
@@ -431,7 +431,7 @@ export default function SettingsPanel({
         </select>
       </label>
       <label>
-        Ponytail
+        {s.ponytail}
         <select
           value={routerDraft.tokenSaver?.ponytail ?? "off"}
           onChange={(event) => setRouterDraft({ ...routerDraft, tokenSaver: { ...routerDraft.tokenSaver!, ponytail: event.target.value as SaverLevel } })}
@@ -441,7 +441,7 @@ export default function SettingsPanel({
       </label>
       <button className="button primary" type="button" onClick={save}>
         <Save size={16} />
-        {saved ? "Saved" : "Save"}
+        {saved ? t.common.saved : t.common.save}
       </button>
     </section>
   );
@@ -449,12 +449,14 @@ export default function SettingsPanel({
 
 function MediaProviderSelect({
   label,
+  autoLabel,
   icon,
   value,
   providers,
   onChange
 }: {
   label: string;
+  autoLabel: string;
   icon: React.ReactNode;
   value: string;
   providers: ProviderConfig[];
@@ -465,7 +467,7 @@ function MediaProviderSelect({
     <label>
       <span className="label-with-icon">{icon} {label}</span>
       <select value={value} onChange={(event) => onChange(event.target.value)}>
-        <option value="">Auto (routing engine)</option>
+        <option value="">{autoLabel}</option>
         {openAiProviders.map((provider) => (
           <option value={provider.id} key={provider.id}>
             {provider.name} ({provider.status})

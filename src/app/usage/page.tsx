@@ -22,7 +22,7 @@ export default async function UsagePage() {
   const stats = usageStats(store.usage);
 
   return (
-    <AppShell active="usage" eyebrow="Usage" title="Usage">
+    <AppShell active="usage">
       <UsageSummaryCards {...summary} />
       <UsageLivePanel />
       <UsageChart />
