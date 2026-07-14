@@ -1,4 +1,8 @@
-import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
+import { applyCliToolConfigLocal, deepMergeJson } from "@/lib/cliLocalApply";
 import { buildCliInstallScripts, buildCliToolConfig, resolveCliModel } from "@/lib/cliToolConfig";
 import { defaultStore } from "@/lib/defaults";
 
@@ -14,11 +18,80 @@ describe("cli tool config", () => {
     expect(resolveCliModel(store, "alias:fast").model).toBe("fast");
   });
 
-  it("builds install scripts that write config files", () => {
+  it("uses ANTHROPIC_AUTH_TOKEN for Claude Code gateway override", () => {
+    const config = buildCliToolConfig("claude-code", "http://localhost:20129", "nesa_test", "auto");
+    expect(config.env.ANTHROPIC_AUTH_TOKEN).toBe("nesa_test");
+    expect(config.env.ANTHROPIC_BASE_URL).toBe("http://localhost:20129/v1");
+    expect(config.env.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(config.files[0]?.content).toContain("ANTHROPIC_AUTH_TOKEN");
+  });
+
+  it("builds install scripts that merge JSON instead of blind overwrite", () => {
     const config = buildCliToolConfig("claude-code", "http://localhost:20129", "nesa_test", "auto");
     const scripts = buildCliInstallScripts(config);
     expect(scripts.bash).toContain("$HOME/.claude/settings.json");
+    expect(scripts.bash).toContain("merge");
     expect(scripts.powershell).toContain("USERPROFILE");
+    expect(scripts.powershell).toContain("NESA_PATCH");
     expect(scripts.bash).toContain("nesa_test");
+  });
+});
+
+describe("cli local apply merge", () => {
+  const tmpDir = path.join(os.tmpdir(), `nesa-cli-apply-${process.pid}`);
+  const settingsPath = path.join(tmpDir, "settings.json");
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("deep-merges env without wiping unrelated settings", () => {
+    expect(deepMergeJson({ keep: true, env: { OTHER: "1" } }, { env: { ANTHROPIC_BASE_URL: "x" } })).toEqual({
+      keep: true,
+      env: { OTHER: "1", ANTHROPIC_BASE_URL: "x" }
+    });
+  });
+
+  it("applies Claude override into an existing settings file", () => {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify({ permissions: { allow: ["Bash"] }, env: { OTHER: "keep" } }, null, 2)
+    );
+
+    const config = buildCliToolConfig("claude-code", "http://127.0.0.1:20129", "nesa_local", "auto");
+    config.files[0]!.path = settingsPath;
+
+    const result = applyCliToolConfigLocal(config);
+    expect(result.skipped).toBe(false);
+
+    const saved = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    expect(saved.permissions).toEqual({ allow: ["Bash"] });
+    expect(saved.env.OTHER).toBe("keep");
+    expect(saved.env.ANTHROPIC_AUTH_TOKEN).toBe("nesa_local");
+    expect(saved.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:20129/v1");
+  });
+
+  it("resets Claude NesaRouter env keys while keeping other settings", async () => {
+    const { resetCliToolConfigLocal } = await import("@/lib/cliLocalApply");
+    fs.mkdirSync(tmpDir, { recursive: true });
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify(
+        {
+          permissions: { allow: ["Bash"] },
+          env: { OTHER: "keep", ANTHROPIC_BASE_URL: "http://127.0.0.1:20129/v1", ANTHROPIC_AUTH_TOKEN: "x" }
+        },
+        null,
+        2
+      )
+    );
+    const result = resetCliToolConfigLocal("claude-code", { settingsPath });
+    expect(result.ok).toBe(true);
+    const saved = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    expect(saved.permissions).toEqual({ allow: ["Bash"] });
+    expect(saved.env.OTHER).toBe("keep");
+    expect(saved.env.ANTHROPIC_BASE_URL).toBeUndefined();
+    expect(saved.env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
   });
 });
