@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import I18nProvider from "@/components/I18nProvider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -19,13 +20,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               try {
                 var theme = localStorage.getItem('nesa-theme') || 'dark';
                 document.documentElement.dataset.theme = theme;
+                var locale = localStorage.getItem('nesa-locale') || 'en';
+                document.documentElement.lang = locale;
+                if (locale === 'ar') document.documentElement.dir = 'rtl';
               } catch (_) {
                 document.documentElement.dataset.theme = 'dark';
               }
             `
           }}
         />
-        {children}
+        <I18nProvider>{children}</I18nProvider>
       </body>
     </html>
   );

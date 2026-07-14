@@ -22,11 +22,11 @@ function baseUrlFrom(request: Request, store: Awaited<ReturnType<typeof readStor
 async function buildSetup(
   request: Request,
   tool: string,
-  options: { modelTarget: string; createKey: boolean; savePreference: boolean }
+  options: { modelTarget: string; createKey: boolean; savePreference: boolean; baseUrl?: string }
 ) {
   const store = await readStore();
   const toolId = normalizeCliToolId(tool);
-  const baseUrl = baseUrlFrom(request, store);
+  const baseUrl = (options.baseUrl?.trim() || baseUrlFrom(request, store)).replace(/\/$/, "");
   const resolved = resolveCliModel(store, options.modelTarget);
   let apiKey = "";
   let keyMeta: { id: string; preview: string } | undefined;
@@ -36,7 +36,7 @@ async function buildSetup(
     await addLocalApiKey(apiKey);
     keyMeta = { id: keyId(apiKey), preview: keyPreview(apiKey) };
   } else {
-    throw new Error("Buat client key baru dari wizard CLI (key lama tidak bisa ditampilkan ulang).");
+    throw new Error("Create a new client key from the CLI wizard (existing keys cannot be revealed again).");
   }
 
   const config = buildCliToolConfig(toolId, baseUrl, apiKey, resolved.model);
@@ -94,7 +94,7 @@ export async function GET(request: Request, context: { params: Promise<{ tool: s
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Gagal membuat preview config." },
+      { error: error instanceof Error ? error.message : "Failed to build CLI config preview." },
       { status: 400 }
     );
   }
@@ -108,18 +108,20 @@ export async function POST(request: Request, context: { params: Promise<{ tool: 
     modelTarget?: string;
     createKey?: boolean;
     savePreference?: boolean;
+    baseUrl?: string;
   };
 
   try {
     const payload = await buildSetup(request, tool, {
       modelTarget: body.modelTarget ?? "auto",
       createKey: body.createKey !== false,
-      savePreference: body.savePreference !== false
+      savePreference: body.savePreference !== false,
+      baseUrl: body.baseUrl
     });
     return NextResponse.json(payload);
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Gagal generate config CLI." },
+      { error: error instanceof Error ? error.message : "Failed to generate CLI config." },
       { status: 400 }
     );
   }

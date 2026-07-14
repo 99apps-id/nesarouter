@@ -575,17 +575,41 @@ code {
   justify-content: flex-end;
 }
 
-.theme-toggle {
+.language-select {
   align-items: center;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--ink);
-  cursor: pointer;
   display: inline-flex;
-  gap: 8px;
+  gap: 6px;
   min-height: 34px;
-  padding: 0 12px;
+  padding: 0 10px 0 12px;
+}
+
+.language-select select {
+  background: transparent;
+  border: 0;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  max-width: 11rem;
+  min-height: 32px;
+  outline: none;
+  padding: 0 4px 0 0;
+}
+
+.sr-only {
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 
 .theme-toggle:hover {
@@ -763,6 +787,10 @@ h2 {
 
 .settings-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-grid > .settings-full {
+  grid-column: 1 / -1;
 }
 
 label {
@@ -1340,19 +1368,30 @@ button:focus-visible {
 .money-input {
   align-items: center;
   display: flex;
-  position: relative;
+  gap: 8px;
+  width: 100%;
 }
 
-.money-input > span {
+.money-input .currency-prefix,
+.money-input .currency-suffix {
   color: var(--muted);
+  flex: 0 0 auto;
+  font-size: 12px;
   font-weight: 800;
-  left: 12px;
-  pointer-events: none;
-  position: absolute;
+  letter-spacing: 0.02em;
+}
+
+.money-input .currency-prefix {
+  font-size: 15px;
+  line-height: 1;
+  min-width: 0.75rem;
+  text-align: center;
 }
 
 .money-input input {
-  padding-left: 28px;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
 }
 
 .provider-usage-row {
@@ -2101,6 +2140,11 @@ button:focus-visible {
   background: var(--surface-soft);
 }
 
+.combo-item.editing {
+  border-color: var(--primary);
+}
+}
+
 .combo-item > div:first-child {
   grid-area: meta;
   display: flex;
@@ -2113,9 +2157,17 @@ button:focus-visible {
   text-transform: capitalize;
 }
 
-.combo-item .button {
+.combo-item .combo-actions {
   grid-area: action;
   align-self: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.combo-item .combo-actions .button {
+  margin-top: 0;
 }
 
 .combo-chain {

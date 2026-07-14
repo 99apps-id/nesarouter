@@ -1,4 +1,4 @@
-import { Activity, Boxes, FlaskConical, Gauge, KeyRound, Network, ShieldCheck, SlidersHorizontal, Terminal, Waypoints } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { adminAuthEnabled, adminPasswordMustChange, resolveVerifiedAdminSessionToken } from "@/core/adminAuth";
@@ -6,22 +6,12 @@ import { getBudgetStatus } from "@/core/budget";
 import { publicOrigin } from "@/core/publicUrl";
 import { readStore } from "@/lib/store";
 import { readAppVersion } from "@/lib/appVersion";
+import AppNav from "@/components/AppNav";
+import EndpointBox from "@/components/EndpointBox";
+import LanguageSelect from "@/components/LanguageSelect";
 import ThemeToggle from "@/components/ThemeToggle";
 import UpdateBanner from "@/components/UpdateBanner";
 import SessionKeeper from "@/components/SessionKeeper";
-
-const navItems = [
-  { href: "/", label: "Overview", icon: Gauge, id: "overview" as const },
-  { href: "/providers", label: "Providers", icon: KeyRound, id: "providers" as const },
-  { href: "/combos", label: "Combos", icon: Network, id: "combos" as const },
-  { href: "/keys", label: "Keys", icon: ShieldCheck, id: "keys" as const },
-  { href: "/usage", label: "Usage", icon: Activity, id: "usage" as const },
-  { href: "/routing", label: "Routing", icon: SlidersHorizontal, id: "routing" as const },
-  { href: "/mcp", label: "MCP", icon: Boxes, id: "mcp" as const },
-  { href: "/tunnel", label: "Tunnel", icon: Waypoints, id: "tunnel" as const },
-  { href: "/headroom", label: "Headroom", icon: FlaskConical, id: "headroom" as const },
-  { href: "/cli", label: "CLI", icon: Terminal, id: "cli" as const }
-];
 
 export default async function AppShell({
   active,
@@ -54,7 +44,6 @@ export default async function AppShell({
     redirect("/routing");
   }
 
-  const visibleNav = mustChangePassword ? navItems.filter((item) => item.id === "routing") : navItems;
   const appVersion = readAppVersion();
   const endpointBase = `${publicOrigin(undefined, store.router.publicBaseUrl)}/v1`;
 
@@ -71,21 +60,8 @@ export default async function AppShell({
             <span>Smart AI gateway · v{appVersion}</span>
           </div>
         </div>
-        <nav className="nav-list" aria-label="Main navigation">
-          {visibleNav.map((item) => {
-            const Icon = item.icon;
-            return (
-              <a className={`nav-item ${active === item.id ? "active" : ""}`} href={item.href} key={item.href}>
-                <Icon size={17} /> {item.label}
-              </a>
-            );
-          })}
-        </nav>
-        <div className="endpoint-box">
-          <span>Endpoint</span>
-          <code>{endpointBase}</code>
-          <small>Manage client keys in Keys.</small>
-        </div>
+        <AppNav active={active} routingOnly={mustChangePassword} />
+        <EndpointBox endpointBase={endpointBase} />
       </aside>
 
       <section className="workspace">
@@ -95,6 +71,7 @@ export default async function AppShell({
             <h1>{title}</h1>
           </div>
           <div className="topbar-actions">
+            <LanguageSelect />
             <ThemeToggle />
             <div className={`budget-pill ${budgetStatus}`}>
               <ShieldCheck size={16} />

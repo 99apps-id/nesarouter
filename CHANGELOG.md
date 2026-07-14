@@ -2,6 +2,19 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.19 - 2026-07-14
+
+### Added
+
+- Dashboard **i18n**: 20 locales (English default) including Indonesian, Malay, Chinese (Simplified/Traditional), Japanese, Korean, Arabic (RTL), Russian, Spanish, French, German, Portuguese, Hindi, Thai, Vietnamese, Turkish, Italian, Dutch, and Polish. Language picker in the top bar.
+- CLI **Apply / Patch** on this machine (merge into existing settings, like 9router), with status, Reset, existing client-key reuse, and optional endpoint override.
+- Combos can be **edited** in place (stable id); Manual provider and Provider strategy use full-width rows; daily budget shows `$` + `USD`.
+
+### Fixes
+
+- Claude Code gateway override uses `ANTHROPIC_AUTH_TOKEN` + merge into `~/.claude/settings.json` instead of wiping the file / wrong auth var.
+- CLI menu default copy is English (no hardcoded Indonesian); API helper errors for CLI tools are English.
+
 ## 0.1.18 - 2026-07-14
 
 ### Fixes

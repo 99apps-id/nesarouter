@@ -82,17 +82,22 @@ export default function SettingsPanel({
       </div>
       <div className="settings-grid">
         <label>
-          Daily budget (USD)
+          Daily budget
           <span className="money-input">
-            <span aria-hidden="true">$</span>
+            <span className="currency-prefix" aria-hidden="true">
+              $
+            </span>
             <input
               suppressHydrationWarning
               type="number"
               min="0"
               step="0.1"
+              inputMode="decimal"
+              aria-label="Daily budget in US dollars"
               value={budgetDraft.dailyBudgetUsd}
               onChange={(event) => setBudgetDraft({ ...budgetDraft, dailyBudgetUsd: Number(event.target.value) })}
             />
+            <span className="currency-suffix">USD</span>
           </span>
         </label>
         <label>
@@ -135,57 +140,58 @@ export default function SettingsPanel({
             <option value="manual">Manual</option>
           </select>
         </label>
-        <label>
+        <label className="settings-full">
           Manual provider
           <select
-            value={routerDraft.manualProviderId ?? ""}
+            suppressHydrationWarning
+            value={
+              routerDraft.manualProviderId &&
+              providers.some((provider) => provider.id === routerDraft.manualProviderId && provider.status === "active")
+                ? routerDraft.manualProviderId
+                : ""
+            }
             onChange={(event) => {
               const manualProviderId = event.target.value || undefined;
               setRouterDraft({
                 ...routerDraft,
                 manualProviderId,
-                // Picking a provider implies Manual mode (select used to stay disabled otherwise).
+                // Always switch to Manual when a provider is pinned (dropdown is never disabled).
                 routingMode: manualProviderId ? "manual" : routerDraft.routingMode
               });
             }}
           >
-            <option value="">Select provider</option>
-            {providers.filter((provider) => provider.status === "active").length > 0 ? (
-              <optgroup label="Active">
-                {providers
-                  .filter((provider) => provider.status === "active")
-                  .map((provider) => (
-                    <option value={provider.id} key={`active-${provider.id}`}>
-                      {provider.name}
-                    </option>
-                  ))}
-              </optgroup>
-            ) : null}
-            {providers.filter((provider) => provider.status !== "active").length > 0 ? (
-              <optgroup label="Inactive (activate under Providers first)">
-                {providers
-                  .filter((provider) => provider.status !== "active")
-                  .map((provider) => (
-                    <option value={provider.id} key={`inactive-${provider.id}`}>
-                      {provider.name} ({provider.status})
-                    </option>
-                  ))}
-              </optgroup>
-            ) : null}
+            <option value="">Select provider…</option>
+            {providers
+              .filter((provider) => provider.status === "active")
+              .map((provider) => (
+                <option value={provider.id} key={provider.id}>
+                  {provider.name}
+                </option>
+              ))}
           </select>
         </label>
+        {providers.every((provider) => provider.status !== "active") ? (
+          <p className="subtle settings-full" style={{ margin: 0 }}>
+            No active providers — enable one under Providers first.
+          </p>
+        ) : null}
+        {routerDraft.routingMode !== "manual" && !routerDraft.manualProviderId ? (
+          <p className="subtle settings-full" style={{ margin: 0 }}>
+            Choosing a provider here sets Mode to Manual automatically. Then Save.
+          </p>
+        ) : null}
         {routerDraft.routingMode === "manual" && !routerDraft.manualProviderId ? (
-          <p className="subtle" style={{ gridColumn: "1 / -1", margin: 0 }}>
-            Pick an active provider above, then Save. Manual mode will not route until a provider is selected.
+          <p className="subtle settings-full" style={{ margin: 0 }}>
+            Pick a provider above, then Save. Manual mode will not route until a provider is selected.
           </p>
         ) : null}
         {routerDraft.manualProviderId &&
         providers.find((provider) => provider.id === routerDraft.manualProviderId)?.status !== "active" ? (
-          <p className="subtle" style={{ gridColumn: "1 / -1", margin: 0 }}>
+          <p className="subtle settings-full" style={{ margin: 0 }}>
             Selected provider is not active — activate it under Providers or choose another one.
           </p>
         ) : null}
-        <label>
+        <label className="settings-full">
           Provider strategy
           <select
             value={routerDraft.providerStrategy ?? "priority"}

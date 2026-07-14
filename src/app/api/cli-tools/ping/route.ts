@@ -18,7 +18,7 @@ export async function POST(request: Request) {
 
   const store = await readStore();
   if (!authorizeRequest(store, new Request(request.url, { headers: { authorization: `Bearer ${token}` } }))) {
-    return NextResponse.json({ error: "Client key tidak valid." }, { status: 401 });
+    return NextResponse.json({ error: "Invalid client key." }, { status: 401 });
   }
 
   const origin = new URL(request.url).origin;
