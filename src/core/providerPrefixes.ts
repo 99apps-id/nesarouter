@@ -7,6 +7,7 @@ import { ProviderConfig } from "@/core/types";
 export const PROVIDER_PREFIXES: Record<string, string> = {
   // OAuth / subscription
   cx: "oauth-chatgpt",
+  codex: "oauth-chatgpt",
   cc: "oauth-claude",
   claude: "oauth-claude",
   gemini: "oauth-gemini-cli",

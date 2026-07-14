@@ -2,6 +2,14 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.21 - 2026-07-14
+
+### Added
+
+- **9router alias import**: paste 9router `/api/models/alias` JSON on Aliases (or `POST /api/aliases/import`); `codex/` prefix maps to Codex OAuth.
+- **Upstream concurrency queue**: optional global / per-provider limits and wait timeout in Routing (default `0` = unlimited); queue timeout returns HTTP 503 `queue_timeout`.
+- **Ops monitoring**: `/api/health` adds `ready` + `checks.db`; Prometheus scrape at `/api/metrics` (optional `NESA_METRICS_TOKEN`).
+
 ## 0.1.20 - 2026-07-14
 
 ### Fixes

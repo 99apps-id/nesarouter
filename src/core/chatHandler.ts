@@ -14,6 +14,8 @@ import { ensureFreshAccessToken } from "@/core/providerOAuthFlow";
 import { isOAuthAccountFatalError } from "@/core/oauthAccountHealth";
 import { clearOAuthAccountCooldown, markOAuthAccountCooldown, pickActiveOAuthAccounts, providerForOAuthAccount, rememberOAuthAccountUse } from "@/core/oauthAccounts";
 import { clearKeyCooldown, markKeyCooldown, pickActiveKeys, rememberKeyUse } from "@/core/providerKeys";
+import { acquireGate, GateTicket, QueueTimeoutError } from "@/core/requestGate";
+import { recordCacheHit, recordError, recordQueueTimeout, recordRequest } from "@/core/runtimeMetrics";
 import { appendUsage, clearProviderCooldown, markProviderFailure, markOAuthAccountConnection, readStore, saveCacheEntry } from "@/lib/store";
 import { Combo, NesaStore, ProviderConfig, RouteDecision, UsageLog } from "@/core/types";
 
@@ -48,6 +50,22 @@ function quotaCooldownExpired(provider: ProviderConfig): boolean {
   return /quota|billing/i.test(provider.lastError ?? "");
 }
 
+function gateLimits(store: NesaStore) {
+  return {
+    maxGlobal: store.router.maxConcurrentUpstream ?? 0,
+    maxPerProvider: store.router.maxConcurrentPerProvider ?? 0,
+    waitMs: store.router.queueWaitMs ?? 30_000
+  };
+}
+
+function queueTimeoutResponse(error: QueueTimeoutError) {
+  recordQueueTimeout();
+  return NextResponse.json(
+    { error: { message: error.message, code: "queue_timeout" } },
+    { status: 503, headers: { "Retry-After": "5" } }
+  );
+}
+
 async function revalidateQuotaCooldown(provider: ProviderConfig): Promise<boolean> {
   try {
     await testProviderConnection(provider);
@@ -77,6 +95,8 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
   if (!authorizeRequest(store, request)) {
     return { response: NextResponse.json({ error: { message: "Invalid NesaRouter API key." } }, { status: 401 }) };
   }
+
+  recordRequest();
 
   const combo = findCombo(store, resolveModelAlias(store.aliases, typeof body?.model === "string" ? body.model : ""));
 
@@ -119,6 +139,7 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
         status: "success"
       };
       await appendUsage(log);
+      recordCacheHit();
       return {
         response: NextResponse.json(cached.response, {
           headers: {
@@ -135,6 +156,7 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
   }
 
   const response = await runFallbackLoop(store, effectiveBody, key, combo);
+  if (response.status >= 400) recordError();
   if (headroomApplied.applied || rtkApplied.savedChars > 0) {
     const headers = new Headers(response.headers);
     if (rtkApplied.savedChars > 0) headers.set("x-nesa-rtk-saved", String(rtkApplied.savedChars));
@@ -205,6 +227,13 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
           continue;
         }
         const oauthProvider = { ...providerForOAuthAccount(decision.provider, account), oauthAccessToken: fresh };
+        let ticket: GateTicket | undefined;
+        try {
+          ticket = await acquireGate(decision.provider.id, gateLimits(store));
+        } catch (error) {
+          if (error instanceof QueueTimeoutError) return queueTimeoutResponse(error);
+          throw error;
+        }
         try {
           const upstream = await callProvider(oauthProvider, body);
           rememberOAuthAccountUse(decision.provider.id, account.index);
@@ -214,10 +243,15 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
           providerFailed = false;
 
           if (upstream instanceof ReadableStream) {
-            return finalizeStream(store, decision, upstream, key, body);
+            return finalizeStream(store, decision, upstream, key, body, ticket);
           }
-          return finalizeJson(store, decision, upstream, key, body);
+          try {
+            return await finalizeJson(store, decision, upstream, key, body);
+          } finally {
+            ticket.release();
+          }
         } catch (error) {
+          ticket.release();
           if (error instanceof UpstreamProviderError) {
             const keyCooldown = keyFailureCooldown(error);
             if (isOAuthAccountFatalError(error)) {
@@ -247,6 +281,13 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
       }
 
       for (const picked of keys) {
+        let ticket: GateTicket | undefined;
+        try {
+          ticket = await acquireGate(decision.provider.id, gateLimits(store));
+        } catch (error) {
+          if (error instanceof QueueTimeoutError) return queueTimeoutResponse(error);
+          throw error;
+        }
         try {
           const upstream = await callProvider(decision.provider, body, picked.key);
           rememberKeyUse(decision.provider.id, picked.index);
@@ -255,11 +296,16 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
           providerFailed = false;
 
           if (upstream instanceof ReadableStream) {
-            return finalizeStream(store, decision, upstream, key, body);
+            return finalizeStream(store, decision, upstream, key, body, ticket);
           }
 
-          return finalizeJson(store, decision, upstream, key, body);
+          try {
+            return await finalizeJson(store, decision, upstream, key, body);
+          } finally {
+            ticket.release();
+          }
         } catch (error) {
+          ticket.release();
           if (error instanceof UpstreamProviderError) {
             const keyCooldown = keyFailureCooldown(error);
             if (keyCooldown) markKeyCooldown(decision.provider.id, picked.index, keyCooldown);
@@ -360,7 +406,14 @@ async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream:
   });
 }
 
-function finalizeStream(store: NesaStore, decision: RouteDecision, upstream: ReadableStream<Uint8Array>, key: string, body: any) {
+function finalizeStream(
+  store: NesaStore,
+  decision: RouteDecision,
+  upstream: ReadableStream<Uint8Array>,
+  key: string,
+  body: any,
+  ticket?: GateTicket
+) {
   let capturedUsage: OpenAiUsage | null = null;
   const tracked = trackOpenAiStreamUsage(upstream, (usage) => {
     capturedUsage = usage;
@@ -386,6 +439,7 @@ function finalizeStream(store: NesaStore, decision: RouteDecision, upstream: Rea
   };
 
   const finalizeLog = (streamEnd: StreamEndState) => {
+    ticket?.release();
     const inputTokens = capturedUsage?.prompt_tokens ?? baseLog.inputTokens;
     const outputTokens = capturedUsage?.completion_tokens ?? baseLog.outputTokens;
     const totalCostUsd =
@@ -402,6 +456,7 @@ function finalizeStream(store: NesaStore, decision: RouteDecision, upstream: Rea
       : streamEnd.status === "cancelled"
         ? "Client cancelled stream."
         : undefined;
+    if (streamEnd.status !== "success") recordError();
     appendUsage({
       ...baseLog,
       inputTokens,

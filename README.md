@@ -179,12 +179,16 @@ All `/v1` endpoints require a NesaRouter client key created in **Keys**. The das
 | Provider id | `oauth-claude/claude-sonnet-4` | Explicit provider + model |
 | Alias / combo | `fast`, `my-chain` | Custom alias or combo name |
 
-Common prefixes: `cx`/`chatgpt`, `cc`/`claude`, `gemini`/`gcli`, `copilot`, `kiro`, `cursor`, `oc`/`opencode`, `or`/`openrouter`, `ollama`, `ds`/`deepseek`.
+Common prefixes: `cx`/`codex`, `cc`/`claude`, `gemini`/`gcli`, `copilot`, `kiro`, `cursor`, `oc`/`opencode`, `or`/`openrouter`, `ollama`, `ds`/`deepseek`.
 
 Response headers may include routing and saver metadata such as `x-nesa-cache` and `x-nesa-rtk-saved`.
 
 ## Operations
 
+- **Health**: `GET /api/health` returns liveness (`ok`) plus readiness (`ready`, `checks.db`). Docker can keep using HTTP 200 / `ok`.
+- **Metrics**: `GET /api/metrics` exposes Prometheus text (`nesa_requests_total`, queue gauges, budget spend, …). Optional `NESA_METRICS_TOKEN` requires `Authorization: Bearer …` or `?token=`.
+- **Aliases import**: paste 9router `GET /api/models/alias` JSON on the Aliases page (or `POST /api/aliases/import`) to migrate shorthand model maps.
+- **Concurrency queue**: under Routing settings, set global / per-provider max concurrent upstream calls (`0` = unlimited). Queue wait timeouts return HTTP 503 with `code: queue_timeout`.
 - **Routing**: mode, strategy, fallback, cache, budget, token savers (Caveman / RTK), and admin password.
 - **Combos**: named fallback or round-robin chains; aliases map friendly model names to targets.
 - **Usage**: live provider-flow map (NesaRouter hub with spaced provider ring). It polls real request logs and animates the provider used by a recent request; idle links do not animate.
