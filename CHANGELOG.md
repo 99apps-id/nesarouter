@@ -2,6 +2,12 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.24 - 2026-07-14
+
+### Fixes
+
+- **Usage summary tables**: Usage by provider / Usage by model render as real HTML tables (aligned columns, tabular nums); stop CSS clash with Provider detail `.model-row`.
+
 ## 0.1.23 - 2026-07-14
 
 ### Fixes

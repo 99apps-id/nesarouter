@@ -1596,9 +1596,6 @@ button:focus-visible {
   width: 100%;
 }
 
-.provider-usage-row {
-  grid-template-columns: 1.6fr 0.6fr 0.8fr 0.8fr 0.7fr;
-}
 
 @keyframes map-orbit-spin {
   from {
@@ -2091,33 +2088,83 @@ button:focus-visible {
   word-break: break-word;
 }
 
-.model-table {
+.usage-agg-wrap {
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
+  overflow-x: auto;
 }
 
-.model-row {
-  align-items: center;
+.usage-agg-grid {
   display: grid;
-  gap: 10px;
-  grid-template-columns: 1.4fr 1.1fr 0.45fr 0.7fr 0.7fr 0.65fr 0.65fr;
-  min-height: 42px;
-  padding: 0 12px;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  margin-bottom: 16px;
 }
 
-.model-row:not(:last-child) {
+.usage-agg-grid > .panel {
+  margin-bottom: 0;
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .usage-agg-grid {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  }
+}
+
+.usage-agg-table {
+  border-collapse: collapse;
+  min-width: 100%;
+  table-layout: auto;
+  width: 100%;
+}
+
+.usage-agg-table th,
+.usage-agg-table td {
   border-bottom: 1px solid var(--border);
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: middle;
 }
 
-.model-row.header {
+.usage-agg-table thead th {
   background: var(--surface);
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
+  white-space: nowrap;
 }
 
-.model-row span {
+.usage-agg-table tbody tr:last-child th,
+.usage-agg-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.usage-agg-table .num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.usage-agg-table .usage-agg-model {
+  font-family: var(--mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-agg-table .provider-cell {
+  align-items: center;
+  display: inline-flex;
+  gap: 8px;
+  max-width: 220px;
+  min-width: 0;
+}
+
+.usage-agg-table .provider-cell > span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2250,15 +2297,17 @@ button:focus-visible {
     padding: 12px;
   }
 
-  .model-row {
-    align-items: start;
-    grid-template-columns: 1fr;
-    padding: 12px;
+  .usage-row.header {
+    display: none;
   }
 
-  .usage-row.header,
-  .model-row.header {
-    display: none;
+  .usage-agg-table th,
+  .usage-agg-table td {
+    padding: 8px 10px;
+  }
+
+  .usage-agg-table .usage-agg-model {
+    max-width: 160px;
   }
 
   .router-map {
