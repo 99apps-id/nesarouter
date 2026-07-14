@@ -2,6 +2,13 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.25 - 2026-07-14
+
+### Fixes
+
+- **Add provider form**: show validation/API errors; use `adminFetch`; after add open provider detail.
+- **Editable Base URL / API key**: remove `readOnly`-until-focus antifill that blocked typing and paste.
+
 ## 0.1.24 - 2026-07-14
 
 ### Fixes

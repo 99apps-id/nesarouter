@@ -6,7 +6,6 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, KeyRound, Layers, ListRestart, PlugZap, Plus, Save, Star, Trash2 } from "lucide-react";
 import { ProviderConfig } from "@/core/types";
 import ProviderIcon from "@/components/ProviderIcon";
-import NoAutofillInput from "@/components/NoAutofillInput";
 import { adminFetch, ADMIN_SESSION_EXPIRED, isAdminUnauthorized, scheduleLoginRedirect } from "@/lib/adminFetch";
 import { parseOAuthCallbackPaste } from "@/core/oauthCallbackPaste";
 
@@ -579,7 +578,12 @@ export default function ProviderDetail({
         <div className="provider-fields">
           <label>
             Name
-            <NoAutofillInput suppressHydrationWarning value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} />
+            <input
+              suppressHydrationWarning
+              value={draft.name}
+              onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+              autoComplete="off"
+            />
           </label>
           <label>
             Adapter
@@ -605,7 +609,13 @@ export default function ProviderDetail({
           </label>
           <label>
             Base URL
-            <NoAutofillInput suppressHydrationWarning value={draft.baseUrl} onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })} />
+            <input
+              suppressHydrationWarning
+              value={draft.baseUrl}
+              onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })}
+              autoComplete="off"
+              spellCheck={false}
+            />
           </label>
           <label>
             Priority
@@ -672,13 +682,14 @@ export default function ProviderDetail({
           ))}
         </div>
         <div className="key-add">
-          <NoAutofillInput
+          <input
             suppressHydrationWarning
-            sensitive
             type="password"
             placeholder="Paste API key or access token"
             value={newKey}
             onChange={(event) => setNewKey(event.target.value)}
+            autoComplete="new-password"
+            spellCheck={false}
           />
           <button className="button primary" type="button" onClick={addKey} disabled={!newKey.trim()}>
             <Plus size={16} /> Add key
