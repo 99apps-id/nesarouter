@@ -2,6 +2,12 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.20 - 2026-07-14
+
+### Fixes
+
+- Repair `globals.css` syntax error (extra `}` / missing `.theme-toggle` base rule) that broke Next.js production builds in CI.
+
 ## 0.1.19 - 2026-07-14
 
 ### Added
