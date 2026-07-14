@@ -3,8 +3,8 @@
 import { ListRestart, Plus, RefreshCw } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ProviderConfig } from "@/core/types";
+import { ADMIN_SESSION_EXPIRED, adminFetch, isAdminUnauthorized, scheduleLoginRedirect } from "@/lib/adminFetch";
 import { customProviderTemplate, providerPresetGroups, providerPresets } from "@/lib/providerPresets";
-import NoAutofillInput from "@/components/NoAutofillInput";
 
 export default function NewProviderForm() {
   const [draft, setDraft] = useState<ProviderConfig>(customProviderTemplate());
@@ -12,14 +12,12 @@ export default function NewProviderForm() {
   const [presetFilter, setPresetFilter] = useState("");
   const [models, setModels] = useState<string[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formMessage, setFormMessage] = useState("");
+  const [formResult, setFormResult] = useState<"idle" | "ok" | "error">("idle");
   const [modelsMessage, setModelsMessage] = useState("");
   const [modelsResult, setModelsResult] = useState<"idle" | "ok" | "error">("idle");
   const [seedMessage, setSeedMessage] = useState("");
-
-  const oauthPresets = useMemo(
-    () => providerPresets.filter((item) => Boolean(item.oauthProfile)),
-    []
-  );
 
   const filteredGroups = useMemo(() => {
     const q = presetFilter.trim().toLowerCase();
@@ -37,11 +35,18 @@ export default function NewProviderForm() {
       .filter((group) => group.ids.length > 0);
   }, [presetFilter]);
 
+  function setError(message: string) {
+    setFormResult("error");
+    setFormMessage(message);
+  }
+
   function applyPreset(id: string) {
     setPresetId(id);
     setModels([]);
     setModelsMessage("");
     setModelsResult("idle");
+    setFormMessage("");
+    setFormResult("idle");
     if (!id) {
       setDraft(customProviderTemplate());
       return;
@@ -72,8 +77,13 @@ export default function NewProviderForm() {
 
   async function syncCatalog() {
     setSeedMessage("");
-    const response = await fetch("/api/providers/seed", { method: "POST" });
+    const response = await adminFetch("/api/providers/seed", { method: "POST" });
     const result = await response.json().catch(() => ({}));
+    if (isAdminUnauthorized(response)) {
+      setSeedMessage(ADMIN_SESSION_EXPIRED);
+      scheduleLoginRedirect();
+      return;
+    }
     if (!response.ok) {
       setSeedMessage(result.error ?? "Failed to sync catalog.");
       return;
@@ -83,63 +93,123 @@ export default function NewProviderForm() {
   }
 
   async function addProvider() {
+    if (saving) return;
+    setFormMessage("");
+    setFormResult("idle");
+
     const rawId = draft.oauthProfile ? draft.id : draft.id || draft.name || draft.model;
-    const id = rawId
+    const id = String(rawId ?? "")
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-|-$/g, "");
-    if (!id || !draft.baseUrl || !draft.model) return;
+
+    if (!draft.name.trim() && !id) {
+      setError("Fill in a Name (or Model) so the provider id can be generated.");
+      return;
+    }
+    if (!draft.baseUrl.trim()) {
+      setError("Base URL is required. Example: https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1");
+      return;
+    }
+    if (!draft.model.trim()) {
+      setError("Model is required. Example: @cf/meta/llama-3.1-8b-instruct");
+      return;
+    }
+    if (!id) {
+      setError("Could not build a valid provider id from Name/Model. Use letters or numbers.");
+      return;
+    }
+
     const provider: ProviderConfig = {
       ...draft,
       id,
-      name: draft.name || id,
+      name: draft.name.trim() || id,
+      baseUrl: draft.baseUrl.trim(),
+      model: draft.model.trim(),
       status: "disabled",
       priority: Number(draft.priority || 100),
       inputCostPerMTok: Number(draft.inputCostPerMTok || 0),
       outputCostPerMTok: Number(draft.outputCostPerMTok || 0),
-      models: Array.from(new Set([draft.model, ...(draft.models ?? [])])).filter(Boolean),
+      models: Array.from(new Set([draft.model.trim(), ...(draft.models ?? [])])).filter(Boolean),
       oauthProfile: draft.oauthProfile
     };
-    const response = await fetch("/api/providers", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(provider)
-    });
-    if (response.ok) {
+
+    setSaving(true);
+    try {
+      const response = await adminFetch("/api/providers", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(provider)
+      });
+      const result = await response.json().catch(() => ({}));
+      if (isAdminUnauthorized(response)) {
+        setError(ADMIN_SESSION_EXPIRED);
+        scheduleLoginRedirect();
+        return;
+      }
+      if (!response.ok) {
+        setError(result.error ?? `Failed to add provider (HTTP ${response.status}).`);
+        return;
+      }
+      setFormResult("ok");
+      setFormMessage(`Added ${provider.name}.`);
       if (provider.oauthProfile) window.location.href = `/providers/${provider.id}`;
-      else window.location.reload();
+      else window.location.href = `/providers/${provider.id}`;
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Failed to add provider.");
+    } finally {
+      setSaving(false);
     }
   }
 
   async function loadModels() {
+    if (modelsLoading) return;
+    if (!draft.baseUrl.trim()) {
+      setModelsResult("error");
+      setModelsMessage("Set Base URL first, then Load models.");
+      return;
+    }
     setModelsLoading(true);
     setModelsMessage("");
     const provider: ProviderConfig = {
       ...draft,
       id: draft.id || "draft-provider",
       name: draft.name || "Draft provider",
+      baseUrl: draft.baseUrl.trim(),
       status: "disabled",
       priority: Number(draft.priority || 100),
       inputCostPerMTok: Number(draft.inputCostPerMTok || 0),
       outputCostPerMTok: Number(draft.outputCostPerMTok || 0)
     };
-    const response = await fetch("/api/providers/models", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ provider })
-    });
-    const result = await response.json();
-    if (result.ok) {
-      setModels(result.models);
-      setModelsResult("ok");
-      setModelsMessage(`${result.models.length} models loaded.`);
-      if (!draft.model && result.models[0]) setDraft({ ...draft, model: result.models[0] });
-    } else {
+    try {
+      const response = await adminFetch("/api/providers/models", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ provider })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (isAdminUnauthorized(response)) {
+        setModelsResult("error");
+        setModelsMessage(ADMIN_SESSION_EXPIRED);
+        scheduleLoginRedirect();
+        return;
+      }
+      if (result.ok) {
+        setModels(result.models);
+        setModelsResult("ok");
+        setModelsMessage(`${result.models.length} models loaded.`);
+        if (!draft.model && result.models[0]) setDraft({ ...draft, model: result.models[0] });
+      } else {
+        setModelsResult("error");
+        setModelsMessage(result.error ?? "Failed to load models. You can still type the model id manually and Add provider.");
+      }
+    } catch (error) {
       setModelsResult("error");
-      setModelsMessage(result.error ?? "Failed to load models.");
+      setModelsMessage(error instanceof Error ? error.message : "Failed to load models.");
+    } finally {
+      setModelsLoading(false);
     }
-    setModelsLoading(false);
   }
 
   return (
@@ -202,7 +272,7 @@ export default function NewProviderForm() {
         </label>
         <label>
           Name
-          <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="OpenRouter" />
+          <input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="Cloudflare Workers AI" />
         </label>
         <label>
           Adapter
@@ -238,12 +308,18 @@ export default function NewProviderForm() {
               ))}
             </select>
           ) : (
-            <input value={draft.model} onChange={(event) => setDraft({ ...draft, model: event.target.value })} placeholder="model-name" />
+            <input value={draft.model} onChange={(event) => setDraft({ ...draft, model: event.target.value })} placeholder="@cf/meta/llama-3.1-8b-instruct" />
           )}
         </label>
         <label>
           Base URL
-          <NoAutofillInput value={draft.baseUrl} onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })} placeholder="https://api.example.com/v1" />
+          <input
+            value={draft.baseUrl}
+            onChange={(event) => setDraft({ ...draft, baseUrl: event.target.value })}
+            placeholder="https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1"
+            autoComplete="off"
+            spellCheck={false}
+          />
         </label>
         {draft.oauthProfile ? (
           <label>
@@ -253,7 +329,14 @@ export default function NewProviderForm() {
         ) : (
           <label>
             API key
-            <NoAutofillInput sensitive type="password" value={draft.apiKey} onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })} placeholder="Paste key, without Bearer" />
+            <input
+              type="password"
+              value={draft.apiKey}
+              onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })}
+              placeholder="Paste Cloudflare API token"
+              autoComplete="new-password"
+              spellCheck={false}
+            />
           </label>
         )}
         <label>
@@ -288,15 +371,17 @@ export default function NewProviderForm() {
         </label>
       </form>
       {seedMessage ? <p className="subtle">{seedMessage}</p> : null}
-      {modelsMessage ? <p className={`test-message ${modelsResult}`}>{modelsMessage}</p> : null}
+      {formMessage ? <p className={`test-message ${formResult === "ok" ? "ok" : "error"}`}>{formMessage}</p> : null}
+      {modelsMessage ? <p className={`test-message ${modelsResult === "ok" ? "ok" : "error"}`}>{modelsMessage}</p> : null}
       {!draft.oauthProfile ? (
-        <button className="button" type="button" onClick={loadModels}>
-          <ListRestart size={16} /> {modelsLoading ? "Loading" : "Load models"}
+        <button className="button" type="button" onClick={loadModels} disabled={modelsLoading}>
+          <ListRestart size={16} /> {modelsLoading ? "Loading…" : "Load models"}
         </button>
       ) : null}
-      <button className="button primary" type="button" onClick={addProvider}>
-        <Plus size={16} /> {draft.oauthProfile ? "Add & open Connect" : "Add provider"}
+      <button className="button primary" type="button" onClick={addProvider} disabled={saving}>
+        <Plus size={16} /> {saving ? "Saving…" : draft.oauthProfile ? "Add & open Connect" : "Add provider"}
       </button>
+      <p className="subtle">Custom tip: leave Preset on Custom, fill Name + Base URL + Model (+ API key), then Add. Load models is optional.</p>
     </section>
   );
 }
