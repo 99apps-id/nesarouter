@@ -2,6 +2,13 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.28 - 2026-07-15
+
+### Fixed
+
+- **SQLite store stability**: reopen the database when `DATA_DIR` changes, add SQLite `busy_timeout`, and avoid taking a provider-catalog write lock on every store access.
+- **OAuth/provider reliability**: keeps Kiro, Gemini CLI, and multi-account OAuth checks from being affected by unnecessary store writes during validation and routing.
+
 ## 0.1.26 - 2026-07-15
 
 ### Added
