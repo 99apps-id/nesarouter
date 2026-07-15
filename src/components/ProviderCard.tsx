@@ -23,8 +23,33 @@ export default function ProviderCard({
   const isAccountProvider = Boolean(provider.oauthProfile);
   const modelCount = Array.isArray(provider.models) && provider.models.length ? provider.models.length : 1;
   const connectionStatus = provider.connectionStatus ?? "unknown";
-  const statusTone = connectionStatus === "connected" ? "success" : connectionStatus === "error" ? "error" : "neutral";
-  const statusLabel = connectionStatus === "connected" ? "Connected" : connectionStatus === "error" ? "Error" : "Not tested";
+  // OAuth cards: never show "Connected" without actual account tokens (stale connection_status).
+  const statusTone = isAccountProvider
+    ? routableOAuthCount > 0
+      ? "success"
+      : hasOAuthToken
+        ? connectionStatus === "no_subscription"
+          ? "warning"
+          : "error"
+        : "neutral"
+    : connectionStatus === "connected"
+      ? "success"
+      : connectionStatus === "error"
+        ? "error"
+        : "neutral";
+  const statusLabel = isAccountProvider
+    ? routableOAuthCount > 0
+      ? "Connected"
+      : hasOAuthToken
+        ? connectionStatus === "no_subscription"
+          ? "No subscription"
+          : "Error"
+        : "Not connected"
+    : connectionStatus === "connected"
+      ? "Connected"
+      : connectionStatus === "error"
+        ? "Error"
+        : "Not tested";
 
   return (
     <Link href={`/providers/${provider.id}`} className="provider-card">

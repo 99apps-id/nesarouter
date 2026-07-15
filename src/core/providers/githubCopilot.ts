@@ -9,8 +9,11 @@ import { baseUrl, cleanApiKey, ProviderExecutor, proxyFetch, sortModelIds, Upstr
  */
 export class GithubCopilotExecutor implements ProviderExecutor {
   async call(provider: ProviderConfig, body: any, apiKey?: string) {
+    // Prefer Copilot session token; never use a bare GitHub OAuth access token here.
     const token = cleanApiKey(apiKey ?? provider.oauthCopilotToken ?? "");
-    if (!token) throw new Error(`${provider.name} has no Copilot session token.`);
+    if (!token) {
+      throw new UpstreamProviderError(`${provider.name} has no Copilot session token.`, 401);
+    }
     const upstreamBody: Record<string, unknown> = { ...body, model: provider.model };
     if (body?.stream) {
       const streamOptions = body.stream_options && typeof body.stream_options === "object" ? body.stream_options : {};

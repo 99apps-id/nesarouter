@@ -105,7 +105,7 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
 
     const token = resolveBearerToken(provider, apiKey);
     const mismatch = xiaomiMimoCredentialHint(provider, token);
-    if (mismatch) throw new Error(mismatch);
+    if (mismatch) throw new UpstreamProviderError(mismatch, 400);
     // Azure rejects Bearer for key auth; use api-key only (see azureOpenAiAuthHeaders).
     const authHeaders: Record<string, string> =
       token && !isAzureOpenAiHost(provider.baseUrl) ? { authorization: `Bearer ${token}` } : {};
@@ -150,7 +150,7 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
     const urls = this.modelUrls(provider);
     const token = resolveBearerToken(provider);
     const mismatch = xiaomiMimoCredentialHint(provider, token);
-    if (mismatch) throw new Error(mismatch);
+    if (mismatch) throw new UpstreamProviderError(mismatch, 400);
     const authHeaders: Record<string, string> =
       token && !isAzureOpenAiHost(provider.baseUrl) ? { authorization: `Bearer ${token}` } : {};
     let lastError: unknown;
@@ -191,7 +191,7 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
         };
       }
       const token = resolveBearerToken(provider);
-      if (!token) throw new Error(`${provider.name} needs an API key.`);
+      if (!token) throw new UpstreamProviderError(`${provider.name} needs an API key.`, 400);
       // Tiny probe — Runware often has no OpenAI /models list.
       const response = await proxyFetch(provider, chatCompletionsUrl(provider), {
         method: "POST",

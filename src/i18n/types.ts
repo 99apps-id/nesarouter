@@ -480,7 +480,7 @@ export const en: Messages = {
     patchedFiles: "Patched:",
     testConnection: "Test connection",
     testing: "Testing…",
-    testNeedsNewKey: "Testing needs a newly created key from Apply (existing keys are not shown again).",
+    testNeedsNewKey: "Select an existing client key or Apply to create one, then Test.",
     testFailed: "Test failed.",
     remoteScriptHint: "If the CLI runs on another machine (not the NesaRouter host), run this merge script there.",
     applyFirstForScript: "Click Apply first so the remote script uses the same key.",

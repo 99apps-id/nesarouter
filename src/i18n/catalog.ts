@@ -258,7 +258,7 @@ const patches: Record<Exclude<LocaleCode, "en">, DeepPartial<Messages>> = {
       patchedFiles: "Ter-patch:",
       testConnection: "Tes koneksi",
       testing: "Menguji…",
-      testNeedsNewKey: "Tes membutuhkan key baru dari Apply (key lama tidak ditampilkan ulang).",
+      testNeedsNewKey: "Pilih client key yang ada atau Apply dulu, lalu Test.",
       testFailed: "Tes gagal.",
       remoteScriptHint: "Jika CLI berjalan di mesin lain (bukan host NesaRouter), jalankan skrip merge ini di sana.",
       applyFirstForScript: "Klik Apply dulu agar skrip remote memakai key yang sama.",

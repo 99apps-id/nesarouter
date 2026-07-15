@@ -1,5 +1,5 @@
 import { UpstreamProviderError } from "@/core/providers/shared";
-import { OAuthAccount } from "@/core/types";
+import { OAuthAccount, ProviderConfig } from "@/core/types";
 
 /** Errors that mean the account should be skipped in routing (auth, quota, no access). */
 export function isOAuthAccountFatalError(error: UpstreamProviderError): boolean {
@@ -16,16 +16,38 @@ export function oauthAccountHasToken(account: OAuthAccount) {
   return Boolean(account.oauthAccessToken?.trim() || account.oauthCopilotToken?.trim());
 }
 
-/** Account is eligible for routing: has token, not marked error, not in rate-limit cooldown window. */
-export function isOAuthAccountRoutable(account: OAuthAccount, now = Date.now()) {
+/**
+ * Profile-specific material beyond a bearer token (Cursor machine id, etc.).
+ * Soft validate already enforces these; routing must match so Connected ≠ unusable.
+ */
+export function oauthAccountHasRequiredMaterial(account: OAuthAccount, provider?: Pick<ProviderConfig, "oauthProfile" | "type">) {
   if (!oauthAccountHasToken(account)) return false;
-  if (account.connectionStatus === "error") return false;
+  const profile = provider?.oauthProfile;
+  if (profile === "cursor" || provider?.type === "cursor") {
+    return Boolean(account.oauthMachineId?.trim());
+  }
+  return true;
+}
+
+/** Account is eligible for routing: has token (+ profile material), not marked error/no-sub, not rate-limited. */
+export function isOAuthAccountRoutable(
+  account: OAuthAccount,
+  now = Date.now(),
+  provider?: Pick<ProviderConfig, "oauthProfile" | "type">
+) {
+  if (!oauthAccountHasRequiredMaterial(account, provider)) return false;
+  if (account.connectionStatus === "error" || account.connectionStatus === "no_subscription") return false;
   if (account.rateLimitedUntil && new Date(account.rateLimitedUntil).getTime() > now) return false;
   return true;
 }
 
-export function oauthAccountStatusLabel(account: OAuthAccount): "connected" | "error" | "empty" | "unknown" {
+export function oauthAccountStatusLabel(
+  account: OAuthAccount,
+  provider?: Pick<ProviderConfig, "oauthProfile" | "type">
+): "connected" | "error" | "no_subscription" | "empty" | "unknown" {
   if (!oauthAccountHasToken(account)) return "empty";
+  if (provider && !oauthAccountHasRequiredMaterial(account, provider)) return "error";
+  if (account.connectionStatus === "no_subscription") return "no_subscription";
   if (account.connectionStatus === "error") return "error";
   if (account.connectionStatus === "connected") return "connected";
   return "unknown";

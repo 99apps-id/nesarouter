@@ -193,7 +193,8 @@ export default function CliConfigFetcher({
 
   async function testConnection() {
     const token = result?.apiKey;
-    if (!token) {
+    const selectedKeyId = keyChoice !== "new" ? keyChoice : result?.key?.id;
+    if (!token && !selectedKeyId) {
       setTestMessage(cli.testNeedsNewKey);
       return;
     }
@@ -202,14 +203,22 @@ export default function CliConfigFetcher({
     const response = await adminFetch("/api/cli-tools/ping", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ token, model: result?.model ?? "auto" })
+      body: JSON.stringify(
+        token
+          ? { token, model: result?.model ?? modelTarget }
+          : { keyId: selectedKeyId, model: result?.model ?? modelTarget }
+      )
     });
     const payload = await response.json().catch(() => ({}));
-    setTestMessage(
-      payload.ok
-        ? `OK — provider: ${payload.provider ?? "unknown"}, model: ${payload.model ?? result?.model}`
-        : payload.error ?? cli.testFailed
-    );
+    if (payload.ok) {
+      const skip = payload.skipped ? ` · skipped: ${payload.skipped}` : "";
+      setTestMessage(
+        `OK — ${payload.message ?? `provider: ${payload.provider ?? "unknown"}, model: ${payload.model ?? modelTarget}`}${skip}`
+      );
+    } else {
+      const attempts = Array.isArray(payload.attempts) ? ` · ${payload.attempts.join(" | ")}` : "";
+      setTestMessage(`${payload.error ?? cli.testFailed}${attempts}`);
+    }
     setTesting(false);
   }
 
@@ -357,7 +366,7 @@ export default function CliConfigFetcher({
         </p>
       ) : null}
 
-      {result?.apiKey ? (
+      {result?.apiKey || (keyChoice !== "new" && keys.some((key) => key.id === keyChoice)) ? (
         <div className="button-row">
           <button className="button" type="button" onClick={testConnection} disabled={testing}>
             <PlugZap size={14} /> {testing ? cli.testing : cli.testConnection}

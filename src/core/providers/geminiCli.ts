@@ -68,15 +68,18 @@ export class GeminiCliExecutor implements ProviderExecutor {
   }
 
   /**
-   * Credential check without generateContent (that needs a project id and often
-   * fails with "Test done"/error for free Google subscription). Matches 9router:
-   * probe loadCodeAssist; treat HTTP 200 as connected; best-effort persist project.
+   * Credential check without generateContent. Distinguishes:
+   * - invalid token (401 hard fail / red)
+   * - Google login OK but no Cloud Code / Gemini subscription (amber no_subscription)
+   * - access OK (green), with or without a resolved project id
    */
   async validate(provider: ProviderConfig) {
     const token = cleanApiKey(provider.oauthAccessToken ?? "");
     if (!token) throw new UpstreamProviderError(`${provider.name} needs an OAuth access token.`, 400);
     const preset = getPreset(provider.oauthProfile);
     const models = await this.listModels(provider);
+    const product =
+      provider.oauthProfile === "antigravity" ? "Antigravity / Cloud Code" : "Gemini CLI / Cloud Code";
 
     if (preset?.loadCodeAssistUrl) {
       const response = await proxyFetch(provider, preset.loadCodeAssistUrl, {
@@ -89,18 +92,38 @@ export class GeminiCliExecutor implements ProviderExecutor {
         },
         body: JSON.stringify({ metadata: cloudCodeAssistProbeMetadata(preset) })
       });
-      if (!response.ok) throw await upstreamError(provider, response);
+
+      if (!response.ok) {
+        const bodyText = await response.text().catch(() => "");
+        if (isCloudCodeAuthFailure(response.status, bodyText)) {
+          throw new UpstreamProviderError(
+            `${provider.name} returned ${response.status}: ${bodyText.slice(0, 400) || "OAuth token rejected."}`,
+            response.status
+          );
+        }
+        if (isCloudCodeNoSubscription(response.status, bodyText)) {
+          return {
+            models,
+            connectionStatus: "no_subscription" as const,
+            message: `Google login OK — no active ${product} subscription on this account. Subscribe or use another Google account.`
+          };
+        }
+        throw new UpstreamProviderError(
+          `${provider.name} returned ${response.status}: ${bodyText.slice(0, 400) || "Cloud Code probe failed."}`,
+          response.status
+        );
+      }
 
       const project = await resolveCloudCodeProjectId(provider, token);
       return {
         models,
+        connectionStatus: "connected" as const,
         message: project
-          ? `Google subscription accepted · project ${project}.`
-          : "Google subscription token accepted. If chat fails, set OAuth project id (Cloud Code) on this provider."
+          ? `${product} accepted · project ${project}.`
+          : `${product} access OK. If chat fails, set OAuth project id on this provider.`
       };
     }
 
-    // Fallback when preset has no loadCodeAssist URL — try a tiny generate.
     await this.call(provider, {
       messages: [{ role: "user", content: "Reply with OK." }],
       max_tokens: 8,
@@ -108,9 +131,29 @@ export class GeminiCliExecutor implements ProviderExecutor {
     });
     return {
       models,
+      connectionStatus: "connected" as const,
       message: `Cloud Code token accepted${provider.oauthProjectId ? ` · project ${provider.oauthProjectId}` : ""}.`
     };
   }
+}
+
+/** Hard auth failure — token revoked / wrong client (not merely missing subscription). */
+export function isCloudCodeAuthFailure(status: number, bodyText: string): boolean {
+  if (status !== 401) return false;
+  const text = bodyText.toLowerCase();
+  if (/permission|forbidden|not.?entitled|not.?eligible|subscription|not.?enabled|access.?denied|PERMISSION_DENIED/i.test(text)) {
+    return false;
+  }
+  return true;
+}
+
+/** Account authenticated but lacks Cloud Code / Gemini Code Assist entitlement. */
+export function isCloudCodeNoSubscription(status: number, bodyText: string): boolean {
+  if ([403, 404].includes(status)) return true;
+  const text = bodyText.toLowerCase();
+  return /permission|forbidden|not.?entitled|not.?eligible|subscription|not.?enabled|access.?denied|permission_denied|cloud.?code|code.?assist/i.test(
+    text
+  );
 }
 
 async function resolveCloudCodeProjectId(provider: ProviderConfig, token: string, bodyProject?: unknown): Promise<string> {
@@ -126,9 +169,8 @@ async function resolveCloudCodeProjectId(provider: ProviderConfig, token: string
   if (!projectId) return "";
 
   try {
-    const accountId =
-      provider.oauthAccounts?.find((account) => account.oauthAccessToken === token)?.id ??
-      provider.oauthAccounts?.[0]?.id;
+    // Account-scoped provider snapshots contain only the active account.
+    const accountId = provider.oauthAccounts?.[0]?.id;
     await saveProviderOAuthTokens(
       provider.id,
       {

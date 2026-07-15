@@ -130,10 +130,17 @@ export class UpstreamProviderError extends Error {
   }
 }
 
+export type ProviderValidateResult = {
+  models?: string[];
+  message?: string;
+  /** Soft outcome: auth OK but vendor subscription / entitlement missing. */
+  connectionStatus?: "connected" | "no_subscription";
+};
+
 export interface ProviderExecutor {
   call(provider: ProviderConfig, body: any, apiKey?: string): Promise<any | ReadableStream<Uint8Array>>;
   listModels(provider: ProviderConfig): Promise<string[]>;
-  validate?(provider: ProviderConfig): Promise<{ models?: string[]; message?: string }>;
+  validate?(provider: ProviderConfig): Promise<ProviderValidateResult>;
 }
 
 export function cleanApiKey(apiKey: string) {

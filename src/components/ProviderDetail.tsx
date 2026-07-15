@@ -34,7 +34,7 @@ export default function ProviderDetail({
     id: string;
     name: string;
     connected: boolean;
-    status: "connected" | "error" | "empty" | "unknown";
+    status: "connected" | "error" | "no_subscription" | "empty" | "unknown";
     lastError?: string;
     lastCheckedAt?: string;
     routable: boolean;
@@ -53,7 +53,7 @@ export default function ProviderDetail({
   const [keys, setKeys] = useState<string[]>(keyPreviews);
   const [keyCountState, setKeyCountState] = useState(keyCount);
   const [saved, setSaved] = useState(false);
-  const [testResult, setTestResult] = useState<"idle" | "testing" | "ok" | "error">("idle");
+  const [testResult, setTestResult] = useState<"idle" | "testing" | "ok" | "warn" | "error">("idle");
   const [testMessage, setTestMessage] = useState("");
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsMessage, setModelsMessage] = useState("");
@@ -88,7 +88,7 @@ export default function ProviderDetail({
       if (!response.ok || cancelled) return;
       const result = await response.json().catch(() => ({}));
       if (!result.accounts || cancelled) return;
-      setLiveOAuthAccounts(result.accounts.map((account: any) => ({
+    setLiveOAuthAccounts(result.accounts.map((account: any) => ({
         id: account.id,
         name: account.name,
         connected: account.status !== "empty",
@@ -112,12 +112,14 @@ export default function ProviderDetail({
 
   function oauthStatusTone(status: string) {
     if (status === "connected") return "success";
+    if (status === "no_subscription") return "warning";
     if (status === "error") return "error";
     return "neutral";
   }
 
   function oauthStatusText(account: { status: string; routable: boolean }) {
     if (account.status === "connected") return "connected";
+    if (account.status === "no_subscription") return "no subscription — skipped";
     if (account.status === "error") return "error — skipped in routing";
     if (account.status === "empty") return "empty";
     return "checking…";
@@ -311,12 +313,12 @@ export default function ProviderDetail({
       return;
     }
     const result = await response.json().catch(() => ({}));
-    setTestResult(result.ok ? "ok" : "error");
+    setTestResult(result.ok ? "ok" : result.noSubscription ? "warn" : "error");
     const accountSummary = Array.isArray(result.accounts)
-      ? ` ${result.accounts.map((account: { index: number; ok: boolean }) => `Account ${account.index + 1}: ${account.ok ? "OK" : "failed"}`).join(" · ")}`
+      ? ` ${result.accounts.map((account: { index: number; ok: boolean; noSubscription?: boolean }) => `Account ${account.index + 1}: ${account.ok ? "OK" : account.noSubscription ? "no sub" : "failed"}`).join(" · ")}`
       : "";
     setTestMessage(
-      `${result.message ?? result.error ?? (result.ok ? "Connected." : "Test failed.")}${accountSummary}`
+      `${result.message ?? result.error ?? (result.ok ? "Connected." : result.noSubscription ? "No subscription on this account." : "Test failed.")}${accountSummary}`
     );
     if (result.ok) setTimeout(() => router.refresh(), 400);
   }
@@ -572,7 +574,11 @@ export default function ProviderDetail({
   async function pollDeviceFlow() {
     if (!device) return;
     setDevicePolling(true);
-    const response = await adminFetch(`/api/providers/${draft.id}/oauth/device/poll`, { method: "POST" });
+    const response = await adminFetch(`/api/providers/${draft.id}/oauth/device/poll`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(oauthConnectBody())
+    });
     if (guardAdminResponse(response, setError)) {
       setDevicePolling(false);
       return;
@@ -594,8 +600,37 @@ export default function ProviderDetail({
   }
 
   const connectionStatus = draft.connectionStatus ?? "unknown";
-  const connectionLabel = connectionStatus === "connected" ? "Connected" : connectionStatus === "error" ? "Error" : "Not tested";
   const isAccountProvider = Boolean(draft.oauthProfile);
+  const connectionLabel = isAccountProvider
+    ? routableOAuthCount > 0
+      ? "Connected"
+      : hasOAuthToken
+        ? connectionStatus === "no_subscription"
+          ? "No subscription"
+          : "Error"
+        : "Not connected"
+    : connectionStatus === "connected"
+      ? "Connected"
+      : connectionStatus === "no_subscription"
+        ? "No subscription"
+        : connectionStatus === "error"
+          ? "Error"
+          : "Not tested";
+  const connectionTone = isAccountProvider
+    ? routableOAuthCount > 0
+      ? "success"
+      : hasOAuthToken
+        ? connectionStatus === "no_subscription"
+          ? "warning"
+          : "error"
+        : "neutral"
+    : connectionStatus === "connected"
+      ? "success"
+      : connectionStatus === "no_subscription"
+        ? "warning"
+        : connectionStatus === "error"
+          ? "error"
+          : "neutral";
   const oauthPresetMeta = draft.oauthProfile
     ? ({
         github_copilot: { device: true, label: "GitHub" },
@@ -632,10 +667,17 @@ export default function ProviderDetail({
             <strong>{draft.name}</strong>
             <span>{tierLabel}</span>
             <div className="provider-badges">
-              <span className={`status ${connectionStatus === "connected" ? "success" : connectionStatus === "error" ? "error" : "neutral"}`}>{connectionLabel}</span>
+              <span className={`status ${connectionTone}`}>{connectionLabel}</span>
               {isAccountProvider ? (
-                <span className={`status ${routableOAuthCount > 0 ? "success" : hasOAuthToken ? "error" : "neutral"}`}>
-                  OAuth {routableOAuthCount > 0 ? `${routableOAuthCount} routable` : hasOAuthToken ? "all accounts error" : "not connected"}
+                <span className={`status ${routableOAuthCount > 0 ? "success" : hasOAuthToken ? (connectionStatus === "no_subscription" ? "warning" : "error") : "neutral"}`}>
+                  OAuth{" "}
+                  {routableOAuthCount > 0
+                    ? `${routableOAuthCount} routable`
+                    : hasOAuthToken
+                      ? connectionStatus === "no_subscription"
+                        ? "no subscription"
+                        : "all accounts error"
+                      : "not connected"}
                 </span>
               ) : (
                 <span className={`status ${keyCountState > 0 ? "success" : "neutral"}`}>
@@ -957,7 +999,7 @@ export default function ProviderDetail({
             </button>
           </div>
           <p className="compact-copy">
-            Status updates in real time (green = routable, red = error/quota/no access and skipped in routing).
+            Status updates in real time (green = routable, amber = no subscription, red = error — non-green are skipped in routing).
             {oauthProbeAt ? ` Last probe: ${new Date(oauthProbeAt).toLocaleTimeString()}.` : ""}
           </p>
           <div className="key-list">

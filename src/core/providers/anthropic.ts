@@ -43,7 +43,7 @@ export class AnthropicMessagesExecutor implements ProviderExecutor {
 
     if (!response.ok) throw await upstreamError(provider, response);
     if (body?.stream) {
-      if (!response.body) throw new Error(`${provider.name} returned no stream body.`);
+      if (!response.body) throw new UpstreamProviderError(`${provider.name} returned no stream body.`, 502);
       return claudeSseToOpenAiSse(response.body, provider.model);
     }
     const payload = await response.json();

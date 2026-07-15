@@ -14,10 +14,12 @@ const emptyDraft = (): Combo => ({
 
 export default function CombosManager({
   combos,
-  providers
+  providers,
+  readiness = {}
 }: {
   combos: Combo[];
   providers: ProviderConfig[];
+  readiness?: Record<string, { ready: boolean; reason: string }>;
 }) {
   const [draft, setDraft] = useState<Combo>(emptyDraft());
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -121,7 +123,16 @@ export default function CombosManager({
               <ol className="combo-chain">
                 {combo.providerIds.map((id) => {
                   const provider = providers.find((p) => p.id === id);
-                  return <li key={id}>{provider?.name ?? id}</li>;
+                  const item = readiness[id] ?? { ready: false, reason: "Unknown." };
+                  return (
+                    <li key={id} title={item.reason}>
+                      <span>{provider?.name ?? id}</span>
+                      <span className={`status ${item.ready ? "success" : "error"}`}>
+                        {item.ready ? "ready" : "skipped"}
+                      </span>
+                      {!item.ready ? <small className="subtle">{item.reason}</small> : null}
+                    </li>
+                  );
                 })}
               </ol>
               <div className="combo-actions">

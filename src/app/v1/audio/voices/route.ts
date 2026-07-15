@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/core/auth";
 import { chooseProvider } from "@/core/router";
 import { baseUrl, cleanApiKey, openRouterHeaders, proxyFetch } from "@/core/providers/shared";
+import { applyFreshOAuthToken } from "@/core/oauthAccounts";
 import { ensureFreshAccessToken } from "@/core/providerOAuthFlow";
 import { pickActiveKeys } from "@/core/providerKeys";
 import { readStore } from "@/lib/store";
@@ -39,7 +40,7 @@ export async function GET(request: Request) {
   let provider = decision.provider;
   if (provider.oauthProfile) {
     const fresh = await ensureFreshAccessToken(provider);
-    if (fresh) provider = { ...provider, oauthAccessToken: fresh };
+    if (fresh) provider = applyFreshOAuthToken(provider, fresh);
   }
   const keys = pickActiveKeys(provider, store);
   if (!keys.length) {

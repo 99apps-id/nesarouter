@@ -3,7 +3,7 @@ import ProviderDetail from "@/components/ProviderDetail";
 import { providerPresets } from "@/lib/providerPresets";
 import { keyPreview, tierLabel } from "@/lib/providerLabels";
 import { configuredOAuthAccounts, oauthAccountCount, routableOAuthAccountCount } from "@/core/oauthAccounts";
-import { oauthAccountStatusLabel } from "@/core/oauthAccountHealth";
+import { isOAuthAccountRoutable, oauthAccountStatusLabel } from "@/core/oauthAccountHealth";
 import { redactProviderForClient } from "@/lib/providerRedact";
 import { readStore } from "@/lib/store";
 import { notFound } from "next/navigation";
@@ -24,7 +24,7 @@ export default async function ProviderDetailPage({ params }: { params: Promise<{
   ];
   const safeProvider = redactProviderForClient(provider);
   const oauthAccountSummaries = configuredOAuthAccounts(provider).map((account) => {
-    const status = oauthAccountStatusLabel(account);
+    const status = oauthAccountStatusLabel(account, provider);
     return {
       id: account.id,
       name: account.name ?? `Account ${account.index + 1}`,
@@ -32,7 +32,7 @@ export default async function ProviderDetailPage({ params }: { params: Promise<{
       status,
       lastError: account.lastError,
       lastCheckedAt: account.lastCheckedAt,
-      routable: Boolean((account.oauthAccessToken || account.oauthCopilotToken) && account.connectionStatus !== "error")
+      routable: isOAuthAccountRoutable(account, Date.now(), provider)
     };
   });
 
