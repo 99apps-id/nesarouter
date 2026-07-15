@@ -2,6 +2,12 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.33 - 2026-07-15
+
+### Fixed
+
+- Move `authorizeMetrics` out of the Next.js route module so `next build` accepts `/api/metrics` (v0.1.32 CI build failure).
+
 ## 0.1.32 - 2026-07-15
 
 ### Added

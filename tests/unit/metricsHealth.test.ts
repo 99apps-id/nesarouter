@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authorizeMetrics } from "@/app/api/metrics/route";
+import { authorizeMetrics } from "@/core/metricsAuth";
 import { readAppVersion } from "@/lib/appVersion";
 
 describe("authorizeMetrics", () => {
