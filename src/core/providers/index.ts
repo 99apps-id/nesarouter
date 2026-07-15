@@ -12,6 +12,7 @@ import { CursorExecutor } from "@/core/providers/cursor";
 import { VertexExecutor } from "@/core/providers/vertex";
 import { GrokWebExecutor } from "@/core/providers/grokWeb";
 import { ProviderExecutor, UpstreamProviderError, cleanApiKey } from "@/core/providers/shared";
+import { isChatgptCodexUpstream } from "@/core/translatorReverse";
 
 const executors: Record<ProviderConfig["type"], ProviderExecutor> = {
   gemini: new GeminiExecutor(),
@@ -29,37 +30,51 @@ const executors: Record<ProviderConfig["type"], ProviderExecutor> = {
 
 export { UpstreamProviderError };
 
+/** Force Responses executor when talking to ChatGPT Codex (type misconfig safe). */
+function coerceProviderForCall(provider: ProviderConfig): ProviderConfig {
+  if (!isChatgptCodexUpstream(provider)) return provider;
+  if (provider.type === "openai_responses") return provider;
+  return {
+    ...provider,
+    type: "openai_responses",
+    oauthProfile: provider.oauthProfile ?? "openai_codex"
+  };
+}
+
 export function getProviderExecutor(provider: ProviderConfig) {
   return executors[provider.type] ?? executors.openai_compatible;
 }
 
 export async function callProvider(provider: ProviderConfig, body: any, apiKey?: string) {
-  return getProviderExecutor(provider).call(provider, body, apiKey);
+  const effective = coerceProviderForCall(provider);
+  return getProviderExecutor(effective).call(effective, body, apiKey);
 }
 
 export async function listProviderModels(provider: ProviderConfig) {
+  const effective = coerceProviderForCall(provider);
   const keylessAllowed =
-    provider.oauthProfile ||
-    isKeylessProvider(provider) ||
-    provider.type === "vertex" ||
-    provider.type === "grok_web";
+    effective.oauthProfile ||
+    isKeylessProvider(effective) ||
+    effective.type === "vertex" ||
+    effective.type === "grok_web";
 
-  if (!cleanApiKey(provider.apiKey) && !keylessAllowed) throw new UpstreamProviderError("Provider API key is empty.", 400);
-  return getProviderExecutor(provider).listModels(provider);
+  if (!cleanApiKey(effective.apiKey) && !keylessAllowed) throw new UpstreamProviderError("Provider API key is empty.", 400);
+  return getProviderExecutor(effective).listModels(effective);
 }
 
 export async function testProviderConnection(provider: ProviderConfig) {
-  const executor = getProviderExecutor(provider);
-  if (executor.validate) return executor.validate(provider);
+  const effective = coerceProviderForCall(provider);
+  const executor = getProviderExecutor(effective);
+  if (executor.validate) return executor.validate(effective);
 
   try {
-    const models = await executor.listModels(provider);
+    const models = await executor.listModels(effective);
     return { models, message: models.length ? `${models.length} models found.` : "Credentials accepted." };
   } catch (error) {
     if (error instanceof UpstreamProviderError && [401, 403].includes(error.status)) throw error;
   }
 
-  return callProvider(provider, {
+  return callProvider(effective, {
     messages: [{ role: "user", content: "Reply with OK." }],
     max_tokens: 8,
     temperature: 0

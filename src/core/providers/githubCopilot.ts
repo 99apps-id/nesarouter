@@ -1,5 +1,5 @@
 import { ProviderConfig } from "@/core/types";
-import { baseUrl, cleanApiKey, ProviderExecutor, proxyFetch, sortModelIds, upstreamError } from "@/core/providers/shared";
+import { baseUrl, cleanApiKey, ProviderExecutor, proxyFetch, sortModelIds, UpstreamProviderError, upstreamError } from "@/core/providers/shared";
 
 /**
  * GitHub Copilot executor — calls api.githubcopilot.com/chat/completions using
@@ -44,5 +44,19 @@ export class GithubCopilotExecutor implements ProviderExecutor {
       "gpt-5.4", "gpt-5.4-mini", "gpt-5.2", "gpt-5.2-codex",
       "claude-sonnet-4.5", "claude-opus-4.5", "gemini-2.5-pro", "grok-code-fast-1"
     ]);
+  }
+
+  async validate(provider: ProviderConfig) {
+    const copilot = cleanApiKey(provider.oauthCopilotToken || "");
+    const github = cleanApiKey(provider.oauthAccessToken || "");
+    if (!copilot && !github) {
+      throw new UpstreamProviderError(`${provider.name} needs a GitHub OAuth connection.`, 400);
+    }
+    return {
+      models: await this.listModels(provider),
+      message: copilot
+        ? "GitHub Copilot session token present."
+        : "GitHub OAuth token present (Copilot session will refresh on chat)."
+    };
   }
 }

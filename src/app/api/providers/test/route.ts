@@ -3,10 +3,11 @@ import { finalizeAdminResponse, requireAdmin } from "@/lib/adminApi";
 import { isKeylessProvider } from "@/core/providerCredentials";
 import { testProviderConnection } from "@/core/providerClient";
 import { configuredProviderKeys } from "@/core/providerKeys";
+import { configuredOAuthAccounts, providerForOAuthAccount } from "@/core/oauthAccounts";
 import { ensureFreshAccessToken } from "@/core/providerOAuthFlow";
 import { ProviderConfig } from "@/core/types";
 import { keyPreview } from "@/lib/providerLabels";
-import { markProviderConnection, readStore } from "@/lib/store";
+import { markOAuthAccountConnection, markProviderConnection, readStore } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,6 +68,74 @@ export async function POST(request: Request) {
         );
       }
     }
+
+    // OAuth multi-account: probe each slot so UI can show green "connected".
+    if (provider.oauthProfile) {
+      const oauthAccounts = configuredOAuthAccounts(provider);
+      if (oauthAccounts.length > 0) {
+        const results: Array<{
+          index: number;
+          preview: string;
+          ok: boolean;
+          message: string;
+          models?: string[];
+        }> = [];
+        for (const account of oauthAccounts) {
+          const fresh = await ensureFreshAccessToken(provider, account.id);
+          if (!fresh) {
+            await markOAuthAccountConnection(provider.id, account.id, false, "OAuth token unavailable or refresh failed.");
+            results.push({
+              index: account.index,
+              preview: account.name ?? `Account ${account.index + 1}`,
+              ok: false,
+              message: "OAuth token unavailable or refresh failed."
+            });
+            continue;
+          }
+          try {
+            const snapshot = { ...providerForOAuthAccount(provider, account), oauthAccessToken: fresh };
+            const result = await testProviderConnection(snapshot);
+            await markOAuthAccountConnection(provider.id, account.id, true);
+            results.push({
+              index: account.index,
+              preview: account.name ?? `Account ${account.index + 1}`,
+              ok: true,
+              message: result?.message ?? "Connected.",
+              models: result?.models ?? []
+            });
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Provider test failed.";
+            await markOAuthAccountConnection(provider.id, account.id, false, message);
+            results.push({
+              index: account.index,
+              preview: account.name ?? `Account ${account.index + 1}`,
+              ok: false,
+              message
+            });
+          }
+        }
+        const connected = results.filter((result) => result.ok).length;
+        await markProviderConnection(provider.id, connected > 0, connected ? undefined : results[0]?.message);
+        const models = results.find((result) => result.ok)?.models ?? [];
+        return finalizeAdminResponse(
+          NextResponse.json(
+            {
+              ok: connected > 0,
+              message:
+                connected > 0
+                  ? `${provider.name} connected (${connected}/${results.length}). ${results.find((r) => r.ok)?.message ?? ""}`.trim()
+                  : `${provider.name} test failed.`,
+              error: connected > 0 ? undefined : results[0]?.message,
+              accounts: results,
+              models
+            },
+            { status: connected > 0 ? 200 : 502 }
+          ),
+          request
+        );
+      }
+    }
+
     const result = await testProviderConnection(provider);
     await markProviderConnection(provider.id, true);
     return finalizeAdminResponse(

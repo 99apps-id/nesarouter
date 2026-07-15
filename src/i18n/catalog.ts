@@ -85,7 +85,9 @@ const patches: Record<Exclude<LocaleCode, "en">, DeepPartial<Messages>> = {
       checkGithub: "Cek GitHub untuk rilis terbaru.",
       dismissUpdate: "Tutup banner pembaruan",
       changePasswordTitle: "Ganti kata sandi default sementara",
-      changePasswordBody: "Gunakan Password di bawah. Menu lain terbuka setelah Anda menyimpan kata sandi baru."
+      changePasswordBody: "Gunakan Password di bawah. Menu lain terbuka setelah Anda menyimpan kata sandi baru.",
+      signOut: "Keluar",
+      signingOut: "Sedang keluar…"
     },
     overview: {
       metricsAria: "Metrik ringkasan",

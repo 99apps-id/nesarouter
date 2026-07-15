@@ -315,7 +315,9 @@ export default function ProviderDetail({
     const accountSummary = Array.isArray(result.accounts)
       ? ` ${result.accounts.map((account: { index: number; ok: boolean }) => `Account ${account.index + 1}: ${account.ok ? "OK" : "failed"}`).join(" · ")}`
       : "";
-    setTestMessage(`${result.message ?? result.error ?? "Test done."}${accountSummary}`);
+    setTestMessage(
+      `${result.message ?? result.error ?? (result.ok ? "Connected." : "Test failed.")}${accountSummary}`
+    );
     if (result.ok) setTimeout(() => router.refresh(), 400);
   }
 

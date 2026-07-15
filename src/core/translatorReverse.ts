@@ -238,11 +238,30 @@ const CODEX_UNSUPPORTED_PARAMS = [
   "temperature",
   "top_p",
   "max_output_tokens",
+  "max_tokens",
   "metadata",
   "safety_identifier",
   "prompt_cache_retention",
-  "truncation"
+  "truncation",
+  "previous_response_id",
+  "stream_options"
 ] as const;
+
+/** Fields ChatGPT Codex /responses accepts (9router-style allowlist). */
+const CODEX_RESPONSES_ALLOWLIST = new Set([
+  "model",
+  "input",
+  "instructions",
+  "tools",
+  "tool_choice",
+  "stream",
+  "store",
+  "reasoning",
+  "service_tier",
+  "include",
+  "prompt_cache_key",
+  "text"
+]);
 
 const CODEX_DEFAULT_INSTRUCTIONS = "You are a helpful coding assistant.";
 
@@ -391,13 +410,33 @@ export function openAiChatToResponsesRequest(body: any, options?: { codex?: bool
   return request;
 }
 
+/** ChatGPT subscription Codex endpoint — detect by OAuth profile or base URL. */
+export function isChatgptCodexUpstream(provider: {
+  oauthProfile?: string;
+  baseUrl?: string;
+  id?: string;
+}): boolean {
+  if (provider.oauthProfile === "openai_codex") return true;
+  if (provider.id === "oauth-chatgpt") return true;
+  const url = (provider.baseUrl ?? "").toLowerCase();
+  return url.includes("chatgpt.com/backend-api/codex") || url.includes("/codex/responses");
+}
+
 /** Force ChatGPT subscription Codex constraints on a Responses-shaped body. */
 export function normalizeCodexResponsesRequest(request: Record<string, unknown>): Record<string, unknown> {
-  const next: Record<string, unknown> = { ...request, store: false, stream: true };
+  const next: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(request)) {
+    if (CODEX_RESPONSES_ALLOWLIST.has(key)) next[key] = value;
+  }
+  // Backend rejects store!=false and non-streaming for ChatGPT-tier OAuth.
+  next.store = false;
+  next.stream = true;
   if (typeof next.instructions !== "string" || !String(next.instructions).trim()) {
     next.instructions = CODEX_DEFAULT_INSTRUCTIONS;
   }
   for (const key of CODEX_UNSUPPORTED_PARAMS) delete next[key];
+  if (next.service_tier === "fast") next.service_tier = "priority";
+  if (next.service_tier && next.service_tier !== "priority") delete next.service_tier;
   return next;
 }
 
