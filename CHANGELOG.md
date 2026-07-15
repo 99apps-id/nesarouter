@@ -2,6 +2,31 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.29 - 2026-07-15
+
+### Fixed
+
+- **GitHub Copilot OAuth**: apply fresh Copilot session tokens to `oauthCopilotToken` (not `oauthAccessToken`) so chat/combo routing works after Connect.
+- **OAuth credential wipe**: preserve encrypted OAuth account secrets when the admin UI saves redacted `********` placeholders; revive tokens / Cursor machine id from primary columns.
+- **OAuth failure isolation**: account-level upstream failures no longer put the whole provider into cooldown while soft probes still show Connected.
+- **Connection badges**: OAuth cards derive Connected from routable accounts (not stale `connection_status` alone).
+- **Cursor routability**: require machine id before an account is considered routable.
+
+### Added
+
+- **Sticky provider routing**: keep the same upstream provider across agent tool-call follow-ups (namespaced per client API key; does not reorder combo `fallback` chains).
+- **Combo readiness UI**: show ready/skipped + reason per provider in a combo chain.
+- **Usage skip hints**: surface skipped-provider counts in usage/recent lists; expose `x-nesa-skipped` on responses.
+- **CLI ping**: verify via `/v1/models` + chat; allow testing with an existing `keyId`.
+- **Port guard**: `npm run dev` / `start` fail fast with PID help when port 20129 is already in use.
+
+### Security
+
+- Login lockouts are isolated per client (IP/UA hash) with a clearer attempt threshold.
+- MCP stdio bridge is scoped per SSE session with stdout buffer/message size limits.
+- OAuth loopback success/error HTML escapes provider-controlled values.
+- Combo id/name uniqueness and prefer exact combo id over conflicting name.
+
 ## 0.1.28 - 2026-07-15
 
 ### Fixed
