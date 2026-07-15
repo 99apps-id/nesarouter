@@ -4,6 +4,7 @@ import {
   adminAuthEnabled,
   adminLoginPasswordHint,
   defaultAdminPassword,
+  loginRateLimitKey,
   readLoginLock,
   resolveVerifiedAdminSessionToken
 } from "@/core/adminAuth";
@@ -15,10 +16,7 @@ export const dynamic = "force-dynamic";
 
 export default async function LoginPage({ searchParams }: { searchParams?: Promise<{ error?: string; next?: string }> }) {
   const requestHeaders = await headers();
-  const cookieHeader = requestHeaders.get("cookie");
-  const probeRequest = cookieHeader
-    ? new Request("http://nesa-router.local/", { headers: { cookie: cookieHeader } })
-    : undefined;
+  const probeRequest = new Request("http://nesa-router.local/", { headers: requestHeaders });
   if (!(await adminAuthEnabled()) || (await resolveVerifiedAdminSessionToken(probeRequest))) {
     const params = searchParams ? await searchParams : {};
     const next = params.next?.trim();
@@ -28,7 +26,7 @@ export default async function LoginPage({ searchParams }: { searchParams?: Promi
     redirect("/");
   }
 
-  const lock = await readLoginLock();
+  const lock = await readLoginLock(loginRateLimitKey(probeRequest));
   const params = searchParams ? await searchParams : {};
   const passwordHint = await adminLoginPasswordHint();
   return (

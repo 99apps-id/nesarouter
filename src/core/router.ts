@@ -139,7 +139,10 @@ function effectiveRoutingMode(store: NesaStore): NesaStore["router"]["routingMod
 export function findCombo(store: NesaStore, model: string): Combo | undefined {
   const normalized = model.toLowerCase();
   if (!normalized || isAutoModel(model)) return undefined;
-  return store.combos.find((combo) => combo.name.toLowerCase() === normalized || combo.id.toLowerCase() === normalized);
+  return (
+    store.combos.find((combo) => combo.id.toLowerCase() === normalized) ??
+    store.combos.find((combo) => combo.name.toLowerCase() === normalized)
+  );
 }
 
 export function chooseProvider(
@@ -246,9 +249,10 @@ export function chooseProvider(
     candidates = pinManual ? [pinManual] : applyProviderStrategy(sortProviders(activeProviders, mode, taskType), store);
   }
 
-  candidates = pinPreferredProvider(candidates, options?.preferProviderId);
+  const stickyAllowed = !comboConstraint || comboConstraint.strategy === "round_robin";
+  candidates = stickyAllowed ? pinPreferredProvider(candidates, options?.preferProviderId) : candidates;
   const stickyPinned =
-    Boolean(options?.preferProviderId) && candidates[0]?.id === options?.preferProviderId;
+    stickyAllowed && Boolean(options?.preferProviderId) && candidates[0]?.id === options?.preferProviderId;
 
   for (const provider of candidates) {
     let selectedProvider = provider;

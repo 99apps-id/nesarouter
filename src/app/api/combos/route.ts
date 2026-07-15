@@ -20,11 +20,29 @@ export async function POST(request: Request) {
   if (!combo.id || !combo.name || !Array.isArray(combo.providerIds) || combo.providerIds.length === 0) {
     return NextResponse.json({ error: "Combo id, name, and at least one providerId are required." }, { status: 400 });
   }
-  const providerIds = [...new Set(combo.providerIds.filter((id) => typeof id === "string" && id.trim()))];
+  const id = combo.id.trim();
+  const name = combo.name.trim();
+  if (!id || !name) {
+    return NextResponse.json({ error: "Combo id and name cannot be blank." }, { status: 400 });
+  }
+  const providerIds = [...new Set(combo.providerIds.filter((providerId) => typeof providerId === "string" && providerId.trim()).map((providerId) => providerId.trim()))];
   if (providerIds.length !== combo.providerIds.length) {
     return NextResponse.json({ error: "Each provider can only appear once in a combo." }, { status: 400 });
   }
   const store = await readStore();
+  const normalizedId = id.toLowerCase();
+  const normalizedName = name.toLowerCase();
+  const identifierCollision = store.combos.some((existing) => {
+    if (existing.id.toLowerCase() === normalizedId) return false;
+    return (
+      existing.id.toLowerCase() === normalizedName ||
+      existing.name.toLowerCase() === normalizedId ||
+      existing.name.toLowerCase() === normalizedName
+    );
+  });
+  if (identifierCollision) {
+    return NextResponse.json({ error: "Combo id and name must be unique and cannot match another combo identifier." }, { status: 409 });
+  }
   if (providerIds.some((id) => !store.providers.some((provider) => provider.id === id))) {
     return NextResponse.json({ error: "A selected provider no longer exists." }, { status: 400 });
   }
@@ -35,8 +53,8 @@ export async function POST(request: Request) {
     );
   }
   const normalized: Combo = {
-    id: combo.id,
-    name: combo.name,
+    id,
+    name,
     providerIds,
     strategy: combo.strategy === "round_robin" ? "round_robin" : "fallback"
   };

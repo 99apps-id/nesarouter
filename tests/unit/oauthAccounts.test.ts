@@ -96,6 +96,34 @@ describe("oauth account pool", () => {
     expect(configuredOAuthAccounts(provider)[0].oauthAccessToken).toBe("gho_revived");
   });
 
+  it("does not copy the primary provider token into an empty secondary account", () => {
+    const provider = oauthProvider(
+      [
+        { id: "primary", name: "Primary", connectionStatus: "connected" },
+        { id: "secondary", name: "Secondary", connectionStatus: "connected" }
+      ],
+      { oauthAccessToken: "primary-token", oauthRefreshToken: "primary-refresh" }
+    );
+
+    const accounts = configuredOAuthAccounts(provider);
+    expect(accounts[0].oauthAccessToken).toBe("primary-token");
+    expect(accounts[1].oauthAccessToken).toBeUndefined();
+    expect(accounts[1].oauthRefreshToken).toBeUndefined();
+  });
+
+  it("scopes a fresh-token provider snapshot to the active account", () => {
+    const provider = oauthProvider([
+      { id: "primary", name: "Primary", oauthAccessToken: "old-primary" },
+      { id: "secondary", name: "Secondary", oauthAccessToken: "old-secondary" }
+    ]);
+    const account = configuredOAuthAccounts(provider)[1];
+    const snapshot = providerWithFreshOAuthToken(provider, account, "fresh-secondary");
+
+    expect(snapshot.oauthAccounts).toHaveLength(1);
+    expect(snapshot.oauthAccounts?.[0].id).toBe("secondary");
+    expect(snapshot.oauthAccounts?.[0].oauthAccessToken).toBe("fresh-secondary");
+  });
+
   it("revives Cursor machine id from provider columns", () => {
     const provider = oauthProvider(
       [{ id: "a1", name: "Account 1", oauthAccessToken: "cursor_tok", connectionStatus: "connected" }],
