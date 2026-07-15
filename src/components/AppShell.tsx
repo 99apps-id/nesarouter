@@ -12,6 +12,7 @@ import EndpointBox from "@/components/EndpointBox";
 import LanguageSelect from "@/components/LanguageSelect";
 import MustChangePasswordBanner from "@/components/MustChangePasswordBanner";
 import ThemeToggle from "@/components/ThemeToggle";
+import SignOutButton from "@/components/SignOutButton";
 import UpdateBanner from "@/components/UpdateBanner";
 import SessionKeeper from "@/components/SessionKeeper";
 import WorkspaceTitle, { type ShellPageId } from "@/components/WorkspaceTitle";
@@ -71,6 +72,7 @@ export default async function AppShell({
           <div className="topbar-actions">
             <LanguageSelect />
             <ThemeToggle />
+            <SignOutButton />
             <div className={`budget-pill ${budgetStatus}`}>
               <ShieldCheck size={16} />
               <span>{budgetStatus}</span>

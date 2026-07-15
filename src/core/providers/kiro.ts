@@ -203,6 +203,10 @@ export function kiroEventStreamToOpenAiSse(input: ReadableStream<Uint8Array>, mo
   }));
 }
 
+function isKiroProfileArnRequiredError(error: UpstreamProviderError) {
+  return /profilearn|profile.?arn.*required/i.test(error.message);
+}
+
 export class KiroExecutor implements ProviderExecutor {
   async call(provider: ProviderConfig, body: any, apiKey?: string): Promise<ReadableStream<Uint8Array>> {
     const token = cleanApiKey(apiKey ?? provider.oauthAccessToken ?? provider.apiKey ?? "");
@@ -210,30 +214,91 @@ export class KiroExecutor implements ProviderExecutor {
     // OAuth Builder ID tokens must not send tokentype=API_KEY.
     const apiKeyMode = !provider.oauthProfile && Boolean(cleanApiKey(provider.apiKey) || (apiKey && apiKey !== provider.oauthAccessToken));
     const profileArn = resolveKiroProfileArn(provider);
-    const useAmazonQFallback = shouldUseKiroAmazonQFallback(provider, apiKeyMode, profileArn);
-    const response = await proxyFetch(provider, endpointFor(provider, apiKeyMode, useAmazonQFallback), {
-      method: "POST",
-      headers: kiroHeaders(token, apiKeyMode, "application/vnd.amazon.eventstream", true, useAmazonQFallback),
-      body: JSON.stringify(kiroRequest(body, provider.model, profileArn))
-    });
-    if (!response.ok) throw await upstreamError(provider, response);
-    if (!response.body) throw new UpstreamProviderError(`${provider.name} returned no event stream.`, 502);
-    return kiroEventStreamToOpenAiSse(response.body, provider.model);
+    const preferQ = shouldUseKiroAmazonQFallback(provider, apiKeyMode, profileArn);
+
+    const tryOnce = async (useAmazonQFallback: boolean, arn?: string) => {
+      const response = await proxyFetch(provider, endpointFor(provider, apiKeyMode, useAmazonQFallback), {
+        method: "POST",
+        headers: kiroHeaders(token, apiKeyMode, "application/vnd.amazon.eventstream", true, useAmazonQFallback),
+        body: JSON.stringify(kiroRequest(body, provider.model, useAmazonQFallback ? undefined : arn))
+      });
+      if (!response.ok) throw await upstreamError(provider, response);
+      if (!response.body) throw new UpstreamProviderError(`${provider.name} returned no event stream.`, 502);
+      return kiroEventStreamToOpenAiSse(response.body, provider.model);
+    };
+
+    try {
+      return await tryOnce(preferQ, profileArn);
+    } catch (error) {
+      // Builder ID + runtime.kiro.dev often 400s on missing/invalid profileArn — fall back to Amazon Q.
+      if (
+        !preferQ &&
+        !apiKeyMode &&
+        provider.oauthProfile === "kiro" &&
+        error instanceof UpstreamProviderError &&
+        (error.status === 400 || isKiroProfileArnRequiredError(error))
+      ) {
+        return tryOnce(true);
+      }
+      throw error;
+    }
   }
 
   async listModels(provider: ProviderConfig) {
-    return provider.models ?? [];
+    const preset = provider.models?.length ? provider.models : [];
+    return preset.length ? preset : ["claude-sonnet-4.5", "claude-haiku-4.5"];
   }
 
+  /**
+   * Soft credential check (matches 9router: expiry/token presence, not a hard
+   * ListAvailableModels requirement). Aggressive probes were flipping Builder ID
+   * accounts to `error` and skipping them in routing after a successful Connect.
+   */
   async validate(provider: ProviderConfig) {
-    // Prefer OAuth access token for Builder ID; apiKey is only for API-key mode Kiro.
+    const isOauth = provider.oauthProfile === "kiro";
     const token = cleanApiKey(
-      provider.oauthProfile === "kiro"
-        ? provider.oauthAccessToken || provider.apiKey || ""
-        : provider.apiKey || provider.oauthAccessToken || ""
+      isOauth ? provider.oauthAccessToken || provider.apiKey || "" : provider.apiKey || provider.oauthAccessToken || ""
     );
     if (!token) throw new UpstreamProviderError(`${provider.name} needs a Kiro API key or access token.`, 400);
-    const apiKeyMode = !provider.oauthProfile && Boolean(cleanApiKey(provider.apiKey));
+
+    const fallbackModels = await this.listModels(provider);
+
+    // OAuth Builder ID: token present = connected. Optional soft model list.
+    if (isOauth) {
+      const apiKeyMode = false;
+      try {
+        const response = await proxyFetch(provider, "https://q.us-east-1.amazonaws.com/ListAvailableModels?origin=AI_EDITOR", {
+          headers: kiroHeaders(token, apiKeyMode, "application/json", false),
+          signal: AbortSignal.timeout(12_000)
+        });
+        if (response.status === 401) throw await upstreamError(provider, response);
+        if (response.ok) {
+          const payload = await response.json().catch(() => ({}));
+          const models = Array.isArray(payload?.models)
+            ? payload.models.map((item: any) => String(item?.modelId ?? item?.id ?? "")).filter(Boolean)
+            : fallbackModels;
+          return {
+            models: models.length ? models : fallbackModels,
+            message: models.length
+              ? `Kiro Builder ID accepted · ${models.length} models.`
+              : "Kiro Builder ID token accepted."
+          };
+        }
+        // 403/4xx/5xx from list endpoint — still mark connected if we have a token.
+        return {
+          models: fallbackModels,
+          message: "Kiro Builder ID token accepted (model list unavailable; chat uses Amazon Q fallback when needed)."
+        };
+      } catch (error) {
+        if (error instanceof UpstreamProviderError && error.status === 401) throw error;
+        return {
+          models: fallbackModels,
+          message: "Kiro Builder ID token accepted (soft check; reconnect if chat fails)."
+        };
+      }
+    }
+
+    const apiKeyMode = Boolean(cleanApiKey(provider.apiKey));
     const response = await proxyFetch(provider, "https://q.us-east-1.amazonaws.com/ListAvailableModels?origin=AI_EDITOR", {
       headers: kiroHeaders(token, apiKeyMode, "application/json", false)
     });
@@ -241,7 +306,7 @@ export class KiroExecutor implements ProviderExecutor {
     const payload = await response.json().catch(() => ({}));
     const models = Array.isArray(payload?.models)
       ? payload.models.map((item: any) => String(item?.modelId ?? item?.id ?? "")).filter(Boolean)
-      : provider.models ?? [];
-    return { models, message: models.length ? `${models.length} Kiro models available.` : "Kiro credentials accepted." };
+      : fallbackModels;
+    return { models: models.length ? models : fallbackModels, message: models.length ? `${models.length} Kiro models available.` : "Kiro credentials accepted." };
   }
 }

@@ -15,6 +15,7 @@ import {
   ProviderExecutor,
   proxyFetch,
   sortModelIds,
+  UpstreamProviderError,
   upstreamError,
   xiaomiMimoAuthHeaders,
   xiaomiMimoCredentialHint
@@ -209,8 +210,27 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
       return { models, message: models.length ? `Credentials accepted · ${models.length} preset models.` : "Credentials accepted." };
     }
 
-    const models = await this.listModels(provider);
-    return { models, message: models.length ? `${models.length} models found.` : "Credentials accepted." };
+    try {
+      const models = await this.listModels(provider);
+      return {
+        models,
+        message: provider.oauthProfile
+          ? `OAuth accepted · ${models.length} models.`
+          : models.length
+            ? `${models.length} models found.`
+            : "Credentials accepted."
+      };
+    } catch (error) {
+      // OAuth specialty (Qwen/iFlow/Cline/…): /models often rejects while chat works.
+      if (provider.oauthProfile) {
+        const token = resolveBearerToken(provider);
+        if (!token) throw new UpstreamProviderError(`${provider.name} needs an OAuth access token.`, 400);
+        if (error instanceof UpstreamProviderError && error.status === 401) throw error;
+        const models = provider.models?.length ? [...provider.models] : provider.model ? [provider.model] : [];
+        return { models, message: "OAuth token present (model list unavailable)." };
+      }
+      throw error;
+    }
   }
 
   private modelUrls(provider: ProviderConfig) {

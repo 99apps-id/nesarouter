@@ -189,6 +189,29 @@ describe("translatorReverse: responses", () => {
     });
   });
 
+  it("pins store:false even when client sent store:true / extra fields", async () => {
+    const { normalizeCodexResponsesRequest, isChatgptCodexUpstream } = await import("@/core/translatorReverse");
+    expect(
+      isChatgptCodexUpstream({
+        baseUrl: "https://chatgpt.com/backend-api/codex/responses"
+      })
+    ).toBe(true);
+    const normalized = normalizeCodexResponsesRequest({
+      model: "gpt-5.6-sol",
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      store: true,
+      stream: false,
+      temperature: 0.9,
+      previous_response_id: "resp_x",
+      junk: "drop-me"
+    });
+    expect(normalized.store).toBe(false);
+    expect(normalized.stream).toBe(true);
+    expect(normalized.temperature).toBeUndefined();
+    expect(normalized.previous_response_id).toBeUndefined();
+    expect(normalized.junk).toBeUndefined();
+  });
+
   it("converts responses payload to openai chat", () => {
     const out = responsesResponseToOpenAi(
       {

@@ -560,6 +560,10 @@ function cloudCodeAssistMetadata(preset: OAuthPreset): Record<string, string> {
   };
 }
 
+export function cloudCodeAssistProbeMetadata(preset: OAuthPreset): Record<string, string> {
+  return cloudCodeAssistMetadata(preset);
+}
+
 function extractCloudCodeProjectId(data: any): string | undefined {
   let projectId = data?.cloudaicompanionProject ?? data?.response?.cloudaicompanionProject;
   if (typeof projectId === "object" && projectId?.id) projectId = projectId.id;

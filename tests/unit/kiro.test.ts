@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
 import { endpointFor, kiroEventStreamToOpenAiSse, shouldUseKiroAmazonQFallback } from "@/core/providers/kiro";
 import { ProviderConfig } from "@/core/types";
 
@@ -68,5 +68,35 @@ describe("Kiro Builder ID profileArn fallback", () => {
   it("keeps runtime host when profileArn is present", () => {
     expect(shouldUseKiroAmazonQFallback(kiroOauth, false, "arn:aws:codewhisperer:us-east-1:123:profile/abc")).toBe(false);
     expect(endpointFor(kiroOauth, false, false)).toContain("runtime.us-east-1.kiro.dev");
+  });
+});
+
+describe("KiroExecutor.validate soft probe", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("keeps Builder ID connected when ListAvailableModels returns 403", async () => {
+    const { KiroExecutor } = await import("@/core/providers/kiro");
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ message: "forbidden" }), { status: 403 })) as typeof fetch;
+    const result = await new KiroExecutor().validate({
+      ...kiroOauth,
+      oauthAccessToken: "eya-builder-id-token"
+    });
+    expect(result.message).toMatch(/accepted/i);
+    expect(result.models?.length).toBeGreaterThan(0);
+  });
+
+  it("fails hard only on 401 for Builder ID", async () => {
+    const { KiroExecutor } = await import("@/core/providers/kiro");
+    globalThis.fetch = vi.fn(async () => new Response("unauthorized", { status: 401 })) as typeof fetch;
+    await expect(
+      new KiroExecutor().validate({
+        ...kiroOauth,
+        oauthAccessToken: "bad-token"
+      })
+    ).rejects.toThrow(/401|unauthorized|returned/i);
   });
 });

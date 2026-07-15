@@ -379,15 +379,11 @@ export class CursorExecutor implements ProviderExecutor {
         400
       );
     }
-    // Live probe against api2.cursor.sh — same path as chat (non-stream).
-    await this.call(provider, {
-      messages: [{ role: "user", content: "Reply with OK." }],
-      max_tokens: 8,
-      stream: false
-    });
+    // Soft check only (9router tokenExists). Live api2 probes consume quota and 429/5xx
+    // was flipping OAuth accounts to error on the periodic status probe.
     return {
       models: await this.listModels(provider),
-      message: "Cursor token + machine id accepted by api2.cursor.sh."
+      message: "Cursor token + machine id present."
     };
   }
 }

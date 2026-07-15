@@ -2,6 +2,7 @@ import { ProviderConfig } from "@/core/types";
 import { getPreset } from "@/core/oauthProviderPresets";
 import { loadProviderWithFreshToken } from "@/core/providerOAuthFlow";
 import {
+  isChatgptCodexUpstream,
   normalizeCodexResponsesRequest,
   openAiChatToResponsesRequest,
   responsesResponseToOpenAi,
@@ -100,7 +101,8 @@ export class OpenAiResponsesExecutor implements ProviderExecutor {
   async call(provider: ProviderConfig, body: any, apiKey?: string) {
     const token = cleanApiKey(apiKey ?? provider.oauthAccessToken ?? provider.apiKey ?? "");
     const preset = getPreset(provider.oauthProfile);
-    const isCodex = preset?.profile === "openai_codex";
+    // Prefer URL+id detection so a mistyped type/profile still gets store:false.
+    const isCodex = isChatgptCodexUpstream(provider) || preset?.profile === "openai_codex";
     const accountId = isCodex ? extractChatgptAccountId(token) : undefined;
     const headers: Record<string, string> = {
       "content-type": "application/json",
@@ -116,11 +118,21 @@ export class OpenAiResponsesExecutor implements ProviderExecutor {
         : {})
     };
 
-    const request = openAiChatToResponsesRequest({ ...body, model: provider.model }, { codex: isCodex });
+    // Prefer Responses-shaped bodies from clients that already sent `input`
+    // (avoids dropping structured items), then pin Codex constraints.
+    const responsesShaped =
+      Array.isArray(body?.input) || typeof body?.input === "string"
+        ? { ...body, model: provider.model }
+        : openAiChatToResponsesRequest({ ...body, model: provider.model }, { codex: isCodex });
     const clientWantsStream = Boolean(body?.stream);
     const upstreamStream = clientWantsStream || isCodex;
-    const streamed = upstreamStream && !request.stream ? { ...request, stream: true } : request;
-    const finalRequest = isCodex ? normalizeCodexResponsesRequest(streamed) : streamed;
+    const streamed =
+      upstreamStream && !responsesShaped.stream ? { ...responsesShaped, stream: true } : responsesShaped;
+    const finalRequest = isCodex
+      ? normalizeCodexResponsesRequest(streamed as Record<string, unknown>)
+      : (streamed as Record<string, unknown>);
+    // Belt-and-suspenders: never POST store!=false to ChatGPT Codex.
+    if (isCodex) finalRequest.store = false;
 
     const response = await proxyFetch(provider, baseUrl(provider), {
       method: "POST",
@@ -142,7 +154,7 @@ export class OpenAiResponsesExecutor implements ProviderExecutor {
 
   async listModels(provider: ProviderConfig): Promise<string[]> {
     const preset = getPreset(provider.oauthProfile);
-    if (preset?.profile !== "openai_codex") {
+    if (!isChatgptCodexUpstream(provider) && preset?.profile !== "openai_codex") {
       if (provider.models?.length) return [...provider.models];
       return provider.model ? [provider.model] : [];
     }
@@ -158,7 +170,7 @@ export class OpenAiResponsesExecutor implements ProviderExecutor {
       headers: {
         authorization: `Bearer ${token}`,
         accept: "application/json",
-        ...(preset.upstreamHeaders ?? {}),
+        ...(preset?.upstreamHeaders ?? {}),
         ...(accountId ? { "ChatGPT-Account-ID": accountId } : {})
       }
     });

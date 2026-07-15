@@ -58,17 +58,43 @@ export class AnthropicMessagesExecutor implements ProviderExecutor {
   async validate(provider: ProviderConfig) {
     const token = cleanApiKey(provider.oauthAccessToken || provider.apiKey || "");
     if (!token) throw new UpstreamProviderError(`${provider.name} needs an API key or OAuth token.`, 400);
-    await this.call(provider, {
-      messages: [{ role: "user", content: "Reply with OK." }],
-      max_tokens: 8,
-      stream: false
-    });
     const models = await this.listModels(provider);
-    return {
-      models,
-      message: provider.oauthProfile
-        ? "Claude OAuth token accepted."
-        : `Anthropic API key accepted${models.length ? ` · ${models.length} preset models` : ""}.`
-    };
+
+    // OAuth subscription: soft check (9router-style). A live Messages call burns quota and
+    // intermittent 429/5xx was flipping accounts to error on the 45s probe.
+    if (provider.oauthProfile) {
+      if (token.length < 20) {
+        throw new UpstreamProviderError("Claude OAuth token looks too short — reconnect.", 400);
+      }
+      return { models, message: "Claude OAuth token present." };
+    }
+
+    // API key: soft probe — only hard-fail on auth rejection.
+    try {
+      const response = await proxyFetch(provider, anthropicMessagesUrl(provider), {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...anthropicAuthHeaders(provider, token)
+        },
+        body: JSON.stringify({
+          model: provider.model || "claude-sonnet-4-5",
+          max_tokens: 1,
+          messages: [{ role: "user", content: "ping" }]
+        }),
+        signal: AbortSignal.timeout(12_000)
+      });
+      if (response.status === 401 || response.status === 403) throw await upstreamError(provider, response);
+      return {
+        models,
+        message: `Anthropic API key accepted${models.length ? ` · ${models.length} preset models` : ""}.`
+      };
+    } catch (error) {
+      if (error instanceof UpstreamProviderError && [401, 403].includes(error.status)) throw error;
+      return {
+        models,
+        message: `Anthropic API key present${models.length ? ` · ${models.length} preset models` : ""} (soft check).`
+      };
+    }
   }
 }

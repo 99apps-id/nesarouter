@@ -1,5 +1,5 @@
 import { getPreset } from "@/core/oauthProviderPresets";
-import { loadAntigravityProjectId } from "@/core/oauthPkce";
+import { cloudCodeAssistProbeMetadata, loadAntigravityProjectId } from "@/core/oauthPkce";
 import { geminiStreamToOpenAiSse } from "@/core/streaming";
 import { ProviderConfig } from "@/core/types";
 import { fromGeminiResponse, toGeminiRequest } from "@/core/providers/gemini";
@@ -67,15 +67,45 @@ export class GeminiCliExecutor implements ProviderExecutor {
     return ["gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash"];
   }
 
+  /**
+   * Credential check without generateContent (that needs a project id and often
+   * fails with "Test done"/error for free Google subscription). Matches 9router:
+   * probe loadCodeAssist; treat HTTP 200 as connected; best-effort persist project.
+   */
   async validate(provider: ProviderConfig) {
     const token = cleanApiKey(provider.oauthAccessToken ?? "");
     if (!token) throw new UpstreamProviderError(`${provider.name} needs an OAuth access token.`, 400);
+    const preset = getPreset(provider.oauthProfile);
+    const models = await this.listModels(provider);
+
+    if (preset?.loadCodeAssistUrl) {
+      const response = await proxyFetch(provider, preset.loadCodeAssistUrl, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`,
+          accept: "application/json",
+          ...(preset.upstreamHeaders ?? {})
+        },
+        body: JSON.stringify({ metadata: cloudCodeAssistProbeMetadata(preset) })
+      });
+      if (!response.ok) throw await upstreamError(provider, response);
+
+      const project = await resolveCloudCodeProjectId(provider, token);
+      return {
+        models,
+        message: project
+          ? `Google subscription accepted · project ${project}.`
+          : "Google subscription token accepted. If chat fails, set OAuth project id (Cloud Code) on this provider."
+      };
+    }
+
+    // Fallback when preset has no loadCodeAssist URL — try a tiny generate.
     await this.call(provider, {
       messages: [{ role: "user", content: "Reply with OK." }],
       max_tokens: 8,
       stream: false
     });
-    const models = await this.listModels(provider);
     return {
       models,
       message: `Cloud Code token accepted${provider.oauthProjectId ? ` · project ${provider.oauthProjectId}` : ""}.`

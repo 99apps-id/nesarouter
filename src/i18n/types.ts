@@ -73,6 +73,8 @@ export type Messages = {
     dismissUpdate: string;
     changePasswordTitle: string;
     changePasswordBody: string;
+    signOut: string;
+    signingOut: string;
   };
   overview: {
     metricsAria: string;
@@ -304,7 +306,9 @@ export const en: Messages = {
     checkGithub: "Check GitHub for the latest release.",
     dismissUpdate: "Dismiss update banner",
     changePasswordTitle: "Change temporary default password",
-    changePasswordBody: "Use Password below. Other menus unlock after you save a new password."
+    changePasswordBody: "Use Password below. Other menus unlock after you save a new password.",
+    signOut: "Sign out",
+    signingOut: "Signing out…"
   },
   overview: {
     metricsAria: "Overview metrics",
