@@ -637,6 +637,27 @@ a {
   padding: 12px;
 }
 
+.endpoint-box.is-collapsed {
+  padding: 8px 12px;
+}
+
+.endpoint-box-header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.endpoint-box-header span {
+  margin: 0;
+}
+
+.endpoint-visibility {
+  flex-shrink: 0;
+  height: 28px;
+  width: 28px;
+}
+
 code {
   background: var(--code-bg);
   border: 1px solid var(--border);

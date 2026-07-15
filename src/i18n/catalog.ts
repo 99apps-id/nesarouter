@@ -65,6 +65,8 @@ const patches: Record<Exclude<LocaleCode, "en">, DeepPartial<Messages>> = {
       headroom: "Headroom",
       cli: "CLI",
       endpointHint: "Kelola client key di Keys.",
+      showEndpoint: "Tampilkan endpoint",
+      hideEndpoint: "Sembunyikan endpoint",
       mainNav: "Navigasi utama"
     },
     shell: {
@@ -289,6 +291,8 @@ const patches: Record<Exclude<LocaleCode, "en">, DeepPartial<Messages>> = {
       usage: "Penggunaan",
       routing: "Pilihan laluan",
       endpointHint: "Urus kunci klien di Keys.",
+      showEndpoint: "Tunjuk endpoint",
+      hideEndpoint: "Sembunyikan endpoint",
       mainNav: "Navigasi utama"
     },
     cli: {
