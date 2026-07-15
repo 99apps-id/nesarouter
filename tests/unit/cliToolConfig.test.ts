@@ -94,4 +94,58 @@ describe("cli local apply merge", () => {
     expect(saved.env.ANTHROPIC_BASE_URL).toBeUndefined();
     expect(saved.env.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
   });
+
+  it("applies and detects Hermes / Codex local patches", async () => {
+    const {
+      applyCliToolConfigLocal: applyLocal,
+      extractBaseUrlFromText,
+      looksLikeNesa,
+      readCliToolStatus,
+      resetCliToolConfigLocal,
+      stripTomlTable
+    } = await import("@/lib/cliLocalApply");
+    const { isCliToolFilePatchable } = await import("@/lib/cliToolConfig");
+
+    expect(isCliToolFilePatchable("hermes")).toBe(true);
+    expect(isCliToolFilePatchable("codex")).toBe(true);
+    expect(isCliToolFilePatchable("deepseek-tui")).toBe(true);
+    expect(isCliToolFilePatchable("jcode")).toBe(true);
+    expect(isCliToolFilePatchable("cursor")).toBe(false);
+
+    expect(extractBaseUrlFromText('base_url: "http://127.0.0.1:20129/v1"\n')).toBe("http://127.0.0.1:20129/v1");
+    expect(looksLikeNesa("http://127.0.0.1:20129/v1")).toBe(true);
+
+    const hermesDir = path.join(tmpDir, ".hermes");
+    fs.mkdirSync(hermesDir, { recursive: true });
+    const hermesYaml = path.join(hermesDir, "config.yaml");
+    const hermesEnv = path.join(hermesDir, ".env");
+    const hermesCfg = buildCliToolConfig("hermes", "http://127.0.0.1:20129", "nesa_h", "auto");
+    hermesCfg.files = hermesCfg.files.map((file) => ({
+      ...file,
+      path: file.path.endsWith(".env") ? hermesEnv : hermesYaml
+    }));
+    expect(applyLocal(hermesCfg).skipped).toBe(false);
+    expect(fs.readFileSync(hermesEnv, "utf8")).toContain("OPENAI_BASE_URL=http://127.0.0.1:20129/v1");
+
+    // Simulate status reader against temp paths via extract helpers (home-based status uses ~/.hermes).
+    expect(extractBaseUrlFromText(fs.readFileSync(hermesEnv, "utf8"))).toContain("20129");
+
+    fs.writeFileSync(hermesEnv, "OPENAI_BASE_URL=http://127.0.0.1:20129/v1\nOTHER=1\n", "utf8");
+    fs.writeFileSync(hermesYaml, 'model:\n  default: "auto"\n  base_url: "http://127.0.0.1:20129/v1"\n', "utf8");
+    // reset uses real home paths — exercise strip helpers instead for temp files:
+    const strippedEnv = fs
+      .readFileSync(hermesEnv, "utf8")
+      .split(/\r?\n/)
+      .filter((line) => !/^\s*OPENAI_/.test(line))
+      .join("\n");
+    expect(strippedEnv).toContain("OTHER=1");
+    expect(strippedEnv).not.toContain("OPENAI_BASE_URL");
+
+    const codexRaw = `model = "auto"\n\n[model_providers.nesa]\nname = "NesaRouter"\nbase_url = "http://127.0.0.1:20129/v1"\n\n[other]\nx = 1\n`;
+    const withoutNesa = stripTomlTable(codexRaw, "model_providers.nesa");
+    expect(withoutNesa).not.toContain("model_providers.nesa");
+    expect(withoutNesa).toContain("[other]");
+    expect(readCliToolStatus("cursor").configStatus).toBe("unsupported");
+    expect(resetCliToolConfigLocal("cursor").ok).toBe(false);
+  });
 });

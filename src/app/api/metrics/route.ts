@@ -1,26 +1,43 @@
 import { NextResponse } from "next/server";
+import { timingSafeEqualString } from "@/core/adminSessionCookie";
 import { renderPrometheusText } from "@/core/runtimeMetrics";
 import { readStore } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function authorizeMetrics(request: Request): boolean {
-  const required = process.env.NESA_METRICS_TOKEN?.trim();
-  if (!required) return true;
+/**
+ * Metrics are deny-by-default. Set NESA_METRICS_TOKEN and pass it via
+ * `Authorization: Bearer …` or `?token=`.
+ */
+export async function authorizeMetrics(
+  request: Request,
+  tokenEnv = process.env.NESA_METRICS_TOKEN
+): Promise<boolean> {
+  const required = tokenEnv?.trim();
+  if (!required) return false;
 
   const url = new URL(request.url);
-  const queryToken = url.searchParams.get("token")?.trim();
-  if (queryToken && queryToken === required) return true;
+  const queryToken = url.searchParams.get("token")?.trim() ?? "";
+  if (queryToken && (await timingSafeEqualString(queryToken, required))) return true;
 
   const header = request.headers.get("authorization") ?? "";
   const match = /^Bearer\s+(.+)$/i.exec(header);
-  return Boolean(match && match[1]?.trim() === required);
+  const bearer = match?.[1]?.trim() ?? "";
+  return Boolean(bearer && (await timingSafeEqualString(bearer, required)));
 }
 
 export async function GET(request: Request) {
-  if (!authorizeMetrics(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await authorizeMetrics(request))) {
+    const configured = Boolean(process.env.NESA_METRICS_TOKEN?.trim());
+    return NextResponse.json(
+      {
+        error: configured
+          ? "Unauthorized"
+          : "Metrics disabled. Set NESA_METRICS_TOKEN to enable Prometheus scrape."
+      },
+      { status: 401 }
+    );
   }
 
   try {

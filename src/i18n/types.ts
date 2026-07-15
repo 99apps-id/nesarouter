@@ -475,7 +475,7 @@ export const en: Messages = {
     hideScript: "Hide remote script",
     showScript: "Remote script (optional)",
     nonPatchableHint:
-      "This tool has no automatic local file patch — Apply prepares instructions / env. Claude Code, Gemini CLI, Qwen, OpenClaw, and Continue patch local settings directly.",
+      "This tool has no automatic local file patch — Apply prepares instructions / env. Hermes, Codex, DeepSeek TUI, jcode, Claude Code, Gemini CLI, Qwen, OpenClaw, and Continue patch local settings directly.",
     patchedOk: "Settings patched. The CLI is ready to use NesaRouter.",
     noLocalFile: "No local file for this tool.",
     applyFailed: "Apply / patch failed.",

@@ -143,8 +143,11 @@ export interface ProviderExecutor {
   validate?(provider: ProviderConfig): Promise<ProviderValidateResult>;
 }
 
-export function cleanApiKey(apiKey: string) {
-  return apiKey.trim().replace(/^Bearer\s+/i, "").trim();
+export function cleanApiKey(apiKey: string | undefined | null) {
+  return String(apiKey ?? "")
+    .trim()
+    .replace(/^Bearer\s+/i, "")
+    .trim();
 }
 
 export function baseUrl(provider: ProviderConfig) {

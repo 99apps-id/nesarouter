@@ -6,27 +6,27 @@ import { useI18n } from "@/components/I18nProvider";
 import { Combo, ProviderConfig, RouterSettings } from "@/core/types";
 import { ModelAlias } from "@/core/aliases";
 import { adminFetch } from "@/lib/adminFetch";
-import { listCliModelTargets } from "@/lib/cliToolConfig";
+import { isCliToolFilePatchable, listCliModelTargets } from "@/lib/cliToolConfig";
 import type { KeyRow } from "@/lib/keyIdentity";
 
 const TOOLS = [
-  { id: "claude-code", label: "Claude Code", patchable: true },
-  { id: "codex", label: "Codex CLI", patchable: false },
-  { id: "gemini-cli", label: "Gemini CLI", patchable: true },
-  { id: "qwen-code", label: "Qwen Code", patchable: true },
-  { id: "hermes", label: "Hermes", patchable: false },
-  { id: "openclaw", label: "OpenClaw", patchable: true },
-  { id: "cursor", label: "Cursor", patchable: false },
-  { id: "cline", label: "Cline", patchable: false },
-  { id: "opencode", label: "OpenCode", patchable: false },
-  { id: "continue", label: "Continue", patchable: true },
-  { id: "roo", label: "Roo", patchable: false },
-  { id: "kilo", label: "Kilo Code", patchable: false },
-  { id: "amp", label: "Amp CLI", patchable: false },
-  { id: "droid", label: "Factory Droid", patchable: false },
-  { id: "cowork", label: "Cowork", patchable: false },
-  { id: "deepseek-tui", label: "DeepSeek TUI", patchable: false },
-  { id: "jcode", label: "jcode", patchable: false }
+  { id: "claude-code", label: "Claude Code" },
+  { id: "codex", label: "Codex CLI" },
+  { id: "gemini-cli", label: "Gemini CLI" },
+  { id: "qwen-code", label: "Qwen Code" },
+  { id: "hermes", label: "Hermes" },
+  { id: "openclaw", label: "OpenClaw" },
+  { id: "cursor", label: "Cursor" },
+  { id: "cline", label: "Cline" },
+  { id: "opencode", label: "OpenCode" },
+  { id: "continue", label: "Continue" },
+  { id: "roo", label: "Roo" },
+  { id: "kilo", label: "Kilo Code" },
+  { id: "amp", label: "Amp CLI" },
+  { id: "droid", label: "Factory Droid" },
+  { id: "cowork", label: "Cowork" },
+  { id: "deepseek-tui", label: "DeepSeek TUI" },
+  { id: "jcode", label: "jcode" }
 ] as const;
 
 type ConfigStatus = "connected" | "other" | "not_configured" | "unsupported";
@@ -102,8 +102,7 @@ export default function CliConfigFetcher({
   const [message, setMessage] = useState<{ type: "ok" | "error"; text: string } | null>(null);
 
   const effectiveBase = (endpointOverride.trim() || baseUrl).replace(/\/$/, "");
-  const toolMeta = TOOLS.find((item) => item.id === tool);
-  const patchable = toolMeta?.patchable ?? false;
+  const patchable = isCliToolFilePatchable(tool);
 
   async function refreshStatus(nextTool = tool) {
     setChecking(true);

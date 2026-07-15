@@ -2,6 +2,23 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.32 - 2026-07-15
+
+### Added
+
+- **CLI Apply / Patch**: Hermes, Codex CLI, DeepSeek TUI, and jcode now patch local config files (with status detection + Reset); `.env` patches upsert keys instead of wiping the file.
+
+### Fixed
+
+- **OpenCode Free**: catalog and routing stay on free-tier models only, even when a Zen API key is set; paid model ids remap to `big-pickle`.
+- **OpenCode / DeepSeek**: disable default DeepSeek thinking on Zen chat unless the client sets thinking or the model is reasoner/R1/thinking (avoids `reasoning_content` 400s).
+- **`cleanApiKey`**: tolerate missing/undefined keys.
+
+### Security / ops
+
+- **`/api/metrics`**: deny-by-default — set `NESA_METRICS_TOKEN` to scrape (Bearer or `?token=`).
+- **`/api/health`**: reports `version` from `package.json` via `readAppVersion()`; returns HTTP 503 when DB readiness fails.
+
 ## 0.1.31 - 2026-07-15
 
 ### Added

@@ -112,6 +112,7 @@ Copy `.env.example` to `.env`. The important production variables are:
 | `NESA_OAUTH_ALLOWED_EMAILS` | Optional | Comma-separated allowlist for Google or GitHub **dashboard** OAuth login. |
 | `NESA_PUBLIC_URL` | Recommended behind proxy | Public origin (`https://host` or `http://ip:20129`) used for OAuth redirects and post-login URLs. |
 | `NESA_COOKIE_SECURE` | Optional | Force `Secure` cookies on/off (`true`/`false`). Default: on for https public URL or production. |
+| `NESA_METRICS_TOKEN` | Optional (required to scrape) | Enables `GET /api/metrics`. Without it, metrics return 401. |
 
 Generate an encryption key:
 
@@ -185,8 +186,8 @@ Response headers may include routing and saver metadata such as `x-nesa-cache` a
 
 ## Operations
 
-- **Health**: `GET /api/health` returns liveness (`ok`) plus readiness (`ready`, `checks.db`). Docker can keep using HTTP 200 / `ok`.
-- **Metrics**: `GET /api/metrics` exposes Prometheus text (`nesa_requests_total`, queue gauges, budget spend, …). Optional `NESA_METRICS_TOKEN` requires `Authorization: Bearer …` or `?token=`.
+- **Health**: `GET /api/health` returns liveness (`ok: true`) plus readiness (`ready`, `checks.db`, app `version` from `package.json`). HTTP **503** when the database check fails (usable as a readiness probe). Docker liveness can keep checking for process up / TCP.
+- **Metrics**: `GET /api/metrics` exposes Prometheus text (`nesa_requests_total`, queue gauges, budget spend, …). **Deny-by-default** — set `NESA_METRICS_TOKEN` and scrape with `Authorization: Bearer …` or `?token=`. Without the env var, the endpoint returns 401.
 - **Aliases import**: paste 9router `GET /api/models/alias` JSON on the Aliases page (or `POST /api/aliases/import`) to migrate shorthand model maps.
 - **Concurrency queue**: under Routing settings, set global / per-provider max concurrent upstream calls (`0` = unlimited). Queue wait timeouts return HTTP 503 with `code: queue_timeout`.
 - **Routing**: mode, strategy, fallback, cache, budget, token savers (Caveman / RTK), and admin password.
