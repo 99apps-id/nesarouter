@@ -24,6 +24,23 @@ export const CLI_TOOL_IDS = [
 
 export type CliToolId = (typeof CLI_TOOL_IDS)[number];
 
+/** Tools that Apply writes (or merges) into a local settings file on this machine. */
+export const CLI_FILE_PATCHABLE_IDS = [
+  "claude-code",
+  "codex",
+  "gemini-cli",
+  "qwen-code",
+  "hermes",
+  "openclaw",
+  "continue",
+  "deepseek-tui",
+  "jcode"
+] as const satisfies readonly CliToolId[];
+
+export function isCliToolFilePatchable(tool: string): boolean {
+  return (CLI_FILE_PATCHABLE_IDS as readonly string[]).includes(tool);
+}
+
 export interface CliConfigFile {
   path: string;
   content: string;

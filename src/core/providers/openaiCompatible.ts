@@ -26,11 +26,14 @@ export function shouldDisableDeepSeekThinking(provider: ProviderConfig, body: an
   if (body?.thinking != null) return false;
   const host = baseUrl(provider).toLowerCase();
   const model = String(provider.model ?? body?.model ?? "").toLowerCase();
-  // Never inject thinking flags onto Runware AIR ids or non-DeepSeek hosts.
+  // Never inject thinking flags onto Runware AIR ids.
+  if (provider.id === "runware" || /runware\.ai/i.test(host)) return false;
   const isDeepSeekHost = host.includes("deepseek.com") || provider.id.toLowerCase() === "deepseek";
-  if (!isDeepSeekHost) return false;
+  // OpenCode Zen (and similar proxies) host DeepSeek models under another hostname.
+  const isDeepSeekModel = model.includes("deepseek");
+  if (!isDeepSeekHost && !isDeepSeekModel) return false;
   // Reasoner / R1-style models should keep thinking enabled.
-  if (/reasoner|r1|thinking/.test(model)) return false;
+  if (/reasoner|(^|[\/_-])r1([\/_-]|$)|thinking/.test(model)) return false;
   return true;
 }
 

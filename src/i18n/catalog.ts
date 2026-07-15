@@ -251,7 +251,7 @@ const patches: Record<Exclude<LocaleCode, "en">, DeepPartial<Messages>> = {
       hideScript: "Sembunyikan skrip remote",
       showScript: "Skrip remote (opsional)",
       nonPatchableHint:
-        "Tool ini tidak punya patch file otomatis — Apply menyiapkan instruksi / env. Claude Code, Gemini CLI, Qwen, OpenClaw, dan Continue mem-patch settings lokal langsung.",
+        "Tool ini tidak punya patch file otomatis — Apply menyiapkan instruksi / env. Hermes, Codex, DeepSeek TUI, jcode, Claude Code, Gemini CLI, Qwen, OpenClaw, dan Continue mem-patch settings lokal langsung.",
       patchedOk: "Settings ter-patch. CLI siap memakai NesaRouter.",
       noLocalFile: "Tidak ada file lokal untuk tool ini.",
       applyFailed: "Apply / patch gagal.",
@@ -324,7 +324,7 @@ const patches: Record<Exclude<LocaleCode, "en">, DeepPartial<Messages>> = {
       hideScript: "Sembunyikan skrip jauh",
       showScript: "Skrip jauh (pilihan)",
       nonPatchableHint:
-        "Alat ini tiada tampalan fail automatik — Apply menyediakan arahan / env. Claude Code, Gemini CLI, Qwen, OpenClaw dan Continue menampal tetapan tempatan terus.",
+        "Alat ini tiada tampalan fail automatik — Apply menyediakan arahan / env. Hermes, Codex, DeepSeek TUI, jcode, Claude Code, Gemini CLI, Qwen, OpenClaw dan Continue menampal tetapan tempatan terus.",
       patchedOk: "Tetapan ditampal. CLI sedia menggunakan NesaRouter.",
       noLocalFile: "Tiada fail tempatan untuk alat ini.",
       applyFailed: "Apply / patch gagal.",

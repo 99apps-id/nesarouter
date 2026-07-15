@@ -1,6 +1,7 @@
 import { ProviderConfig } from "@/core/types";
 import { fromGeminiResponse, toGeminiRequest } from "@/core/providers/gemini";
 import { geminiStreamToOpenAiSse } from "@/core/streaming";
+import { shouldDisableDeepSeekThinking } from "@/core/providers/openaiCompatible";
 import {
   claudeResponseToOpenAi,
   claudeSseToOpenAiSse,
@@ -20,14 +21,24 @@ const FREE_MODELS = [
 ] as const;
 
 const DEFAULT_FREE_MODEL = "big-pickle";
+const FREE_MODEL_SET = new Set<string>(FREE_MODELS);
 
-type ZenSurface = "chat" | "messages" | "responses" | "gemini";
+/** True for OpenCode Free catalog ids (hardcoded + upstream `*-free` skus). */
+export function isOpenCodeFreeModel(modelId: string): boolean {
+  const id = modelId.trim();
+  if (!id || id === "auto") return true;
+  if (FREE_MODEL_SET.has(id)) return true;
+  return /-free$/i.test(id);
+}
 
-export function resolveOpenCodeModel(model: string | undefined): string {
+export function resolveOpenCodeModel(model: string | undefined, provider?: ProviderConfig): string {
   const id = (model ?? "").trim();
   if (!id || id === "auto") return DEFAULT_FREE_MODEL;
+  if (provider?.id === "opencode-free" && !isOpenCodeFreeModel(id)) return DEFAULT_FREE_MODEL;
   return id;
 }
+
+type ZenSurface = "chat" | "messages" | "responses" | "gemini";
 
 export function isOpenCodeGo(provider: ProviderConfig): boolean {
   return provider.id === "opencode-go" || /\/zen\/go(\/|$)/i.test(provider.baseUrl);
@@ -81,7 +92,7 @@ function opencodeHeaders(apiKey: string | undefined, stream = true): Record<stri
 
 export class OpenCodeExecutor implements ProviderExecutor {
   async call(provider: ProviderConfig, body: any, apiKey?: string) {
-    const model = resolveOpenCodeModel(provider.model);
+    const model = resolveOpenCodeModel(provider.model, provider);
     const surface = zenSurfaceForModel(model, provider);
     const key = apiKey ?? provider.apiKey;
     const stream = Boolean(body?.stream);
@@ -109,6 +120,9 @@ export class OpenCodeExecutor implements ProviderExecutor {
       if (stream && !upstreamBody.stream) upstreamBody = { ...upstreamBody, stream: true };
     } else {
       upstreamBody = { ...body, model };
+      if (shouldDisableDeepSeekThinking({ ...provider, model }, { ...body, model })) {
+        upstreamBody.thinking = { type: "disabled" };
+      }
       if (stream) {
         const streamOptions = body.stream_options && typeof body.stream_options === "object" ? body.stream_options : {};
         upstreamBody.stream_options = { include_usage: true, ...streamOptions };
@@ -151,9 +165,9 @@ export class OpenCodeExecutor implements ProviderExecutor {
     if (!response.ok) throw await upstreamError(provider, response);
     const payload = await response.json();
     const ids = sortModelIds((payload?.data ?? []).map((model: any) => String(model?.id ?? "")).filter(Boolean));
-    const key = cleanApiKey(provider.apiKey);
-    if (provider.id === "opencode-free" && (!key || key === "public")) {
-      const free = ids.filter((id) => FREE_MODELS.includes(id as (typeof FREE_MODELS)[number]));
+    // OpenCode Free must only expose free-tier models — even when a Zen API key is set.
+    if (provider.id === "opencode-free") {
+      const free = ids.filter((id) => isOpenCodeFreeModel(id));
       return free.length ? free : [...FREE_MODELS];
     }
     if (provider.id === "opencode-go" && provider.models?.length) {

@@ -41,8 +41,22 @@ describe("DeepSeek thinking defaults", () => {
   });
 
   it("does not touch unrelated hosts", () => {
-    const groq = { ...deepseek(), id: "groq", baseUrl: "https://api.groq.com/openai/v1" } as ProviderConfig;
+    const groq = {
+      ...deepseek("llama-3.1-70b"),
+      id: "groq",
+      baseUrl: "https://api.groq.com/openai/v1"
+    } as ProviderConfig;
     expect(shouldDisableDeepSeekThinking(groq, { messages: [] })).toBe(false);
+  });
+
+  it("disables thinking for DeepSeek models hosted on OpenCode Zen", () => {
+    const opencode = {
+      ...deepseek("deepseek-v4-flash-free"),
+      id: "opencode-free",
+      type: "opencode",
+      baseUrl: "https://opencode.ai"
+    } as ProviderConfig;
+    expect(shouldDisableDeepSeekThinking(opencode, { messages: [] })).toBe(true);
   });
 });
 
