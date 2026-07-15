@@ -11,7 +11,7 @@ const outerRingLimit = 14;
 const MAP_COORD_DECIMALS = 2;
 // Keep the last real upstream route visible long enough to inspect it. Cache
 // hits are excluded below because they never establish a provider connection.
-const LIVE_WINDOW_MS = 5 * 60_000;
+const LIVE_WINDOW_MS = 10 * 60_000;
 const LIVE_REFRESH_MS = 4_000;
 
 /** Stable coords for SSR + client (avoids hydration drift from float math). */
@@ -43,10 +43,23 @@ function curvePath(from: Point, to: Point, index: number) {
   return `M ${mapCoordText(from.x)} ${mapCoordText(from.y)} Q ${mapCoordText(cx)} ${mapCoordText(cy)} ${mapCoordText(to.x)} ${mapCoordText(to.y)}`;
 }
 
+function recentRouteProviderIds(usage: UsageLog[], nowMs = Date.now()) {
+  const ids: string[] = [];
+  for (const row of usage) {
+    if (row.status !== "success" || row.cacheStatus === "hit") continue;
+    const createdAt = new Date(row.createdAt).getTime();
+    if (!Number.isFinite(createdAt) || nowMs - createdAt > LIVE_WINDOW_MS) continue;
+    if (!ids.includes(row.providerId)) ids.push(row.providerId);
+  }
+  return ids;
+}
+
 function mapNodes(providers: ProviderConfig[], usage: UsageLog[]): MapNode[] {
   // The map represents selectable upstream routes, not the entire provider
-  // catalog. Disabled and cooldown presets cannot receive traffic.
-  const activeProviders = providers.filter((provider) => provider.status === "active");
+  // catalog. Keep providers that recently handled real upstream traffic visible
+  // even if their status changed after the request.
+  const recentIds = recentRouteProviderIds(usage);
+  const activeProviders = providers.filter((provider) => provider.status === "active" || recentIds.includes(provider.id));
   if (activeProviders.length <= maxVisibleNodes) {
     return activeProviders.map((provider) => ({ ...provider, kind: "provider" as const }));
   }
@@ -177,9 +190,7 @@ export default function UsageFlow({
   const dragStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const pinchStart = useRef<{ distance: number; scale: number } | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const latestUsage = liveUsage.find((row) => row.status === "success" && row.cacheStatus !== "hit");
-  const recentTraffic = Boolean(latestUsage && Date.now() - new Date(latestUsage.createdAt).getTime() < LIVE_WINDOW_MS);
-  const activeProviderId = recentTraffic ? latestUsage?.providerId : undefined;
+  const liveProviderIds = useMemo(() => new Set(recentRouteProviderIds(liveUsage)), [liveUsage]);
   const center: Point = { x: 0, y: 0 };
   const viewBox = useMemo(() => {
     const w = Math.max(mapSize.width, 1);
@@ -338,7 +349,7 @@ export default function UsageFlow({
           {mounted ? (
             <svg className="router-map-lines" viewBox={viewBox} preserveAspectRatio="none" aria-hidden="true">
               {layout.map(({ node, index, point }) => {
-                const active = node.kind === "provider" && node.id === activeProviderId;
+                const active = node.kind === "provider" && liveProviderIds.has(node.id);
                 const path = curvePath(center, point, index);
                 return (
                   <g key={`line-${node.id}`}>
@@ -372,7 +383,7 @@ export default function UsageFlow({
           </div>
 
           {layout.map(({ node, index, point }) => {
-            const active = node.kind === "provider" && node.id === activeProviderId;
+            const active = node.kind === "provider" && liveProviderIds.has(node.id);
             const connected = node.kind === "provider" && node.connectionStatus === "connected";
             const stats = node.kind === "provider" ? usageMap.get(node.id) : undefined;
             return (
