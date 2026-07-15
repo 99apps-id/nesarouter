@@ -1,5 +1,5 @@
 import http from "node:http";
-import { exchangeCode } from "@/core/oauthPkce";
+import { exchangeCode, resolveIflowApiKey } from "@/core/oauthPkce";
 import { getPreset } from "@/core/oauthProviderPresets";
 import { publicUrl } from "@/core/publicUrl";
 import { deleteOAuthPending, readOAuthPending, readProviderById, readPublicBaseUrlSync, saveProviderOAuthTokens } from "@/lib/store";
@@ -40,11 +40,13 @@ async function handleLoopbackCallback(req: http.IncomingMessage, res: http.Serve
       return;
     }
 
-    const code = url.searchParams.get("code");
     const state = url.searchParams.get("state");
-    if (!code || !state) {
+    const tokenParam = url.searchParams.get("token");
+    const code = url.searchParams.get("code");
+
+    if (!state) {
       res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
-      res.end(htmlPage("OAuth error", `<p>Missing code or state.</p><p><a href="${entry.successRedirect}">Back to NesaRouter</a></p>`));
+      res.end(htmlPage("OAuth error", `<p>Missing state.</p><p><a href="${entry.successRedirect}">Back to NesaRouter</a></p>`));
       return;
     }
 
@@ -64,13 +66,37 @@ async function handleLoopbackCallback(req: http.IncomingMessage, res: http.Serve
       return;
     }
 
-    const tokens = await exchangeCode(preset, code, pending.redirectUri, pending.codeVerifier);
-    const expiresAt = tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : undefined;
-    await saveProviderOAuthTokens(provider.id, {
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresAt
-    });
+    let accessToken: string;
+    let refreshToken: string | undefined;
+    let expiresAt: string | undefined;
+
+    if (preset.tokenInCallback) {
+      if (!tokenParam) {
+        res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        res.end(htmlPage("OAuth error", `<p>Missing token in callback.</p>`));
+        return;
+      }
+      accessToken = tokenParam.trim();
+    } else {
+      if (!code) {
+        res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+        res.end(htmlPage("OAuth error", `<p>Missing code.</p><p><a href="${entry.successRedirect}">Back to NesaRouter</a></p>`));
+        return;
+      }
+      const tokens = await exchangeCode(preset, code, pending.redirectUri, pending.codeVerifier);
+      accessToken = tokens.access_token;
+      refreshToken = tokens.refresh_token;
+      expiresAt = tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : undefined;
+      if (preset.profile === "iflow" && accessToken) {
+        accessToken = await resolveIflowApiKey(preset, accessToken);
+      }
+    }
+
+    await saveProviderOAuthTokens(
+      provider.id,
+      { accessToken, refreshToken, expiresAt },
+      { accountId: pending.accountId, createNew: !pending.accountId }
+    );
 
     const done = entry.successRedirect.includes("?")
       ? `${entry.successRedirect}&oauth=connected`
@@ -118,7 +144,7 @@ export async function ensureOauthLoopback(port: number, path: string, request?: 
   await new Promise<void>((resolve, reject) => {
     server.once("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE") {
-        reject(new Error(`Port ${port} is already in use. Free it (or stop another Codex login), then try Connect again.`));
+        reject(new Error(`Port ${port} is already in use. Free it (or stop another OAuth login), then try Connect again.`));
       } else {
         reject(err);
       }

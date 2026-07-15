@@ -311,7 +311,7 @@ export const en: Messages = {
     spendToday: "Spend today",
     budgetLeft: "Budget left",
     providersActive: "Providers active",
-    requests: "Requests",
+    requests: "Requests today",
     budgetGuardActive: "Budget guard active",
     savingsToday: "Savings today",
     savedAmount: "{amount} saved",

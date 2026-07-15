@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { finalizeAdminResponse, requireAdmin } from "@/lib/adminApi";
-import { registerKiroOidcClient, startDeviceFlow, startKiroDeviceFlow } from "@/core/oauthPkce";
-import { getPreset } from "@/core/oauthProviderPresets";
+import { generatePkce, registerKiroOidcClient, startDeviceFlow, startKiroDeviceFlow } from "@/core/oauthPkce";
+import { getPreset, usesOAuthDeviceFlow } from "@/core/oauthProviderPresets";
 import { deleteDevicePending, readProviderById, saveDevicePending } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -9,8 +9,7 @@ export const dynamic = "force-dynamic";
 
 /**
  * POST /api/providers/[id]/oauth/device/start — begin a device-code flow
- * (GitHub Copilot or Kiro AWS Builder ID). Returns user_code + verification_uri;
- * the device_code (and Kiro client credentials) are stored server-side.
+ * (GitHub Copilot, Kiro, Qwen, Grok CLI, CodeBuddy, Kilo, …).
  */
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   const unauthorized = await requireAdmin(request);
@@ -20,17 +19,20 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const provider = await readProviderById(id);
   if (!provider) return NextResponse.json({ error: "Provider not found." }, { status: 404 });
   const preset = getPreset(provider.oauthProfile);
-  if (!preset?.deviceFlow && !preset?.kiroDeviceFlow) {
+  if (!usesOAuthDeviceFlow(preset)) {
     return NextResponse.json({ error: "Provider does not use device flow." }, { status: 400 });
   }
 
   try {
-    if (preset.kiroDeviceFlow) {
-      const registered = await registerKiroOidcClient(preset);
-      const info = await startKiroDeviceFlow(preset, registered.clientId, registered.clientSecret);
+    if (preset!.kiroDeviceFlow) {
+      const registered = await registerKiroOidcClient(preset!);
+      const info = await startKiroDeviceFlow(preset!, registered.clientId, registered.clientSecret);
+      const createdAt = new Date().toISOString();
+      const expiresInSec = Number(info.expires_in) > 0 ? Number(info.expires_in) : 15 * 60;
       await saveDevicePending(id, {
         deviceCode: info.device_code,
-        createdAt: new Date().toISOString(),
+        createdAt,
+        expiresAt: new Date(Date.now() + expiresInSec * 1000).toISOString(),
         accountId: body.createNew ? undefined : body.accountId,
         clientId: info.clientId,
         clientSecret: info.clientSecret,
@@ -47,18 +49,24 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       );
     }
 
-    const info = await startDeviceFlow(preset);
+    const pkce = preset!.devicePkce ? generatePkce() : undefined;
+    const info = await startDeviceFlow(preset!, pkce?.challenge);
+    const createdAt = new Date().toISOString();
+    const expiresInSec = Number(info.expires_in) > 0 ? Number(info.expires_in) : 15 * 60;
     await saveDevicePending(id, {
       deviceCode: info.device_code,
-      createdAt: new Date().toISOString(),
-      accountId: body.createNew ? undefined : body.accountId
+      createdAt,
+      expiresAt: new Date(Date.now() + expiresInSec * 1000).toISOString(),
+      accountId: body.createNew ? undefined : body.accountId,
+      codeVerifier: pkce?.verifier
     }, body.createNew ? undefined : body.accountId);
     return finalizeAdminResponse(
       NextResponse.json({
         user_code: info.user_code,
         verification_uri: info.verification_uri,
         expires_in: info.expires_in,
-        interval: info.interval
+        interval: info.interval,
+        openUrl: !info.user_code ? info.verification_uri : undefined
       }),
       request
     );

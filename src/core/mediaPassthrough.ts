@@ -123,10 +123,10 @@ export async function handleMediaPassthrough(
   }
 
   const provider = decision.provider;
-  const keys = pickActiveKeys(provider);
+  const keys = pickActiveKeys(provider, store);
   if (!keys.length) {
-    await markProviderFailure(provider.id, "All API keys in cooldown.", 5 * 60_000);
-    return NextResponse.json({ error: { message: "All keys in cooldown.", provider: provider.name } }, { status: 502 });
+    await markProviderFailure(provider.id, "All API keys unavailable (cooldown/quota).", 5 * 60_000);
+    return NextResponse.json({ error: { message: "All keys in cooldown or daily quota exhausted.", provider: provider.name } }, { status: 502 });
   }
 
   for (const picked of keys) {
@@ -142,7 +142,7 @@ export async function handleMediaPassthrough(
       rememberKeyUse(provider.id, picked.index);
       clearKeyCooldown(provider.id, picked.index);
       await clearProviderCooldown(provider.id);
-      return await finishMediaResponse(response, provider, decision, kind, options, modelHint);
+      return await finishMediaResponse(response, provider, decision, kind, options, modelHint, picked.index);
     } catch (error) {
       const message = error instanceof Error ? error.message : `${kind} upstream failed.`;
       errors.push(`${provider.name}[${picked.index}]: ${message}`);
@@ -176,7 +176,8 @@ async function finishMediaResponse(
   decision: RouteDecision,
   kind: MediaKind,
   options: { body: any | FormData; isFormData?: boolean; binaryResponse?: boolean },
-  modelHint: string
+  modelHint: string,
+  keyIndex?: number
 ) {
   const requestedModel =
     options.isFormData && options.body instanceof FormData
@@ -208,7 +209,8 @@ async function finishMediaResponse(
     cacheStatus: "skipped",
     budgetStatus: decision.budgetStatus,
     routingReason: `${kind} via ${provider.name}`,
-    status: "success"
+    status: "success",
+    keyIndex
   };
   await appendUsage(usageLog);
 

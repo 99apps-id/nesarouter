@@ -64,8 +64,11 @@ export default function McpManager({ servers, baseUrl }: { servers: McpServer[];
         </div>
       </div>
       <p className="compact-copy">
-        Spawn any local MCP server (stdio JSON-RPC) and expose it over SSE at <code>{baseUrl}/v1/mcp/&lt;id&gt;/sse</code>.
-        Send JSON-RPC via POST to <code>/v1/mcp/&lt;id&gt;/rpc</code>. Admin-configured commands run with this server&apos;s privileges — only configure trusted binaries.
+        Spawn a local MCP server over stdio (Content-Length JSON-RPC) and expose it at{" "}
+        <code>{baseUrl}/v1/mcp/&lt;id&gt;/sse</code>. Send JSON-RPC via POST to{" "}
+        <code>/v1/mcp/&lt;id&gt;/rpc</code> (auto-starts the child if needed). Admin-configured commands run with this
+        server&apos;s privileges — only configure trusted binaries. Env secrets stay server-side (never sent to the
+        browser).
       </p>
 
       <div className="combo-list">

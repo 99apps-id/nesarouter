@@ -25,7 +25,16 @@ export const providerGroupMeta: Record<ProviderGroupId, { title: string; hint: s
   }
 };
 
-const freeTierIds = new Set(["gemini-flash", "groq", "nvidia-nim", "github-models", "opencode-go", "byteplus-ark"]);
+const freeTierIds = new Set([
+  "gemini-flash",
+  "groq",
+  "nvidia-nim",
+  "cloudflare-workers-ai",
+  "github-models",
+  "opencode-go",
+  "byteplus-ark",
+  "vertex-ai"
+]);
 const freeSignals = ["free", "local", "ollama"];
 
 export function providerGroup(provider: ProviderConfig): ProviderGroupId {

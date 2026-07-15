@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cursorAccessTokenExpiresAt } from "@/core/cursorTokenImport";
 import { requireAdmin } from "@/lib/adminApi";
 import { readProviderById, saveProviderOAuthTokens } from "@/lib/store";
 
@@ -37,12 +38,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const expiresAt = body.expiresIn
     ? new Date(Date.now() + body.expiresIn * 1000).toISOString()
     : provider.oauthProfile === "cursor"
-      ? new Date(Date.now() + 86400 * 1000).toISOString()
+      ? cursorAccessTokenExpiresAt(accessToken)
       : undefined;
 
   await saveProviderOAuthTokens(provider.id, { accessToken, refreshToken, expiresAt, machineId }, {
     accountId: body.accountId,
     createNew: Boolean(body.createNew)
   });
-  return NextResponse.json({ ok: true, expiresAt, machineId: Boolean(machineId) });
+  return NextResponse.json({ ok: true, expiresAt: expiresAt ?? null, machineId: Boolean(machineId) });
 }

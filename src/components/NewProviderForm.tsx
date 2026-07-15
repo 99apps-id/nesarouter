@@ -5,6 +5,11 @@ import { useMemo, useState } from "react";
 import { ProviderConfig } from "@/core/types";
 import { ADMIN_SESSION_EXPIRED, adminFetch, isAdminUnauthorized, scheduleLoginRedirect } from "@/lib/adminFetch";
 import { customProviderTemplate, providerPresetGroups, providerPresets } from "@/lib/providerPresets";
+import {
+  extractCloudflareAccountId,
+  isCloudflareWorkersAiProvider,
+  withCloudflareAccountId
+} from "@/lib/cloudflareWorkersAi";
 
 export default function NewProviderForm() {
   const [draft, setDraft] = useState<ProviderConfig>(customProviderTemplate());
@@ -110,6 +115,14 @@ export default function NewProviderForm() {
     }
     if (!draft.baseUrl.trim()) {
       setError("Base URL is required. Example: https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1");
+      return;
+    }
+    if (isCloudflareWorkersAiProvider(draft) && draft.baseUrl.includes("YOUR_ACCOUNT_ID")) {
+      setError("Enter your Cloudflare Account ID (Workers AI → Use REST API) — it updates the Base URL.");
+      return;
+    }
+    if (draft.type === "grok_web" && !draft.apiKey.trim()) {
+      setError("Paste the grok.com SSO cookie (DevTools → Application → Cookies → sso).");
       return;
     }
     if (!draft.model.trim()) {
@@ -285,6 +298,9 @@ export default function NewProviderForm() {
             <option value="github_copilot">GitHub Copilot</option>
             <option value="kiro">Kiro / custom transport</option>
             <option value="cursor">Cursor IDE</option>
+            <option value="vertex">Vertex AI (ADC / SA / key)</option>
+            <option value="opencode">OpenCode Zen</option>
+            <option value="grok_web">Grok Web (SSO cookie)</option>
           </select>
         </label>
         <label>
@@ -321,6 +337,53 @@ export default function NewProviderForm() {
             spellCheck={false}
           />
         </label>
+        {isCloudflareWorkersAiProvider(draft) && draft.type !== "vertex" ? (
+          <label>
+            Cloudflare Account ID
+            <input
+              value={extractCloudflareAccountId(draft.baseUrl, draft.oauthProjectId)}
+              onChange={(event) => {
+                const accountId = event.target.value;
+                setDraft({
+                  ...draft,
+                  oauthProjectId: accountId || undefined,
+                  baseUrl: withCloudflareAccountId(draft.baseUrl, accountId)
+                });
+              }}
+              placeholder="From Workers AI → Use REST API"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+        ) : null}
+        {draft.type === "vertex" ? (
+          <>
+            <label>
+              GCP Project ID
+              <input
+                value={draft.oauthProjectId ?? ""}
+                onChange={(event) => setDraft({ ...draft, oauthProjectId: event.target.value || undefined })}
+                placeholder={
+                  draft.id.includes("vertex-claude") || draft.model.startsWith("claude")
+                    ? "my-gcp-project (required · SA/ADC only)"
+                    : "my-gcp-project (required for ADC/SA)"
+                }
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+            <label>
+              Vertex location
+              <input
+                value={draft.vertexLocation ?? (draft.id.includes("vertex-claude") ? "global" : "us-central1")}
+                onChange={(event) => setDraft({ ...draft, vertexLocation: event.target.value || undefined })}
+                placeholder={draft.id.includes("vertex-claude") ? "global" : "us-central1"}
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+          </>
+        ) : null}
         {draft.oauthProfile ? (
           <label>
             Auth
@@ -328,12 +391,22 @@ export default function NewProviderForm() {
           </label>
         ) : (
           <label>
-            API key
+            {draft.type === "vertex"
+              ? "SA / ADC JSON or API key"
+              : draft.type === "grok_web"
+                ? "Grok SSO cookie"
+                : "API key"}
             <input
               type="password"
               value={draft.apiKey}
               onChange={(event) => setDraft({ ...draft, apiKey: event.target.value })}
-              placeholder="Paste Cloudflare API token"
+              placeholder={
+                draft.type === "vertex"
+                  ? "Paste service account JSON, ADC JSON, or API key"
+                  : draft.type === "grok_web"
+                    ? "sso=… or raw cookie value from grok.com"
+                    : "Paste Cloudflare API token"
+              }
               autoComplete="new-password"
               spellCheck={false}
             />
@@ -381,6 +454,13 @@ export default function NewProviderForm() {
       <button className="button primary" type="button" onClick={addProvider} disabled={saving}>
         <Plus size={16} /> {saving ? "Saving…" : draft.oauthProfile ? "Add & open Connect" : "Add provider"}
       </button>
+      {draft.baseUrl.includes("YOUR_ACCOUNT_ID") || draft.baseUrl.includes("YOUR_RESOURCE") ? (
+        <p className="test-message error">
+          {draft.baseUrl.includes("YOUR_RESOURCE")
+            ? "Replace YOUR_RESOURCE in Base URL with your Azure OpenAI resource name. Model must match the deployment name."
+            : "Fill Cloudflare Account ID above (or replace YOUR_ACCOUNT_ID in Base URL), then paste the API token."}
+        </p>
+      ) : null}
       <p className="subtle">Custom tip: leave Preset on Custom, fill Name + Base URL + Model (+ API key), then Add. Load models is optional.</p>
     </section>
   );

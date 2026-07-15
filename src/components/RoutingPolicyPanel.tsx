@@ -20,6 +20,9 @@ export default function RoutingPolicyPanel({
         <div>
           <h2>{t.routerPanel.title}</h2>
         </div>
+        <a className="button" href="/routing">
+          {t.nav.routing}
+        </a>
       </div>
       <div className="route-lane" aria-label={t.routerPanel.laneAria}>
         <span>{t.routerPanel.userApp}</span>

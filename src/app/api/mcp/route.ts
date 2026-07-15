@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/adminApi";
+import { killBridge } from "@/core/mcpBridge";
 import { McpServer } from "@/core/types";
-import { deleteMcpServer, getMcpServer, readMcpServers, upsertMcpServer } from "@/lib/store";
+import { deleteMcpServer, getMcpServer, readMcpServers, redactMcpServer, upsertMcpServer } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,12 +11,7 @@ export async function GET(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
   const servers = await readMcpServers();
-  return NextResponse.json(
-    servers.map((server) => ({
-      ...server,
-      env: Object.fromEntries(Object.keys(server.env ?? {}).map((key) => [key, "********"]))
-    }))
-  );
+  return NextResponse.json(servers.map(redactMcpServer));
 }
 
 export async function POST(request: Request) {
@@ -33,7 +29,6 @@ export async function POST(request: Request) {
     if (/^\*+$/.test(value)) continue; // keep existing secret
     mergedEnv[key] = value;
   }
-  // Drop keys removed from the incoming object when explicitly sent empty object? Keep merge-only on provided keys.
   const normalized: McpServer = {
     id: server.id,
     name: server.name,
@@ -41,11 +36,10 @@ export async function POST(request: Request) {
     args: Array.isArray(server.args) ? server.args : [],
     env: Object.keys(incomingEnv).length ? mergedEnv : (existing?.env ?? {})
   };
+  // Restart child so command/env/args take effect on next session.
+  killBridge(normalized.id);
   await upsertMcpServer(normalized);
-  return NextResponse.json({
-    ...normalized,
-    env: Object.fromEntries(Object.keys(normalized.env ?? {}).map((key) => [key, "********"]))
-  });
+  return NextResponse.json(redactMcpServer(normalized));
 }
 
 export async function DELETE(request: Request) {
@@ -53,6 +47,7 @@ export async function DELETE(request: Request) {
   if (unauthorized) return unauthorized;
   const body = (await request.json()) as { id?: string };
   if (!body.id) return NextResponse.json({ error: "MCP server id required." }, { status: 400 });
+  killBridge(body.id);
   await deleteMcpServer(body.id);
   return NextResponse.json({ ok: true });
 }
