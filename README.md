@@ -11,7 +11,7 @@ NesaRouter is designed for a laptop or small VPS. It runs as one Next.js service
 - Supports fallback chains, combos, model aliases, and round-robin across API keys or OAuth accounts.
 - Supports **multi-account OAuth** per provider (add / remove / use; round-robin; skip fatal-error accounts).
 - Shows per-account connection health on the provider detail page (green / red, with periodic status probe).
-- Enforces a daily budget, warning thresholds, provider token quotas, and paid-provider blocking.
+- Enforces a daily budget, warning thresholds, provider and per-key token quotas, and paid-provider blocking.
 - Caches equivalent requests and records routing reason, usage, and estimated or provider-reported cost.
 - Encrypts provider API keys, OAuth tokens, client `/v1` keys, MCP env values, and short-lived OAuth pending secrets at rest (AES-256-GCM).
 - Saves tokens with **Caveman** (default lite) and full **RTK** compression on tool results (git / grep / ls / logs / builds).
@@ -192,9 +192,10 @@ Response headers may include routing and saver metadata such as `x-nesa-cache` a
 - **Concurrency queue**: under Routing settings, set global / per-provider max concurrent upstream calls (`0` = unlimited). Queue wait timeouts return HTTP 503 with `code: queue_timeout`.
 - **Routing**: mode, strategy, fallback, cache, budget, token savers (Caveman / RTK), and admin password.
 - **Combos**: named fallback or round-robin chains; aliases map friendly model names to targets.
-- **Usage**: live provider-flow map (NesaRouter hub with spaced provider ring). It polls real request logs and animates the provider used by a recent request; idle links do not animate.
+- **Usage**: live provider-flow map (NesaRouter hub with spaced provider ring). It polls real request logs and animates the provider used by a recent request; idle links do not animate. The Usage page also shows daily **provider + per-key token quota** bars.
 - **Providers**: API keys, keyless free presets, or OAuth / IDE import. OAuth tokens are encrypted; multi-account pools round-robin and skip unhealthy accounts.
-- **Keys**: create/revoke client Bearer keys for `/v1` (preview only after create).
+- **Provider / per-key token quotas**: on a provider detail page, set **Daily token quota (provider default)** (`0` = unlimited). Under **API keys / tokens**, each account has its own **Daily quota** (`0` = inherit the provider default). Explicit per-key limits are preferred when routing; exhausted keys are skipped and other keys in the pool keep serving. Quotas use the local calendar day (same window as Usage charts).
+- **Keys**: create/revoke client Bearer keys for `/v1` (preview only after create). These are gateway client keys, not upstream provider key quotas.
 - **MCP**: bridge configured stdio servers over SSE and RPC (trusted binaries only).
 - **Tunnel**: optional Cloudflare quick tunnel or Tailscale for controlled remote access.
 - **Headroom / CLI**: optional compression proxy and CLI config helpers.
