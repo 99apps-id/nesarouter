@@ -2,6 +2,12 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.30 - 2026-07-15
+
+### Fixed
+
+- Align smoke / `unlock-admin` / `reset-admin` with per-client `loginLock:*` keys and the 5-attempt lockout threshold (CI smoke was failing on v0.1.29).
+
 ## 0.1.29 - 2026-07-15
 
 ### Fixed
