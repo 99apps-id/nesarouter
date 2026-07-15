@@ -3,7 +3,7 @@ import { adminJson, requireAdmin } from "@/lib/adminApi";
 import { getBudgetStatus } from "@/core/budget";
 import { keyRows } from "@/lib/keyIdentity";
 import { redactCacheEntryForClient, redactProviderForClient } from "@/lib/providerRedact";
-import { getTodaySpend, readStore, writeStore } from "@/lib/store";
+import { getTodaySpend, getTodayRequestCount, readStore, writeStore } from "@/lib/store";
 import { Combo } from "@/core/types";
 
 export const runtime = "nodejs";
@@ -27,7 +27,7 @@ export async function GET(request: Request) {
       remainingBudget: Math.max(0, store.budget.dailyBudgetUsd - todaySpend),
       budgetStatus,
       cacheEntries: cache.length,
-      totalRequests: store.usage.length
+      totalRequests: getTodayRequestCount(store)
     }
   });
 }

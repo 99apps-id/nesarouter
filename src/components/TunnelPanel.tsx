@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ExternalLink, Globe, PlugZap, Power, RefreshCw, Waypoints } from "lucide-react";
+import { ExternalLink, Globe, PlugZap, Power, RefreshCw, ShieldAlert, Waypoints } from "lucide-react";
 
 interface TunnelStatus {
   cloudflare: {
     enabled: boolean;
     settingsEnabled: boolean;
     tunnelUrl: string;
+    staleUrl?: string;
     running: boolean;
     localPort: number;
     spawnInProgress: boolean;
@@ -18,8 +19,18 @@ interface TunnelStatus {
     loggedIn: boolean;
     running: boolean;
     enabled: boolean;
+    settingsEnabled?: boolean;
+    mode?: "serve" | "funnel";
     url: string;
+    staleUrl?: string;
+    localPort?: number;
   };
+}
+
+function parsePort(raw: string): number | null {
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1 || n > 65535) return null;
+  return n;
 }
 
 export default function TunnelPanel() {
@@ -37,6 +48,10 @@ export default function TunnelPanel() {
       const data = await response.json();
       setStatus(data);
       if (data.cloudflare?.localPort) setPort(String(data.cloudflare.localPort));
+      else if (data.tailscale?.localPort) setPort(String(data.tailscale.localPort));
+      if (data.tailscale?.mode === "serve" || data.tailscale?.mode === "funnel") {
+        setTsMode(data.tailscale.mode);
+      }
     }
     setLoading(false);
   }
@@ -50,10 +65,16 @@ export default function TunnelPanel() {
   async function enable() {
     setBusy("cf-enable");
     setMessage("");
+    const parsed = parsePort(port);
+    if (parsed == null) {
+      setMessage("Port must be an integer between 1 and 65535.");
+      setBusy("");
+      return;
+    }
     const response = await fetch("/api/tunnel/enable", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ port: Number(port) })
+      body: JSON.stringify({ port: parsed })
     });
     const result = await response.json().catch(() => ({}));
     if (response.ok) setMessage(`Tunnel active: ${result.tunnelUrl}`);
@@ -74,10 +95,16 @@ export default function TunnelPanel() {
     setBusy("ts-enable");
     setMessage("");
     setLoginUrl("");
+    const parsed = parsePort(port);
+    if (parsed == null) {
+      setMessage("Port must be an integer between 1 and 65535.");
+      setBusy("");
+      return;
+    }
     const response = await fetch("/api/tunnel/tailscale", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ port: Number(port), mode: tsMode })
+      body: JSON.stringify({ port: parsed, mode: tsMode })
     });
     const result = await response.json().catch(() => ({}));
     if (response.ok) setMessage(`Tailscale ${tsMode} active${result.url ? `: ${result.url}` : ""}`);
@@ -131,7 +158,16 @@ export default function TunnelPanel() {
         <p className="compact-copy">
           Spawns a local <code>cloudflared</code> binary (downloaded automatically to <code>data/bin</code>) and exposes
           this NesaRouter on a random <code>*.trycloudflare.com</code> URL. No Cloudflare account needed. The URL is
-          ephemeral and changes on restart; NesaRouter auto-respawns the tunnel if the process exits.
+          ephemeral; if Cloudflare was left enabled, NesaRouter restores it after a process restart and respawns if the
+          tunnel binary exits.
+        </p>
+        <p className="test-message" style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+          <ShieldAlert size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>
+            Public tunnels publish the whole app — admin login, <code>/api/health</code>, and{" "}
+            <code>/api/metrics</code> (unless <code>NESA_METRICS_TOKEN</code> is set). Use a strong admin password and
+            prefer Tailscale <strong>serve</strong> for private access.
+          </span>
         </p>
         <div className="settings-grid">
           <label>
@@ -147,11 +183,19 @@ export default function TunnelPanel() {
             <Globe size={14} /> <a href={cf.tunnelUrl} target="_blank" rel="noreferrer">{cf.tunnelUrl}</a>
           </p>
         ) : null}
+        {cf?.staleUrl ? (
+          <p className="test-message error">
+            Configured but not running. Last URL was <code>{cf.staleUrl}</code> — click Enable/Restart to restore.
+          </p>
+        ) : null}
+        {cf?.settingsEnabled && !cf?.running && !cf?.staleUrl && !cf?.spawnInProgress ? (
+          <p className="test-message error">Tunnel is marked enabled in settings but is not running.</p>
+        ) : null}
         <div className="button-row">
           <button className="button primary" type="button" onClick={enable} disabled={busy === "cf-enable" || cf?.spawnInProgress}>
             <PlugZap size={16} /> {busy === "cf-enable" || cf?.spawnInProgress ? "Starting…" : cf?.enabled ? "Restart" : "Enable"}
           </button>
-          {cf?.enabled ? (
+          {cf?.enabled || cf?.settingsEnabled ? (
             <button className="button danger-button" type="button" onClick={disable} disabled={busy === "cf-disable"}>
               <Power size={16} /> Disable
             </button>
@@ -174,6 +218,15 @@ export default function TunnelPanel() {
           Uses the system <code>tailscale</code> binary. <strong>serve</strong> exposes NesaRouter on your private
           tailnet (only your devices); <strong>funnel</strong> exposes it publicly via Tailscale&apos;s proxy.
         </p>
+        {tsMode === "funnel" ? (
+          <p className="test-message" style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+            <ShieldAlert size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+            <span>
+              Funnel is public internet exposure — same risks as Cloudflare quick tunnel (login UI + open health/metrics
+              endpoints). Prefer <strong>serve</strong> unless you intentionally need a public URL.
+            </span>
+          </p>
+        ) : null}
         {!ts?.installed ? (
           <p className="test-message error">Tailscale binary not found. Install Tailscale from tailscale.com first.</p>
         ) : (
@@ -194,6 +247,13 @@ export default function TunnelPanel() {
             {ts.url ? (
               <p className="test-message ok">
                 <ExternalLink size={14} /> <a href={ts.url} target="_blank" rel="noreferrer">{ts.url}</a>
+                {ts.mode ? <span className="subtle"> · {ts.mode}</span> : null}
+              </p>
+            ) : null}
+            {ts.staleUrl ? (
+              <p className="test-message error">
+                Configured ({ts.mode ?? "serve"}) but not active. Last URL was <code>{ts.staleUrl}</code> — click Enable
+                to restore.
               </p>
             ) : null}
             {!ts.loggedIn ? (
@@ -205,9 +265,10 @@ export default function TunnelPanel() {
             ) : (
               <div className="button-row">
                 <button className="button primary" type="button" onClick={enableTailscale} disabled={busy === "ts-enable"}>
-                  <PlugZap size={16} /> {busy === "ts-enable" ? "Enabling…" : ts.enabled ? "Re-enable" : `Enable ${tsMode}`}
+                  <PlugZap size={16} />{" "}
+                  {busy === "ts-enable" ? "Enabling…" : ts.enabled ? "Re-enable" : `Enable ${tsMode}`}
                 </button>
-                {ts.enabled ? (
+                {ts.enabled || ts.settingsEnabled ? (
                   <button className="button danger-button" type="button" onClick={disableTailscale} disabled={busy === "ts-disable"}>
                     <Power size={16} /> Disable
                   </button>

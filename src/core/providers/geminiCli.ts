@@ -66,6 +66,21 @@ export class GeminiCliExecutor implements ProviderExecutor {
     if (preset?.models?.length) return preset.models;
     return ["gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro", "gemini-2.5-flash"];
   }
+
+  async validate(provider: ProviderConfig) {
+    const token = cleanApiKey(provider.oauthAccessToken ?? "");
+    if (!token) throw new UpstreamProviderError(`${provider.name} needs an OAuth access token.`, 400);
+    await this.call(provider, {
+      messages: [{ role: "user", content: "Reply with OK." }],
+      max_tokens: 8,
+      stream: false
+    });
+    const models = await this.listModels(provider);
+    return {
+      models,
+      message: `Cloud Code token accepted${provider.oauthProjectId ? ` · project ${provider.oauthProjectId}` : ""}.`
+    };
+  }
 }
 
 async function resolveCloudCodeProjectId(provider: ProviderConfig, token: string, bodyProject?: unknown): Promise<string> {
@@ -81,12 +96,19 @@ async function resolveCloudCodeProjectId(provider: ProviderConfig, token: string
   if (!projectId) return "";
 
   try {
-    await saveProviderOAuthTokens(provider.id, {
-      accessToken: token,
-      refreshToken: provider.oauthRefreshToken,
-      expiresAt: provider.oauthTokenExpiresAt,
-      projectId
-    });
+    const accountId =
+      provider.oauthAccounts?.find((account) => account.oauthAccessToken === token)?.id ??
+      provider.oauthAccounts?.[0]?.id;
+    await saveProviderOAuthTokens(
+      provider.id,
+      {
+        accessToken: token,
+        refreshToken: provider.oauthRefreshToken,
+        expiresAt: provider.oauthTokenExpiresAt,
+        projectId
+      },
+      accountId ? { accountId } : undefined
+    );
   } catch {
     // Best-effort persist; still use project for this request.
   }

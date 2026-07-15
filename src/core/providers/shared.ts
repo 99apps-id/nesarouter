@@ -151,8 +151,9 @@ export function sortModelIds(modelIds: string[]) {
 export function openRouterHeaders(provider: ProviderConfig): Record<string, string> {
   if (!provider.baseUrl.includes("openrouter.ai")) return {};
   return {
-    "HTTP-Referer": "http://localhost:20129",
-    "X-Title": "NesaRouter"
+    "HTTP-Referer": "https://github.com/nesa-ai/NesaRouter",
+    "X-Title": "NesaRouter",
+    "X-OpenRouter-Title": "NesaRouter"
   };
 }
 
@@ -170,6 +171,16 @@ export function isXiaomiTokenPlanHost(baseUrl: string) {
  */
 export function xiaomiMimoAuthHeaders(token: string, provider: ProviderConfig): Record<string, string> {
   if (!token || !isXiaomiMimoHost(provider.baseUrl)) return {};
+  return { "api-key": token };
+}
+
+/** Azure OpenAI / AI Foundry keys authenticate with `api-key` (Bearer alone is often rejected). */
+export function isAzureOpenAiHost(url: string) {
+  return /openai\.azure\.com|cognitiveservices\.azure\.com|services\.ai\.azure\.com/i.test(url);
+}
+
+export function azureOpenAiAuthHeaders(token: string, provider: ProviderConfig): Record<string, string> {
+  if (!token || !isAzureOpenAiHost(provider.baseUrl)) return {};
   return { "api-key": token };
 }
 

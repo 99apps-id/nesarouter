@@ -1,9 +1,13 @@
 import { UsageLog } from "@/core/types";
+import { calendarDayKey, usageDayKey } from "@/lib/store";
 
 export function usageSummary(usage: UsageLog[]) {
   return usage.reduce(
     (summary, item) => {
-      if (item.status === "success") summary.totalRequests += 1;
+      // Align with live panel: count every logged request (success + error).
+      summary.totalRequests += 1;
+      if (item.status === "success") summary.successCount += 1;
+      else summary.errorCount += 1;
       summary.inputTokens += item.inputTokens;
       summary.outputTokens += item.outputTokens;
       summary.totalCostUsd += item.totalCostUsd;
@@ -11,6 +15,8 @@ export function usageSummary(usage: UsageLog[]) {
     },
     {
       totalRequests: 0,
+      successCount: 0,
+      errorCount: 0,
       inputTokens: 0,
       outputTokens: 0,
       totalCostUsd: 0
@@ -47,7 +53,7 @@ export function usageByModel(usage: UsageLog[]) {
         totalCostUsd: 0,
         lastUsed: item.createdAt
       };
-    existing.requests += item.status === "success" ? 1 : 0;
+    existing.requests += 1;
     existing.inputTokens += item.inputTokens;
     existing.outputTokens += item.outputTokens;
     existing.totalCostUsd += item.totalCostUsd;
@@ -84,7 +90,8 @@ export function usageStats(usage: UsageLog[]): UsageStats {
   let totalCostUsd = 0;
 
   for (const item of usage) {
-    if (item.status === "success") successCount += 1; else errorCount += 1;
+    if (item.status === "success") successCount += 1;
+    else errorCount += 1;
     if (item.cacheStatus === "hit") cacheHits += 1;
     if (item.cacheStatus === "skipped") cacheSkipped += 1;
     inputTokens += item.inputTokens;
@@ -129,23 +136,25 @@ export interface UsageChartPoint {
   totalCostUsd: number;
 }
 
+/** Bucket usage by local calendar day (avoids UTC midnight skew). */
 export function usageChart(usage: UsageLog[], days = 14): UsageChartPoint[] {
   const points: UsageChartPoint[] = [];
   const byDate = new Map<string, UsageChartPoint>();
   const today = new Date();
   for (let i = days - 1; i >= 0; i -= 1) {
-    const d = new Date(today.getTime() - i * 86_400_000);
-    const dateKey = d.toISOString().slice(0, 10);
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+    const dateKey = calendarDayKey(d);
     const point: UsageChartPoint = { date: dateKey, requests: 0, success: 0, errors: 0, inputTokens: 0, outputTokens: 0, totalCostUsd: 0 };
     byDate.set(dateKey, point);
     points.push(point);
   }
   for (const item of usage) {
-    const dateKey = item.createdAt.slice(0, 10);
+    const dateKey = usageDayKey(item.createdAt);
     const point = byDate.get(dateKey);
     if (!point) continue;
     point.requests += 1;
-    if (item.status === "success") point.success += 1; else point.errors += 1;
+    if (item.status === "success") point.success += 1;
+    else point.errors += 1;
     point.inputTokens += item.inputTokens;
     point.outputTokens += item.outputTokens;
     point.totalCostUsd += item.totalCostUsd;

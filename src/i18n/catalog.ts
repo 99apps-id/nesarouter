@@ -92,7 +92,7 @@ const patches: Record<Exclude<LocaleCode, "en">, DeepPartial<Messages>> = {
       spendToday: "Belanja hari ini",
       budgetLeft: "Sisa budget",
       providersActive: "Provider aktif",
-      requests: "Permintaan",
+      requests: "Permintaan hari ini",
       budgetGuardActive: "Penjaga budget aktif",
       savingsToday: "Penghematan hari ini",
       savedAmount: "{amount} dihemat",

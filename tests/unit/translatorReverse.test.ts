@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   claudeResponseToOpenAi,
+  mapOpenAiToolChoiceToClaude,
   openAiChatToClaudeRequest,
   openAiChatToResponsesRequest,
   responsesResponseToOpenAi
@@ -45,6 +46,22 @@ describe("translatorReverse: openAiChatToClaudeRequest", () => {
       tools: [{ type: "function", function: { name: "t", description: "d", parameters: { type: "object" } } }]
     });
     expect(req.tools[0]).toEqual({ name: "t", description: "d", input_schema: { type: "object" } });
+  });
+
+  it("maps OpenAI tool_choice to Anthropic", () => {
+    expect(mapOpenAiToolChoiceToClaude("auto")).toEqual({ type: "auto" });
+    expect(mapOpenAiToolChoiceToClaude("required")).toEqual({ type: "any" });
+    expect(mapOpenAiToolChoiceToClaude({ type: "function", function: { name: "Lookup" } })).toEqual({
+      type: "tool",
+      name: "Lookup"
+    });
+    const req = openAiChatToClaudeRequest({
+      model: "claude-sonnet-5",
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ type: "function", function: { name: "Lookup", parameters: { type: "object" } } }],
+      tool_choice: "required"
+    });
+    expect(req.tool_choice).toEqual({ type: "any" });
   });
 
   it("preserves image_url on user messages (data URI → Claude base64 image)", () => {
@@ -126,8 +143,27 @@ describe("translatorReverse: responses", () => {
       max_tokens: 64
     });
     expect(req.instructions).toBe("Be terse.");
-    expect(req.input).toEqual([{ role: "user", content: "Ping" }]);
+    expect(req.input).toEqual([
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "Ping" }]
+      }
+    ]);
     expect(req.max_output_tokens).toBe(64);
+  });
+
+  it("forwards tools on non-Codex Responses requests", () => {
+    const req = openAiChatToResponsesRequest({
+      model: "gpt-5",
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ type: "function", function: { name: "Lookup", parameters: { type: "object" } } }],
+      tool_choice: "auto"
+    });
+    expect(req.tools).toEqual([
+      { type: "function", name: "Lookup", description: undefined, parameters: { type: "object" } }
+    ]);
+    expect(req.tool_choice).toBe("auto");
   });
 
   it("normalizes Codex Responses requests (store false, typed input, default instructions)", () => {

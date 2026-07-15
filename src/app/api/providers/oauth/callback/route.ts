@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { exchangeCode, loadAntigravityProjectId } from "@/core/oauthPkce";
+﻿import { NextResponse } from "next/server";
+import { exchangeCode, loadAntigravityProjectId, resolveIflowApiKey } from "@/core/oauthPkce";
 import { getPreset } from "@/core/oauthProviderPresets";
 import { publicUrl } from "@/core/publicUrl";
 import { deleteOAuthPending, readOAuthPending, readProviderById, saveProviderOAuthTokens } from "@/lib/store";
@@ -41,12 +41,16 @@ export async function GET(request: Request) {
 
   try {
     const tokens = await exchangeCode(preset, code, pending.redirectUri, pending.codeVerifier);
+    let accessToken = tokens.access_token;
+    if (preset.profile === "iflow" && accessToken) {
+      accessToken = await resolveIflowApiKey(preset, accessToken);
+    }
     const expiresAt = tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : undefined;
     const projectId = preset.loadCodeAssistUrl && tokens.access_token
       ? await loadAntigravityProjectId(preset, tokens.access_token)
       : undefined;
     await saveProviderOAuthTokens(provider.id, {
-      accessToken: tokens.access_token,
+      accessToken,
       refreshToken: tokens.refresh_token,
       expiresAt,
       projectId

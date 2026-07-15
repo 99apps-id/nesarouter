@@ -28,7 +28,10 @@ function requestId() {
 
 function loggedModel(body: any, fallback: string) {
   const requested = typeof body?.model === "string" ? body.model.trim() : "";
-  return requested && requested !== "auto" ? requested : fallback;
+  if (!requested) return fallback;
+  const normalized = requested.toLowerCase();
+  if (normalized === "auto" || normalized === "nesa-auto" || normalized === "nesa/router") return fallback;
+  return requested;
 }
 
 function isQuotaError(error: UpstreamProviderError) {
@@ -68,6 +71,10 @@ function queueTimeoutResponse(error: QueueTimeoutError) {
 
 async function revalidateQuotaCooldown(provider: ProviderConfig): Promise<boolean> {
   try {
+    if (provider.oauthProfile) {
+      const fresh = await ensureFreshAccessToken(provider);
+      if (fresh) provider = { ...provider, oauthAccessToken: fresh };
+    }
     await testProviderConnection(provider);
     await clearProviderCooldown(provider.id);
     return true;
@@ -136,6 +143,7 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
         cacheStatus: "hit",
         budgetStatus: "ok",
         routingReason: `Cache hit saved about $${cached.savedCostUsd.toFixed(6)}.`,
+        savedCostUsd: cached.savedCostUsd,
         status: "success"
       };
       await appendUsage(log);
@@ -269,11 +277,11 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
         }
       }
     } else {
-      const keys = pickActiveKeys(decision.provider);
+      const keys = pickActiveKeys(decision.provider, store);
       if (keys.length === 0) {
         failedProviderIds.push(decision.provider.id);
-        errors.push(`${decision.provider.name}: no active API key (all keys in cooldown).`);
-        await markProviderFailure(decision.provider.id, "All API keys in cooldown.", 5 * 60_000);
+        errors.push(`${decision.provider.name}: no active API key (all keys in cooldown or daily quota exhausted).`);
+        await markProviderFailure(decision.provider.id, "All API keys unavailable (cooldown/quota).", 5 * 60_000);
         if (store.router.fallbackMode === "off") {
           return NextResponse.json({ error: { message: "All keys in cooldown.", attempts: errors } }, { status: 502 });
         }
@@ -296,11 +304,11 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
           providerFailed = false;
 
           if (upstream instanceof ReadableStream) {
-            return finalizeStream(store, decision, upstream, key, body, ticket);
+            return finalizeStream(store, decision, upstream, key, body, ticket, picked.index);
           }
 
           try {
-            return await finalizeJson(store, decision, upstream, key, body);
+            return await finalizeJson(store, decision, upstream, key, body, picked.index);
           } finally {
             ticket.release();
           }
@@ -353,7 +361,7 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
   return NextResponse.json({ error: { message: "All fallback providers failed.", attempts: errors } }, { status: 502 });
 }
 
-async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream: any, key: string, body: any) {
+async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream: any, key: string, body: any, keyIndex?: number) {
   const usage = upstream?.usage ?? {};
   const inputTokens = Number(usage.prompt_tokens ?? decision.estimatedInputTokens);
   const outputTokens = Number(usage.completion_tokens ?? decision.estimatedOutputTokens);
@@ -379,7 +387,8 @@ async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream:
     budgetStatus: decision.budgetStatus,
     routingReason: decision.routingReason,
     status: "success",
-    skippedProviders: decision.skippedProviders
+    skippedProviders: decision.skippedProviders,
+    keyIndex
   };
 
   if (store.router.cacheEnabled) {
@@ -412,7 +421,8 @@ function finalizeStream(
   upstream: ReadableStream<Uint8Array>,
   key: string,
   body: any,
-  ticket?: GateTicket
+  ticket?: GateTicket,
+  keyIndex?: number
 ) {
   let capturedUsage: OpenAiUsage | null = null;
   const tracked = trackOpenAiStreamUsage(upstream, (usage) => {
@@ -435,7 +445,8 @@ function finalizeStream(
     budgetStatus: decision.budgetStatus,
     routingReason: decision.routingReason,
     status: "success",
-    skippedProviders: decision.skippedProviders
+    skippedProviders: decision.skippedProviders,
+    keyIndex
   };
 
   const finalizeLog = (streamEnd: StreamEndState) => {

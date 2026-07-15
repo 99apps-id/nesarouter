@@ -66,6 +66,17 @@ describe("provider identity", () => {
     expect(providerIdentity({ id: "gemini-flash", name: "Gemini API" }).iconPath).toBe("/providers/gemini.png");
     expect(providerIdentity({ id: "opencode-go", name: "OpenCode Go" }).iconPath).toBe("/providers/opencode-go.svg");
     expect(providerIdentity({ id: "opencode-free", name: "OpenCode Free" }).iconPath).toBe("/providers/opencode.png");
+    expect(providerIdentity({ id: "cloudflare-workers-ai", name: "Cloudflare Workers AI" }).iconPath).toBe(
+      "/providers/cloudflare.svg"
+    );
+    expect(providerIdentity({ id: "azure-openai", name: "Azure OpenAI" }).iconPath).toBe("/providers/azure.png");
+    expect(providerIdentity({ id: "blackbox", name: "Blackbox AI" }).iconPath).toBe("/providers/blackbox.png");
+    expect(providerIdentity({ id: "iflow", name: "iFlow AI" }).iconPath).toBe("/providers/iflow.png");
+    expect(providerIdentity({ id: "kilocode", name: "Kilo Code" }).iconPath).toBe("/providers/kilocode.png");
+    expect(providerIdentity({ id: "cline", name: "Cline" }).iconPath).toBe("/providers/cline.png");
+    expect(providerIdentity({ id: "clinepass", name: "ClinePass" }).iconPath).toBe("/providers/clinepass.png");
+    expect(providerIdentity({ id: "codebuddy-cn", name: "CodeBuddy CN" }).iconPath).toBe("/providers/codebuddy-cn.png");
+    expect(providerIdentity({ id: "gitlab-duo", name: "GitLab Duo" }).iconPath).toBe("/providers/gitlab.svg");
     expect(providerIdentity({ id: "xiaomi-tokenplan", name: "Xiaomi Token Plan" }).iconPath).toBe(
       "/providers/xiaomi-tokenplan.svg"
     );

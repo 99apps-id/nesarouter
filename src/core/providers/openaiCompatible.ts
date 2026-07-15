@@ -1,7 +1,16 @@
 import { ProviderConfig } from "@/core/types";
+import { getPreset } from "@/core/oauthProviderPresets";
+import {
+  bootstrapMimoFreeJwt,
+  ensureMimoSystemPrompt,
+  mimoFreeChatUrl,
+  mimoFreeHeaders
+} from "@/core/mimoFreeAuth";
 import {
   baseUrl,
   cleanApiKey,
+  azureOpenAiAuthHeaders,
+  isAzureOpenAiHost,
   openRouterHeaders,
   ProviderExecutor,
   proxyFetch,
@@ -11,23 +20,94 @@ import {
   xiaomiMimoCredentialHint
 } from "@/core/providers/shared";
 
-/** DeepSeek V4/reasoner defaults thinking on; agent clients often drop reasoning_content → 400. */
+/** DeepSeek V4 defaults thinking on; agent clients often drop reasoning_content → 400. */
 export function shouldDisableDeepSeekThinking(provider: ProviderConfig, body: any): boolean {
   if (body?.thinking != null) return false;
   const host = baseUrl(provider).toLowerCase();
   const model = String(provider.model ?? body?.model ?? "").toLowerCase();
-  const id = provider.id.toLowerCase();
-  const isDeepSeekHost = host.includes("deepseek.com") || id === "deepseek";
-  const isDeepSeekModel = /deepseek/.test(model) && (/reasoner|v4|thinking|:v4@/.test(model) || isDeepSeekHost);
-  return isDeepSeekHost || isDeepSeekModel;
+  // Never inject thinking flags onto Runware AIR ids or non-DeepSeek hosts.
+  const isDeepSeekHost = host.includes("deepseek.com") || provider.id.toLowerCase() === "deepseek";
+  if (!isDeepSeekHost) return false;
+  // Reasoner / R1-style models should keep thinking enabled.
+  if (/reasoner|r1|thinking/.test(model)) return false;
+  return true;
+}
+
+/** Cline WorkOS tokens must be sent as `Bearer workos:…`. */
+export function normalizeClineAccessToken(token: string, oauthProfile?: string): string {
+  const cleaned = cleanApiKey(token);
+  if (!cleaned) return "";
+  if (oauthProfile !== "cline" && oauthProfile !== "clinepass") return cleaned;
+  return cleaned.startsWith("workos:") ? cleaned : `workos:${cleaned}`;
+}
+
+function resolveBearerToken(provider: ProviderConfig, apiKey?: string): string {
+  const raw = cleanApiKey(apiKey ?? provider.oauthAccessToken ?? provider.apiKey);
+  return normalizeClineAccessToken(raw, provider.oauthProfile);
+}
+
+function oauthUpstreamHeaders(provider: ProviderConfig): Record<string, string> {
+  return getPreset(provider.oauthProfile)?.upstreamHeaders ?? {};
+}
+
+/** Chat URL — MiMo free posts to `…/openai/chat` (not `/chat/completions`). */
+export function chatCompletionsUrl(provider: ProviderConfig): string {
+  const root = baseUrl(provider).replace(/\/$/, "");
+  if (/\/chat\/completions$/i.test(root)) return root;
+  if (/\/openai\/chat$/i.test(root) || /\/api\/free-ai\/openai\/chat$/i.test(root)) return root;
+  return `${root}/chat/completions`;
+}
+
+function isRunware(provider: ProviderConfig) {
+  return provider.id === "runware" || /runware\.ai/i.test(provider.baseUrl);
+}
+
+function isMimoFree(provider: ProviderConfig) {
+  return provider.id === "mimo-code-free" || /xiaomimimo\.com\/api\/free-ai/i.test(provider.baseUrl);
 }
 
 export class OpenAiCompatibleExecutor implements ProviderExecutor {
   async call(provider: ProviderConfig, body: any, apiKey?: string) {
-    const token = cleanApiKey(apiKey ?? provider.apiKey);
+    if (isMimoFree(provider)) {
+      const jwt = await bootstrapMimoFreeJwt();
+      const upstreamBody: Record<string, unknown> = {
+        ...body,
+        model: "mimo-auto",
+        messages: ensureMimoSystemPrompt(body?.messages)
+      };
+      if (body?.stream) {
+        const streamOptions = body.stream_options && typeof body.stream_options === "object" ? body.stream_options : {};
+        upstreamBody.stream_options = { include_usage: true, ...streamOptions };
+      }
+      const response = await proxyFetch(provider, mimoFreeChatUrl(provider.baseUrl), {
+        method: "POST",
+        headers: mimoFreeHeaders(jwt),
+        body: JSON.stringify(upstreamBody)
+      });
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          const jwtRetry = await bootstrapMimoFreeJwt(true);
+          const retry = await proxyFetch(provider, mimoFreeChatUrl(provider.baseUrl), {
+            method: "POST",
+            headers: mimoFreeHeaders(jwtRetry),
+            body: JSON.stringify(upstreamBody)
+          });
+          if (!retry.ok) throw await upstreamError(provider, retry);
+          if (body?.stream) return retry.body ?? new ReadableStream<Uint8Array>();
+          return retry.json();
+        }
+        throw await upstreamError(provider, response);
+      }
+      if (body?.stream) return response.body ?? new ReadableStream<Uint8Array>();
+      return response.json();
+    }
+
+    const token = resolveBearerToken(provider, apiKey);
     const mismatch = xiaomiMimoCredentialHint(provider, token);
     if (mismatch) throw new Error(mismatch);
-    const authHeaders: Record<string, string> = token ? { authorization: `Bearer ${token}` } : {};
+    // Azure rejects Bearer for key auth; use api-key only (see azureOpenAiAuthHeaders).
+    const authHeaders: Record<string, string> =
+      token && !isAzureOpenAiHost(provider.baseUrl) ? { authorization: `Bearer ${token}` } : {};
     const upstreamBody: Record<string, unknown> = {
       ...body,
       model: provider.model
@@ -42,12 +122,14 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
       upstreamBody.stream_options = { include_usage: true, ...streamOptions };
     }
 
-    const response = await proxyFetch(provider, `${baseUrl(provider)}/chat/completions`, {
+    const response = await proxyFetch(provider, chatCompletionsUrl(provider), {
       method: "POST",
       headers: {
         "content-type": "application/json",
+        ...oauthUpstreamHeaders(provider),
         ...authHeaders,
         ...xiaomiMimoAuthHeaders(token, provider),
+        ...azureOpenAiAuthHeaders(token, provider),
         ...openRouterHeaders(provider)
       },
       body: JSON.stringify(upstreamBody)
@@ -59,19 +141,27 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
   }
 
   async listModels(provider: ProviderConfig) {
+    if (isMimoFree(provider) || isRunware(provider)) {
+      if (provider.models?.length) return [...provider.models];
+      return provider.model ? [provider.model] : [];
+    }
+
     const urls = this.modelUrls(provider);
-    const token = cleanApiKey(provider.apiKey);
+    const token = resolveBearerToken(provider);
     const mismatch = xiaomiMimoCredentialHint(provider, token);
     if (mismatch) throw new Error(mismatch);
-    const authHeaders: Record<string, string> = token ? { authorization: `Bearer ${token}` } : {};
+    const authHeaders: Record<string, string> =
+      token && !isAzureOpenAiHost(provider.baseUrl) ? { authorization: `Bearer ${token}` } : {};
     let lastError: unknown;
 
     for (const url of urls) {
       const response = await proxyFetch(provider, url, {
         headers: {
           "content-type": "application/json",
+          ...oauthUpstreamHeaders(provider),
           ...authHeaders,
           ...xiaomiMimoAuthHeaders(token, provider),
+          ...azureOpenAiAuthHeaders(token, provider),
           ...openRouterHeaders(provider)
         }
       });
@@ -85,10 +175,40 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
       if (![404, 405].includes((lastError as any)?.status)) throw lastError;
     }
 
+    if (provider.models?.length) return [...provider.models];
     throw lastError instanceof Error ? lastError : new Error(`${provider.name} models endpoint is unavailable.`);
   }
 
   async validate(provider: ProviderConfig) {
+    if (isRunware(provider) || isMimoFree(provider)) {
+      const models = provider.models?.length ? [...provider.models] : provider.model ? [provider.model] : [];
+      if (isMimoFree(provider)) {
+        return {
+          models,
+          message:
+            "MiMo Code Free: will attempt anonymous JWT bootstrap on chat. Xiaomi may return illegal_access — prefer PAYG/Token Plan if bootstrap fails."
+        };
+      }
+      const token = resolveBearerToken(provider);
+      if (!token) throw new Error(`${provider.name} needs an API key.`);
+      // Tiny probe — Runware often has no OpenAI /models list.
+      const response = await proxyFetch(provider, chatCompletionsUrl(provider), {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          model: provider.model,
+          messages: [{ role: "user", content: "ping" }],
+          max_tokens: 1,
+          stream: false
+        })
+      });
+      if (!response.ok) throw await upstreamError(provider, response);
+      return { models, message: models.length ? `Credentials accepted · ${models.length} preset models.` : "Credentials accepted." };
+    }
+
     const models = await this.listModels(provider);
     return { models, message: models.length ? `${models.length} models found.` : "Credentials accepted." };
   }

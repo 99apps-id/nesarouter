@@ -123,6 +123,7 @@ function migrate(database: Database.Database) {
   ensureColumn(database, "providers", "last_checked_at", "TEXT");
   ensureColumn(database, "providers", "api_keys", "TEXT");
   ensureColumn(database, "providers", "quota_limit_tokens", "INTEGER");
+  ensureColumn(database, "providers", "key_quotas", "TEXT");
   ensureColumn(database, "providers", "models", "TEXT");
   ensureColumn(database, "providers", "oauth_profile", "TEXT");
   ensureColumn(database, "providers", "oauth_access_token_encrypted", "TEXT");
@@ -135,8 +136,12 @@ function migrate(database: Database.Database) {
   ensureColumn(database, "providers", "oauth_device_client_id", "TEXT");
   ensureColumn(database, "providers", "oauth_device_client_secret_encrypted", "TEXT");
   ensureColumn(database, "providers", "oauth_machine_id", "TEXT");
+  ensureColumn(database, "providers", "oauth_profile_arn", "TEXT");
   ensureColumn(database, "providers", "proxy_url", "TEXT");
+  ensureColumn(database, "providers", "vertex_location", "TEXT");
   ensureColumn(database, "usage_logs", "skipped_providers", "TEXT");
+  ensureColumn(database, "usage_logs", "key_index", "INTEGER");
+  ensureColumn(database, "usage_logs", "saved_cost_usd", "REAL");
   ensureColumn(database, "combos", "judge_provider_id", "TEXT");
   ensureColumn(database, "providers", "oauth_accounts", "TEXT");
   migrateLocalApiKeysEncryption(database);
@@ -366,12 +371,53 @@ function ensureDefaultProviders(database: Database.Database): string[] {
               .run(JSON.stringify(provider.models), provider.id, JSON.stringify([provider.model]));
           }
         }
-        if (provider.id === "opencode-free") {
+    if (provider.id === "opencode-free") {
           database.prepare(`
             UPDATE providers
             SET type = 'opencode',
                 status = CASE WHEN status = 'disabled' AND (api_key_encrypted IS NULL OR api_key_encrypted = '') THEN 'active' ELSE status END
             WHERE id = 'opencode-free'
+          `).run();
+          database.prepare(`
+            UPDATE providers
+            SET model = 'big-pickle',
+                models = ?
+            WHERE id = 'opencode-free' AND (model = 'auto' OR models IS NULL OR models = '[]' OR models = '["auto"]')
+          `).run(JSON.stringify([
+            "big-pickle",
+            "deepseek-v4-flash-free",
+            "mimo-v2.5-free",
+            "north-mini-code-free",
+            "nemotron-3-ultra-free"
+          ]));
+        }
+        if (provider.id === "mimo-code-free") {
+          database.prepare(`
+            UPDATE providers
+            SET type = 'openai_compatible',
+                base_url = 'https://api.xiaomimimo.com/api/free-ai/openai/chat'
+            WHERE id = 'mimo-code-free'
+          `).run();
+        }
+        if (provider.id === "anthropic-messages") {
+          database.prepare(`
+            UPDATE providers
+            SET base_url = 'https://api.anthropic.com/v1/messages'
+            WHERE id = 'anthropic-messages' AND (base_url = 'https://api.anthropic.com' OR base_url = 'https://api.anthropic.com/')
+          `).run();
+        }
+        if (provider.id === "opencode-go") {
+          database.prepare(`
+            UPDATE providers
+            SET type = 'opencode'
+            WHERE id = 'opencode-go' AND type = 'openai_compatible'
+          `).run();
+        }
+        if (provider.id === "deepseek") {
+          database.prepare(`
+            UPDATE providers
+            SET model = 'deepseek-v4-flash'
+            WHERE id = 'deepseek' AND model IN ('deepseek-chat', 'deepseek-coder')
           `).run();
         }
         continue;
@@ -420,6 +466,30 @@ function parseApiKeys(raw: any): string[] | undefined {
   return undefined;
 }
 
+function parseKeyQuotas(raw: any): ProviderConfig["keyQuotas"] | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return undefined;
+    const items = parsed.map((item: any) => {
+      const quota = Number(item?.quotaLimitTokens ?? 0);
+      return quota > 0 ? { quotaLimitTokens: quota } : {};
+    });
+    return items.length ? items : undefined;
+  } catch {}
+  return undefined;
+}
+
+function serializeKeyQuotas(keyQuotas: ProviderConfig["keyQuotas"] | undefined): string | null {
+  if (!Array.isArray(keyQuotas) || !keyQuotas.length) return null;
+  return JSON.stringify(
+    keyQuotas.map((item) => {
+      const quota = Number(item?.quotaLimitTokens ?? 0);
+      return quota > 0 ? { quotaLimitTokens: quota } : {};
+    })
+  );
+}
+
 function parseStringArray(raw: any): string[] | undefined {
   if (!raw) return undefined;
   try {
@@ -445,6 +515,7 @@ type StoredOAuthAccount = {
   oauthDeviceClientId?: string;
   oauthDeviceClientSecretEncrypted?: string;
   oauthMachineId?: string;
+  oauthProfileArn?: string;
   connectionStatus?: ProviderConfig["connectionStatus"];
   lastError?: string;
   lastCheckedAt?: string;
@@ -466,6 +537,7 @@ function oauthAccountFromStored(stored: StoredOAuthAccount): OAuthAccount {
     oauthDeviceClientId: stored.oauthDeviceClientId,
     oauthDeviceClientSecret: stored.oauthDeviceClientSecretEncrypted ? decryptSecret(stored.oauthDeviceClientSecretEncrypted) : undefined,
     oauthMachineId: stored.oauthMachineId,
+    oauthProfileArn: stored.oauthProfileArn,
     connectionStatus: stored.connectionStatus,
     lastError: stored.lastError,
     lastCheckedAt: stored.lastCheckedAt,
@@ -496,6 +568,7 @@ function oauthAccountToStored(account: OAuthAccount): StoredOAuthAccount {
       ? encryptSecret(account.oauthDeviceClientSecret.trim())
       : undefined,
     oauthMachineId: account.oauthMachineId,
+    oauthProfileArn: account.oauthProfileArn,
     connectionStatus: account.connectionStatus,
     lastError: account.lastError,
     lastCheckedAt: account.lastCheckedAt,
@@ -533,6 +606,7 @@ function legacyOAuthAccountFromRow(row: any): OAuthAccount | null {
     oauthDeviceClientId: row.oauth_device_client_id ?? undefined,
     oauthDeviceClientSecret: row.oauth_device_client_secret_encrypted ? decryptSecret(row.oauth_device_client_secret_encrypted) : undefined,
     oauthMachineId: row.oauth_machine_id ?? undefined,
+    oauthProfileArn: row.oauth_profile_arn ?? undefined,
     connectionStatus: row.connection_status ?? undefined,
     lastError: row.last_error ?? undefined,
     rateLimitedUntil: row.rate_limited_until ?? undefined
@@ -546,7 +620,7 @@ function migrateLegacyOAuthAccounts(database: Database.Database) {
     SELECT id, oauth_access_token_encrypted, oauth_refresh_token_encrypted, oauth_token_expires_at,
            oauth_last_refresh_at, oauth_copilot_token_encrypted, oauth_copilot_token_expires_at,
            oauth_project_id, oauth_device_client_id, oauth_device_client_secret_encrypted,
-           oauth_machine_id, connection_status, last_error, rate_limited_until, oauth_accounts
+           oauth_machine_id, oauth_profile_arn, connection_status, last_error, rate_limited_until, oauth_accounts
     FROM providers
     WHERE oauth_profile IS NOT NULL AND oauth_profile != ''
   `).all() as any[];
@@ -571,7 +645,8 @@ function syncPrimaryOAuthColumns(database: Database.Database, providerId: string
     oauth_project_id = ?,
     oauth_device_client_id = ?,
     oauth_device_client_secret_encrypted = ?,
-    oauth_machine_id = ?
+    oauth_machine_id = ?,
+    oauth_profile_arn = ?
     WHERE id = ?`).run(
     primary?.oauthAccessToken && !isRedactedSecret(primary.oauthAccessToken) ? encryptSecret(primary.oauthAccessToken.trim()) : null,
     primary?.oauthRefreshToken && !isRedactedSecret(primary.oauthRefreshToken) ? encryptSecret(primary.oauthRefreshToken.trim()) : null,
@@ -583,6 +658,7 @@ function syncPrimaryOAuthColumns(database: Database.Database, providerId: string
     primary?.oauthDeviceClientId ?? null,
     primary?.oauthDeviceClientSecret && !isRedactedSecret(primary.oauthDeviceClientSecret) ? encryptSecret(primary.oauthDeviceClientSecret.trim()) : null,
     primary?.oauthMachineId ?? null,
+    primary?.oauthProfileArn ?? null,
     providerId
   );
 }
@@ -611,6 +687,7 @@ function providerFromRow(row: any): ProviderConfig {
     connectionStatus: row.connection_status ?? "unknown",
     lastCheckedAt: row.last_checked_at ?? undefined,
     quotaLimitTokens: row.quota_limit_tokens ?? undefined,
+    keyQuotas: parseKeyQuotas(row.key_quotas),
     models: parseStringArray(row.models),
     oauthProfile: row.oauth_profile ?? undefined,
     oauthAccounts,
@@ -624,7 +701,9 @@ function providerFromRow(row: any): ProviderConfig {
     oauthDeviceClientId: primary?.oauthDeviceClientId ?? row.oauth_device_client_id ?? undefined,
     oauthDeviceClientSecret: primary?.oauthDeviceClientSecret ?? (row.oauth_device_client_secret_encrypted ? decryptSecret(row.oauth_device_client_secret_encrypted) : undefined),
     oauthMachineId: primary?.oauthMachineId ?? row.oauth_machine_id ?? undefined,
-    proxyUrl: row.proxy_url ?? undefined
+    oauthProfileArn: primary?.oauthProfileArn ?? row.oauth_profile_arn ?? undefined,
+    proxyUrl: row.proxy_url ?? undefined,
+    vertexLocation: row.vertex_location ?? undefined
   };
 }
 
@@ -664,8 +743,8 @@ function writeProviderToDb(database: Database.Database, provider: ProviderConfig
         oauth_profile, oauth_access_token_encrypted, oauth_refresh_token_encrypted,
         oauth_token_expires_at, oauth_last_refresh_at,
         oauth_copilot_token_encrypted, oauth_copilot_token_expires_at,
-        oauth_project_id, oauth_device_client_id, oauth_device_client_secret_encrypted, oauth_machine_id, proxy_url,
-        oauth_accounts
+        oauth_project_id, oauth_device_client_id, oauth_device_client_secret_encrypted, oauth_machine_id, oauth_profile_arn, proxy_url,
+        vertex_location, oauth_accounts, key_quotas
       ) VALUES (
         @id, @name, @type, @tier, @status, @baseUrl, @apiKeyEncrypted, @apiKeys, @model, @priority,
         @inputCostPerMTok, @outputCostPerMTok, @rateLimitedUntil, @lastError,
@@ -673,8 +752,8 @@ function writeProviderToDb(database: Database.Database, provider: ProviderConfig
         @oauthProfile, @oauthAccessEncrypted, @oauthRefreshEncrypted,
         @oauthTokenExpiresAt, @oauthLastRefreshAt,
         @oauthCopilotEncrypted, @oauthCopilotTokenExpiresAt,
-        @oauthProjectId, @oauthDeviceClientId, @oauthDeviceSecretEncrypted, @oauthMachineId, @proxyUrl,
-        @oauthAccounts
+        @oauthProjectId, @oauthDeviceClientId, @oauthDeviceSecretEncrypted, @oauthMachineId, @oauthProfileArn, @proxyUrl,
+        @vertexLocation, @oauthAccounts, @keyQuotas
       )
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
@@ -705,8 +784,11 @@ function writeProviderToDb(database: Database.Database, provider: ProviderConfig
         oauth_device_client_id = excluded.oauth_device_client_id,
         oauth_device_client_secret_encrypted = excluded.oauth_device_client_secret_encrypted,
         oauth_machine_id = excluded.oauth_machine_id,
+        oauth_profile_arn = excluded.oauth_profile_arn,
         proxy_url = excluded.proxy_url,
-        oauth_accounts = COALESCE(excluded.oauth_accounts, providers.oauth_accounts)
+        vertex_location = excluded.vertex_location,
+        oauth_accounts = COALESCE(excluded.oauth_accounts, providers.oauth_accounts),
+        key_quotas = excluded.key_quotas
     `)
     .run({
       ...provider,
@@ -729,8 +811,11 @@ function writeProviderToDb(database: Database.Database, provider: ProviderConfig
       oauthDeviceClientId: provider.oauthDeviceClientId ?? null,
       oauthDeviceSecretEncrypted,
       oauthMachineId: provider.oauthMachineId ?? null,
+      oauthProfileArn: provider.oauthProfileArn ?? null,
       proxyUrl: provider.proxyUrl ?? null,
-      oauthAccounts: oauthAccountsSerialized
+      vertexLocation: provider.vertexLocation ?? null,
+      oauthAccounts: oauthAccountsSerialized,
+      keyQuotas: serializeKeyQuotas(provider.keyQuotas)
     });
 }
 
@@ -772,16 +857,18 @@ function writeUsageToDb(database: Database.Database, log: UsageLog) {
     .prepare(`
       INSERT INTO usage_logs (
         id, created_at, provider_id, provider_name, model, tier, task_type, input_tokens, output_tokens,
-        total_cost_usd, cost_source, cache_status, budget_status, routing_reason, status, error, skipped_providers
+        total_cost_usd, cost_source, cache_status, budget_status, routing_reason, status, error, skipped_providers, key_index, saved_cost_usd
       ) VALUES (
         @id, @createdAt, @providerId, @providerName, @model, @tier, @taskType, @inputTokens, @outputTokens,
-        @totalCostUsd, @costSource, @cacheStatus, @budgetStatus, @routingReason, @status, @error, @skippedProviders
+        @totalCostUsd, @costSource, @cacheStatus, @budgetStatus, @routingReason, @status, @error, @skippedProviders, @keyIndex, @savedCostUsd
       )
     `)
     .run({
       ...log,
       error: log.error ?? null,
-      skippedProviders: log.skippedProviders ? JSON.stringify(log.skippedProviders) : null
+      skippedProviders: log.skippedProviders ? JSON.stringify(log.skippedProviders) : null,
+      keyIndex: typeof log.keyIndex === "number" ? log.keyIndex : null,
+      savedCostUsd: typeof log.savedCostUsd === "number" ? log.savedCostUsd : null
     });
 }
 
@@ -810,7 +897,9 @@ function usageFromRow(row: any): UsageLog {
     routingReason: row.routing_reason,
     status: row.status,
     error: row.error ?? undefined,
-    skippedProviders
+    skippedProviders,
+    keyIndex: typeof row.key_index === "number" ? row.key_index : undefined,
+    savedCostUsd: typeof row.saved_cost_usd === "number" ? row.saved_cost_usd : undefined
   };
 }
 
@@ -1080,8 +1169,8 @@ function preserveOptionalSecret(
 
 export async function updateProvider(provider: ProviderConfig) {
   const database = getDb();
-  const existing = database.prepare("SELECT api_key_encrypted, api_keys, models, connection_status, last_checked_at, last_error, oauth_access_token_encrypted, oauth_refresh_token_encrypted, oauth_copilot_token_encrypted, oauth_copilot_token_expires_at, oauth_project_id, oauth_device_client_id, oauth_device_client_secret_encrypted, oauth_machine_id, proxy_url FROM providers WHERE id = ?").get(provider.id) as
-    | { api_key_encrypted: string; api_keys?: string; models?: string; connection_status?: string; last_checked_at?: string; last_error?: string; oauth_access_token_encrypted?: string; oauth_refresh_token_encrypted?: string; oauth_copilot_token_encrypted?: string; oauth_copilot_token_expires_at?: string; oauth_project_id?: string; oauth_device_client_id?: string; oauth_device_client_secret_encrypted?: string; oauth_machine_id?: string; proxy_url?: string }
+  const existing = database.prepare("SELECT api_key_encrypted, api_keys, models, connection_status, last_checked_at, last_error, oauth_access_token_encrypted, oauth_refresh_token_encrypted, oauth_copilot_token_encrypted, oauth_copilot_token_expires_at, oauth_project_id, oauth_device_client_id, oauth_device_client_secret_encrypted, oauth_machine_id, oauth_profile_arn, proxy_url, vertex_location, key_quotas FROM providers WHERE id = ?").get(provider.id) as
+    | { api_key_encrypted: string; api_keys?: string; models?: string; connection_status?: string; last_checked_at?: string; last_error?: string; oauth_access_token_encrypted?: string; oauth_refresh_token_encrypted?: string; oauth_copilot_token_encrypted?: string; oauth_copilot_token_expires_at?: string; oauth_project_id?: string; oauth_device_client_id?: string; oauth_device_client_secret_encrypted?: string; oauth_machine_id?: string; oauth_profile_arn?: string; proxy_url?: string; vertex_location?: string; key_quotas?: string }
     | undefined;
   const incomingApiKeys =
     provider.apiKeys === undefined
@@ -1105,7 +1194,13 @@ export async function updateProvider(provider: ProviderConfig) {
     provider.oauthMachineId === undefined || isRedactedSecret(provider.oauthMachineId)
       ? existing?.oauth_machine_id ?? undefined
       : provider.oauthMachineId;
+  const preserveOauthProfileArn =
+    provider.oauthProfileArn === undefined ? existing?.oauth_profile_arn ?? undefined : provider.oauthProfileArn;
   const preserveProxyUrl = provider.proxyUrl === undefined ? existing?.proxy_url ?? undefined : provider.proxyUrl;
+  const preserveVertexLocation =
+    provider.vertexLocation === undefined ? existing?.vertex_location ?? undefined : provider.vertexLocation;
+  const preserveKeyQuotas =
+    provider.keyQuotas === undefined ? parseKeyQuotas(existing?.key_quotas) : provider.keyQuotas;
   const incomingApiKey =
     provider.apiKey === undefined || isRedactedSecret(provider.apiKey) ? undefined : provider.apiKey;
   const incomingStatus = provider.connectionStatus;
@@ -1134,7 +1229,10 @@ export async function updateProvider(provider: ProviderConfig) {
     oauthDeviceClientId: preserveDeviceClientId,
     oauthDeviceClientSecret: preserveDeviceClientSecret,
     oauthMachineId: preserveOauthMachineId,
+    oauthProfileArn: preserveOauthProfileArn,
     proxyUrl: preserveProxyUrl,
+    vertexLocation: preserveVertexLocation,
+    keyQuotas: preserveKeyQuotas,
     ...preserveConnection
   };
   writeProviderToDb(database, merged, existing?.api_key_encrypted ?? "");
@@ -1145,7 +1243,7 @@ export async function updateProvider(provider: ProviderConfig) {
 export async function clearProviderApiKeys(providerId: string) {
   const database = getDb();
   database
-    .prepare("UPDATE providers SET api_key_encrypted = '', api_keys = NULL WHERE id = ?")
+    .prepare("UPDATE providers SET api_key_encrypted = '', api_keys = NULL, key_quotas = NULL WHERE id = ?")
     .run(providerId);
 }
 
@@ -1211,15 +1309,36 @@ export async function saveCacheEntry(entry: CacheEntry) {
     .run();
 }
 
+/** Local calendar day `YYYY-MM-DD` (operator timezone), not UTC. */
+export function calendarDayKey(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 export function todayKey(date = new Date()) {
-  return date.toISOString().slice(0, 10);
+  return calendarDayKey(date);
+}
+
+/** Local day key for an ISO usage/cache timestamp. */
+export function usageDayKey(iso: string) {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return iso.slice(0, 10);
+  return calendarDayKey(parsed);
 }
 
 export function getTodaySpend(store: NesaStore) {
   const today = todayKey();
   return store.usage
-    .filter((item) => item.createdAt.startsWith(today) && item.status === "success")
+    .filter((item) => usageDayKey(item.createdAt) === today && item.status === "success")
     .reduce((sum, item) => sum + item.totalCostUsd, 0);
+}
+
+/** Successful + failed requests that landed on the local calendar day. */
+export function getTodayRequestCount(store: NesaStore) {
+  const today = todayKey();
+  return store.usage.filter((item) => usageDayKey(item.createdAt) === today).length;
 }
 
 export async function upsertCombo(combo: Combo) {
@@ -1234,6 +1353,14 @@ export async function deleteCombo(comboId: string) {
 
 export async function readMcpServers(): Promise<McpServer[]> {
   return (getDb().prepare("SELECT * FROM mcp_servers ORDER BY name ASC").all() as any[]).map(mcpFromRow);
+}
+
+/** Safe for SSR → client props — never expose decrypted env values. */
+export function redactMcpServer(server: McpServer): McpServer {
+  return {
+    ...server,
+    env: Object.fromEntries(Object.keys(server.env ?? {}).map((key) => [key, "********"]))
+  };
 }
 
 export async function upsertMcpServer(server: McpServer) {
@@ -1260,6 +1387,7 @@ export async function saveProviderOAuthTokens(providerId: string, tokens: {
   deviceClientId?: string;
   deviceClientSecret?: string;
   machineId?: string;
+  profileArn?: string;
 }, options?: { accountId?: string; createNew?: boolean; accountName?: string }) {
   const database = getDb();
   const provider = await readProviderById(providerId);
@@ -1286,6 +1414,7 @@ export async function saveProviderOAuthTokens(providerId: string, tokens: {
     oauthDeviceClientId: tokens.deviceClientId ?? existing?.oauthDeviceClientId,
     oauthDeviceClientSecret: tokens.deviceClientSecret ?? existing?.oauthDeviceClientSecret,
     oauthMachineId: tokens.machineId ?? existing?.oauthMachineId,
+    oauthProfileArn: tokens.profileArn ?? existing?.oauthProfileArn,
     connectionStatus: "connected",
     lastError: undefined,
     lastCheckedAt: new Date().toISOString(),
@@ -1318,6 +1447,7 @@ function configuredOAuthAccountsFromProvider(provider: ProviderConfig): OAuthAcc
     oauthDeviceClientId: provider.oauthDeviceClientId,
     oauthDeviceClientSecret: provider.oauthDeviceClientSecret,
     oauthMachineId: provider.oauthMachineId,
+    oauthProfileArn: provider.oauthProfileArn,
     connectionStatus: provider.connectionStatus,
     lastError: provider.lastError,
     rateLimitedUntil: provider.rateLimitedUntil
@@ -1338,7 +1468,7 @@ export async function updateProviderOAuthAccountTokens(providerId: string, accou
 export async function clearProviderOAuthTokens(providerId: string) {
   const database = getDb();
   database
-    .prepare(`UPDATE providers SET oauth_accounts = NULL, oauth_access_token_encrypted = NULL, oauth_refresh_token_encrypted = NULL, oauth_token_expires_at = NULL, oauth_last_refresh_at = NULL, oauth_copilot_token_encrypted = NULL, oauth_copilot_token_expires_at = NULL, oauth_project_id = NULL, oauth_device_client_id = NULL, oauth_device_client_secret_encrypted = NULL, oauth_machine_id = NULL WHERE id = ?`)
+    .prepare(`UPDATE providers SET oauth_accounts = NULL, oauth_access_token_encrypted = NULL, oauth_refresh_token_encrypted = NULL, oauth_token_expires_at = NULL, oauth_last_refresh_at = NULL, oauth_copilot_token_encrypted = NULL, oauth_copilot_token_expires_at = NULL, oauth_project_id = NULL, oauth_device_client_id = NULL, oauth_device_client_secret_encrypted = NULL, oauth_machine_id = NULL, oauth_profile_arn = NULL WHERE id = ?`)
     .run(providerId);
 }
 
@@ -1433,10 +1563,14 @@ export async function deleteOAuthPending(state: string) {
 export type DevicePendingState = {
   deviceCode: string;
   createdAt: string;
+  /** Absolute expiry from upstream `expires_in` (preferred over hardcoded 15m). */
+  expiresAt?: string;
   accountId?: string;
   clientId?: string;
   clientSecret?: string;
   region?: string;
+  /** PKCE verifier for Qwen device flow. */
+  codeVerifier?: string;
 };
 
 export async function saveDevicePending(providerId: string, data: DevicePendingState, accountId?: string) {
@@ -1445,7 +1579,8 @@ export async function saveDevicePending(providerId: string, data: DevicePendingS
     ...data,
     accountId: data.accountId ?? accountId,
     deviceCode: encryptSecret(data.deviceCode),
-    clientSecret: data.clientSecret ? encryptSecret(data.clientSecret) : undefined
+    clientSecret: data.clientSecret ? encryptSecret(data.clientSecret) : undefined,
+    codeVerifier: data.codeVerifier ? encryptSecret(data.codeVerifier) : undefined
   });
 }
 
@@ -1459,7 +1594,8 @@ export async function readDevicePending(providerId: string, accountId?: string) 
     return {
       ...pending,
       deviceCode: decryptSecret(pending.deviceCode),
-      clientSecret: pending.clientSecret ? decryptSecret(pending.clientSecret) : undefined
+      clientSecret: pending.clientSecret ? decryptSecret(pending.clientSecret) : undefined,
+      codeVerifier: pending.codeVerifier ? decryptSecret(pending.codeVerifier) : undefined
     };
   }
   return null;
@@ -1490,17 +1626,23 @@ export interface TunnelSettings {
   tunnelUrl: string;
   tailscaleEnabled: boolean;
   tailscaleUrl: string;
+  /** Last Tailscale expose mode — restored after restart. */
+  tailscaleMode?: "serve" | "funnel";
   localPort: number;
 }
 
 export async function readTunnelSettings(): Promise<TunnelSettings> {
-  return readSetting<TunnelSettings>(getDb(), "tunnel", {
-    enabled: false,
-    tunnelUrl: "",
-    tailscaleEnabled: false,
-    tailscaleUrl: "",
-    localPort: Number(process.env.PORT) || 20129
-  });
+  const stored = readSetting<Partial<TunnelSettings>>(getDb(), "tunnel", {});
+  return {
+    enabled: Boolean(stored.enabled),
+    tunnelUrl: typeof stored.tunnelUrl === "string" ? stored.tunnelUrl : "",
+    tailscaleEnabled: Boolean(stored.tailscaleEnabled),
+    tailscaleUrl: typeof stored.tailscaleUrl === "string" ? stored.tailscaleUrl : "",
+    tailscaleMode: stored.tailscaleMode === "funnel" ? "funnel" : "serve",
+    localPort: Number.isInteger(Number(stored.localPort)) && Number(stored.localPort) > 0
+      ? Number(stored.localPort)
+      : Number(process.env.PORT) || 20129
+  };
 }
 
 export async function writeTunnelSettings(settings: Partial<TunnelSettings>) {
@@ -1510,14 +1652,20 @@ export async function writeTunnelSettings(settings: Partial<TunnelSettings>) {
 
 export function getTodaySavings(store: NesaStore) {
   const today = todayKey();
-  const cacheSavings = store.cache
-    .filter((entry) => entry.createdAt.startsWith(today))
-    .reduce((sum, entry) => sum + entry.savedCostUsd, 0);
+  const todaysHits = store.usage.filter(
+    (item) => usageDayKey(item.createdAt) === today && item.cacheStatus === "hit" && item.status === "success"
+  );
+  const cacheSavings = todaysHits.reduce((sum, item) => {
+    if (typeof item.savedCostUsd === "number" && Number.isFinite(item.savedCostUsd)) {
+      return sum + item.savedCostUsd;
+    }
+    // Legacy hit rows only mentioned savings in routingReason.
+    const match = item.routingReason.match(/\$([0-9]+(?:\.[0-9]+)?)/);
+    return sum + (match ? Number(match[1]) || 0 : 0);
+  }, 0);
   const freeTierRequests = store.usage.filter(
-    (item) => item.createdAt.startsWith(today) && item.tier === "free" && item.status === "success"
+    (item) => usageDayKey(item.createdAt) === today && item.tier === "free" && item.status === "success"
   ).length;
-  const cacheHits = store.usage.filter(
-    (item) => item.createdAt.startsWith(today) && item.cacheStatus === "hit"
-  ).length;
+  const cacheHits = todaysHits.length;
   return { cacheSavings, freeTierRequests, cacheHits };
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/adminApi";
 import { parseOAuthCallbackPaste } from "@/core/oauthCallbackPaste";
-import { exchangeCode, loadAntigravityProjectId } from "@/core/oauthPkce";
+import { exchangeCode, loadAntigravityProjectId, resolveIflowApiKey } from "@/core/oauthPkce";
 import { getPreset } from "@/core/oauthProviderPresets";
 import { deleteOAuthPending, readOAuthPending, readProviderById, saveProviderOAuthTokens } from "@/lib/store";
 
@@ -45,21 +45,45 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   try {
     await deleteOAuthPending(parsed.state);
+    if (preset.tokenInCallback) {
+      let token = parsed.code;
+      try {
+        const asUrl = new URL(raw.includes("://") ? raw : `http://localhost/?${raw}`);
+        token = asUrl.searchParams.get("token") ?? token;
+      } catch {
+        /* use parsed.code */
+      }
+      if (!token) throw new Error("Missing token in callback paste.");
+      await saveProviderOAuthTokens(provider.id, { accessToken: token }, {
+        accountId: pending.accountId,
+        createNew: !pending.accountId
+      });
+      return NextResponse.json({ ok: true });
+    }
+
     const tokens = await exchangeCode(preset, parsed.code, pending.redirectUri, pending.codeVerifier, parsed.state);
+    let accessToken = tokens.access_token;
+    if (preset.profile === "iflow" && accessToken) {
+      accessToken = await resolveIflowApiKey(preset, accessToken);
+    }
     const expiresAt = tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : undefined;
     const projectId =
       preset.loadCodeAssistUrl && tokens.access_token
         ? await loadAntigravityProjectId(preset, tokens.access_token)
         : undefined;
-    await saveProviderOAuthTokens(provider.id, {
-      accessToken: tokens.access_token,
-      refreshToken: tokens.refresh_token,
-      expiresAt,
-      projectId
-    }, {
-      accountId: pending.accountId,
-      createNew: !pending.accountId
-    });
+    await saveProviderOAuthTokens(
+      provider.id,
+      {
+        accessToken,
+        refreshToken: tokens.refresh_token,
+        expiresAt,
+        projectId
+      },
+      {
+        accountId: pending.accountId,
+        createNew: !pending.accountId
+      }
+    );
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "OAuth exchange failed.";

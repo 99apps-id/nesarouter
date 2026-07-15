@@ -2,6 +2,43 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.26 - 2026-07-15
+
+### Added
+
+- **MCP stdio bridge**: official Content-Length framing (NDJSON kept as fallback); RPC auto-spawns the child; delete/update kills the process.
+- **Tunnel restore**: Cloudflare quick tunnel and Tailscale serve/funnel re-apply after NesaRouter restart (`instrumentation` + status poll); persist Tailscale mode + local port.
+- **Overview system strip**: live fallback / Cloudflare / Tailscale / MCP counts (not decorative badges).
+- **MiMo Code Free**: anonymous JWT bootstrap path for Xiaomi free-ai chat (upstream may still return `illegal_access`).
+- **Providers**: Vertex ADC import, Grok Web executor, Cloudflare Workers AI helpers, more presets/icons (Cline, Kilo, iFlow, Kimchi, CodeBuddy CN, Azure, Blackbox, Minimax CN, etc.).
+- **Specialty OAuth**: expanded device/loopback/import flows and presets (Cursor, Kiro, Codex, Antigravity, Gemini CLI, …).
+
+### Fixed
+
+- **Anthropic API key**: use `x-api-key` + `anthropic-version`; normalize base URL to `/v1/messages`; map OpenAI `tool_choice` → Anthropic.
+- **Azure OpenAI**: send `api-key` only (omit Bearer on Azure hosts).
+- **OpenAI Responses / Codex**: `ChatGPT-Account-ID` from JWT; typed tools/`function_call` for non-Codex Responses; Codex SSE buffer when `stream: false`.
+- **Routing**: explicit model ids fall across every provider that lists the model (cross-provider fallback).
+- **Headroom**: avoid `/v1/v1/compress`; export `buildCompressEndpoint`.
+- **CLI config**: Codex/Hermes/OpenClaw use a single `/v1` base; Hermes `.env` includes `OPENAI_BASE_URL`.
+- **Usage / live map**: savings from cache *hits* (not writes); chart + quotas use local calendar day; live map overflow prefers traffic; reduced-motion skips SVG pulse; request counts aligned.
+- **Overview metrics**: “Requests today” instead of capped 500-row length.
+- **MCP secrets**: never serialize decrypted env to the browser (SSR + API redact).
+- **Tunnel UI**: stale URL separate from live URL; port 1–65535 validation; public-exposure warnings for Cloudflare + Funnel.
+- **Typecheck**: Cursor stream `Buffer` assignability for CI.
+- **Instrumentation**: Node-only tunnel/Tailscale boot restore uses `webpackIgnore` so Edge build does not pull `better-sqlite3` (fixes `next build` on 0.1.26).
+
+### Security / hygiene
+
+- Ignore `.tmp/` (blocks accidental commit of local credentials/cookies).
+- MCP admin surfaces remain redacted; `/v1/mcp/*` still API-key gated.
+
+### Known
+
+- Xiaomi MiMo free JWT may be blocked by upstream (`illegal_access`) — prefer PAYG/Token Plan.
+- Tailscale Serve/Funnel must be enabled once in the Tailscale admin console before NesaRouter Enable succeeds.
+- Grok Web uses browser-session style access — subject to upstream ToS/breakage.
+
 ## 0.1.25 - 2026-07-14
 
 ### Fixes

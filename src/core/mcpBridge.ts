@@ -5,6 +5,7 @@ import { McpServer } from "@/core/types";
 interface BridgeEntry {
   proc: ChildProcess;
   sessions: Map<string, (frame: string) => void>;
+  /** Raw stdout bytes as string for Content-Length + NDJSON parsing. */
   buffer: string;
 }
 
@@ -17,6 +18,69 @@ function bridgesStore(): Map<string, BridgeEntry> {
 }
 
 const bridges = bridgesStore();
+
+/** Encode a JSON-RPC message as MCP stdio Content-Length frame. */
+export function encodeMcpFrame(message: unknown): string {
+  const body = JSON.stringify(message);
+  return `Content-Length: ${Buffer.byteLength(body, "utf8")}\r\n\r\n${body}`;
+}
+
+/**
+ * Extract complete MCP messages from a stdout buffer.
+ * Prefers official Content-Length framing; falls back to NDJSON lines for
+ * simple test servers.
+ */
+export function extractMcpMessages(buffer: string): { messages: string[]; rest: string } {
+  const messages: string[] = [];
+  let rest = buffer;
+
+  for (;;) {
+    const headerMatch = rest.match(/^Content-Length:\s*(\d+)\r?\n(?:[^\r\n]*\r?\n)*?\r?\n/i);
+    if (headerMatch) {
+      const length = Number(headerMatch[1]);
+      const start = headerMatch[0].length;
+      if (!Number.isFinite(length) || length < 0) {
+        rest = rest.slice(headerMatch[0].length);
+        continue;
+      }
+      if (rest.length < start + length) break;
+      messages.push(rest.slice(start, start + length));
+      rest = rest.slice(start + length);
+      continue;
+    }
+
+    // NDJSON fallback (smoke / non-spec servers).
+    if (rest.startsWith("{")) {
+      const nl = rest.indexOf("\n");
+      if (nl < 0) break;
+      const line = rest.slice(0, nl).trim();
+      rest = rest.slice(nl + 1);
+      if (line) messages.push(line);
+      continue;
+    }
+
+    // Drop leading junk until a frame or object starts.
+    const next = rest.search(/Content-Length:|\{/i);
+    if (next > 0) {
+      rest = rest.slice(next);
+      continue;
+    }
+    // Incomplete fragment (mid-header / mid-line) — keep buffered.
+    break;
+  }
+
+  return { messages, rest };
+}
+
+function broadcast(entry: BridgeEntry, frame: string) {
+  for (const send of entry.sessions.values()) {
+    try {
+      send(frame);
+    } catch {
+      /* session already closed */
+    }
+  }
+}
 
 function getOrSpawn(server: McpServer): BridgeEntry {
   const existing = bridges.get(server.id);
@@ -33,31 +97,21 @@ function getOrSpawn(server: McpServer): BridgeEntry {
 
   proc.stdout?.on("data", (chunk: Buffer) => {
     entry.buffer += chunk.toString("utf8");
-    let idx = entry.buffer.indexOf("\n");
-    while (idx >= 0) {
-      const raw = entry.buffer.slice(0, idx).trim();
-      entry.buffer = entry.buffer.slice(idx + 1);
-      idx = entry.buffer.indexOf("\n");
-      if (!raw) continue;
-      const frame = `event: message\ndata: ${raw}\n\n`;
-      for (const send of entry.sessions.values()) {
-        try { send(frame); } catch {}
-      }
+    const extracted = extractMcpMessages(entry.buffer);
+    entry.buffer = extracted.rest;
+    for (const raw of extracted.messages) {
+      broadcast(entry, `event: message\ndata: ${raw}\n\n`);
     }
   });
 
   proc.stderr?.on("data", (chunk: Buffer) => {
-    const frame = `event: stderr\ndata: ${JSON.stringify(chunk.toString("utf8").trim())}\n\n`;
-    for (const send of entry.sessions.values()) {
-      try { send(frame); } catch {}
-    }
+    const text = chunk.toString("utf8").trim();
+    if (!text) return;
+    broadcast(entry, `event: stderr\ndata: ${JSON.stringify(text)}\n\n`);
   });
 
   proc.on("exit", (code) => {
-    const frame = `event: exit\ndata: ${JSON.stringify({ code })}\n\n`;
-    for (const send of entry.sessions.values()) {
-      try { send(frame); } catch {}
-    }
+    broadcast(entry, `event: exit\ndata: ${JSON.stringify({ code })}\n\n`);
     bridges.delete(server.id);
   });
 
@@ -76,15 +130,20 @@ export function unregisterSession(serverId: string, sid: string) {
   if (!entry) return;
   entry.sessions.delete(sid);
   if (entry.sessions.size === 0) {
-    try { entry.proc.kill(); } catch {}
+    try {
+      entry.proc.kill();
+    } catch {
+      /* ignore */
+    }
     bridges.delete(serverId);
   }
 }
 
-export function sendToChild(serverId: string, jsonRpc: unknown) {
-  const entry = bridges.get(serverId);
-  if (!entry?.proc?.stdin?.writable) throw new Error(`MCP bridge not running for ${serverId}`);
-  entry.proc.stdin.write(`${JSON.stringify(jsonRpc)}\n`);
+/** Ensure the child is running, then write a Content-Length JSON-RPC frame. */
+export function sendToChild(server: McpServer, jsonRpc: unknown) {
+  const entry = getOrSpawn(server);
+  if (!entry.proc.stdin?.writable) throw new Error(`MCP bridge stdin closed for ${server.id}`);
+  entry.proc.stdin.write(encodeMcpFrame(jsonRpc));
 }
 
 export function isBridgeRunning(serverId: string): boolean {
@@ -92,9 +151,17 @@ export function isBridgeRunning(serverId: string): boolean {
   return !!(entry && entry.proc.exitCode === null && !entry.proc.killed);
 }
 
-export function killAllBridges() {
-  for (const [, entry] of bridges) {
-    try { entry.proc.kill(); } catch {}
+export function killBridge(serverId: string) {
+  const entry = bridges.get(serverId);
+  if (!entry) return;
+  try {
+    entry.proc.kill();
+  } catch {
+    /* ignore */
   }
-  bridges.clear();
+  bridges.delete(serverId);
+}
+
+export function killAllBridges() {
+  for (const id of [...bridges.keys()]) killBridge(id);
 }
