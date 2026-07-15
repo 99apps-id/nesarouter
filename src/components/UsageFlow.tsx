@@ -12,7 +12,7 @@ const MAP_COORD_DECIMALS = 2;
 // Keep the last real upstream route visible long enough to inspect it. Cache
 // hits are excluded below because they never establish a provider connection.
 const LIVE_WINDOW_MS = 5 * 60_000;
-const LIVE_REFRESH_MS = 1_500;
+const LIVE_REFRESH_MS = 4_000;
 
 /** Stable coords for SSR + client (avoids hydration drift from float math). */
 function mapCoord(value: number) {
@@ -43,17 +43,24 @@ function curvePath(from: Point, to: Point, index: number) {
   return `M ${mapCoordText(from.x)} ${mapCoordText(from.y)} Q ${mapCoordText(cx)} ${mapCoordText(cy)} ${mapCoordText(to.x)} ${mapCoordText(to.y)}`;
 }
 
-function mapNodes(providers: ProviderConfig[]): MapNode[] {
+function mapNodes(providers: ProviderConfig[], usage: UsageLog[]): MapNode[] {
   // The map represents selectable upstream routes, not the entire provider
   // catalog. Disabled and cooldown presets cannot receive traffic.
   const activeProviders = providers.filter((provider) => provider.status === "active");
   if (activeProviders.length <= maxVisibleNodes) {
     return activeProviders.map((provider) => ({ ...provider, kind: "provider" as const }));
   }
+  const traffic = providerUsageMap(usage);
+  const ranked = [...activeProviders].sort((a, b) => {
+    const aReq = traffic.get(a.id)?.requests ?? 0;
+    const bReq = traffic.get(b.id)?.requests ?? 0;
+    if (bReq !== aReq) return bReq - aReq;
+    return a.priority - b.priority;
+  });
   const visibleProviderCount = maxVisibleNodes - 1;
-  const hiddenCount = activeProviders.length - visibleProviderCount;
+  const hiddenCount = ranked.length - visibleProviderCount;
   return [
-    ...activeProviders.slice(0, visibleProviderCount).map((provider) => ({ ...provider, kind: "provider" as const })),
+    ...ranked.slice(0, visibleProviderCount).map((provider) => ({ ...provider, kind: "provider" as const })),
     { id: "overflow", name: `+${hiddenCount} providers`, status: "disabled", kind: "overflow", hiddenCount }
   ];
 }
@@ -146,9 +153,9 @@ export default function UsageFlow({
   providers: ProviderConfig[];
   usage: UsageLog[];
 }) {
-  const visibleNodes = useMemo(() => mapNodes(providers), [providers]);
   const [liveUsage, setLiveUsage] = useState<UsageLog[]>(usage);
   const usageMap = useMemo(() => providerUsageMap(liveUsage), [liveUsage]);
+  const visibleNodes = useMemo(() => mapNodes(providers, liveUsage), [providers, liveUsage]);
   const nodeCount = visibleNodes.length;
   const [mapSize, setMapSize] = useState({ width: 900, height: 430 });
   const points = useMemo(() => layoutPoints(nodeCount, mapSize.width, mapSize.height), [nodeCount, mapSize.height, mapSize.width]);
@@ -165,6 +172,7 @@ export default function UsageFlow({
   const defaultZoom = fitZoom(nodeCount, span, Math.min(mapSize.width, mapSize.height));
   const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: defaultZoom });
   const [mounted, setMounted] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
   const pinchStart = useRef<{ distance: number; scale: number } | null>(null);
@@ -181,6 +189,11 @@ export default function UsageFlow({
 
   useEffect(() => {
     setMounted(true);
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduceMotion(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
   }, []);
 
   useEffect(() => {
@@ -306,7 +319,7 @@ export default function UsageFlow({
 
       <div
         ref={viewportRef}
-        className={`router-map router-map-interactive ${dragging ? "dragging" : ""} ${nodeCount > 8 ? "dense" : ""} ${nodeCount > outerRingLimit ? "multi-ring" : ""}`}
+        className={`router-map router-map-interactive ${dragging ? "dragging" : ""} ${nodeCount > 8 ? "dense" : ""} ${nodeCount > outerRingLimit ? "multi-ring" : ""} ${reduceMotion ? "reduce-motion" : ""}`}
         style={{ "--node-scale": String(nodeScale) } as CSSProperties}
         aria-label="NesaRouter provider flow map"
         onWheel={onWheel}
@@ -330,7 +343,7 @@ export default function UsageFlow({
                 return (
                   <g key={`line-${node.id}`}>
                     <path d={path} className={`map-line ${active ? "active" : ""} ${node.kind === "overflow" ? "overflow" : ""}`} pathLength="1">
-                      {active ? (
+                      {active && !reduceMotion ? (
                         <animate
                           attributeName="stroke-dashoffset"
                           dur="1.1s"
@@ -340,7 +353,7 @@ export default function UsageFlow({
                         />
                       ) : null}
                     </path>
-                    {active ? (
+                    {active && !reduceMotion ? (
                       <circle r="4" className="map-pulse-dot">
                         <animateMotion dur="1.6s" repeatCount="indefinite" path={path} />
                       </circle>

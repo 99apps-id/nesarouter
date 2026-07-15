@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/adminApi";
-import { enableTunnel } from "@/lib/tunnel/manager";
+import { enableTunnel, normalizeTunnelPort } from "@/lib/tunnel/manager";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +10,7 @@ export async function POST(request: Request) {
   if (unauthorized) return unauthorized;
   const body = (await request.json().catch(() => ({}))) as { port?: number };
   try {
-    const port = body.port ? Number(body.port) : undefined;
+    const port = body.port != null && String(body.port).trim() !== "" ? normalizeTunnelPort(body.port) : undefined;
     const result = await enableTunnel(port);
     return NextResponse.json({ ok: true, tunnelUrl: result.tunnelUrl });
   } catch (error) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Database, LockKeyhole, Network, ShieldCheck } from "lucide-react";
+import { Boxes, Database, Globe, LockKeyhole, Network, ShieldCheck, Waypoints } from "lucide-react";
 import { formatMessage } from "@/i18n/types";
 import { money } from "@/lib/format";
 import { useI18n } from "@/components/I18nProvider";
@@ -25,19 +25,34 @@ export function OverviewAlerts({
   );
 }
 
-export function OverviewSystemStrip() {
+export type SystemStripItem = {
+  id: string;
+  label: string;
+  ok: boolean;
+  icon: "db" | "lock" | "network" | "globe" | "tunnel" | "mcp";
+};
+
+const icons = {
+  db: Database,
+  lock: LockKeyhole,
+  network: Network,
+  globe: Globe,
+  tunnel: Waypoints,
+  mcp: Boxes
+} as const;
+
+export function OverviewSystemStrip({ items }: { items: SystemStripItem[] }) {
   const { t } = useI18n();
   return (
     <section className="system-strip" aria-label={t.overview.systemStatus}>
-      <span>
-        <Database size={15} /> {t.overview.sqlite}
-      </span>
-      <span>
-        <LockKeyhole size={15} /> {t.overview.encryptedKeys}
-      </span>
-      <span>
-        <Network size={15} /> {t.overview.fallbackReady}
-      </span>
+      {items.map((item) => {
+        const Icon = icons[item.icon];
+        return (
+          <span key={item.id} className={item.ok ? "ok" : "warn"} title={item.label}>
+            <Icon size={15} /> {item.label}
+          </span>
+        );
+      })}
     </section>
   );
 }

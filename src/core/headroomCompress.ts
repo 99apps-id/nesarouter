@@ -24,16 +24,31 @@ export interface HeadroomCompressResult {
   applied: boolean;
 }
 
-function buildCompressEndpoint(url: string) {
+export function buildCompressEndpoint(url: string) {
   try {
     const parsed = new URL(url);
-    parsed.pathname = `${parsed.pathname.replace(/\/$/, "")}/v1/compress`;
+    let pathname = parsed.pathname.replace(/\/$/, "") || "";
+    if (/\/v1\/compress$/i.test(pathname)) {
+      /* already final */
+    } else if (/\/v1$/i.test(pathname)) {
+      pathname = `${pathname}/compress`;
+    } else {
+      pathname = `${pathname}/v1/compress`;
+    }
+    parsed.pathname = pathname;
     parsed.hash = "";
     return parsed.toString();
   } catch {
     const raw = String(url).replace(/#.*$/, "");
     const [base, query = ""] = raw.split("?", 2);
-    const endpoint = `${base.replace(/\/$/, "")}/v1/compress`;
+    let endpoint = base.replace(/\/$/, "");
+    if (/\/v1\/compress$/i.test(endpoint)) {
+      /* ok */
+    } else if (/\/v1$/i.test(endpoint)) {
+      endpoint = `${endpoint}/compress`;
+    } else {
+      endpoint = `${endpoint}/v1/compress`;
+    }
     return query ? `${endpoint}?${query}` : endpoint;
   }
 }

@@ -933,6 +933,14 @@ h2 {
   gap: 7px;
 }
 
+.system-strip span.ok {
+  color: var(--text);
+}
+
+.system-strip span.warn {
+  color: var(--danger, #b45309);
+}
+
 .metric {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -2336,6 +2344,19 @@ button:focus-visible {
   *::after {
     scroll-behavior: auto !important;
     transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .router-map-orbit,
+  .pulse-hub,
+  .map-line.active,
+  .map-provider.live {
+    animation: none !important;
+  }
+
+  .router-map.reduce-motion .map-pulse-dot {
+    display: none;
   }
 }
 

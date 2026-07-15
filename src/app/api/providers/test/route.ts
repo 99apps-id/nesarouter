@@ -3,6 +3,7 @@ import { finalizeAdminResponse, requireAdmin } from "@/lib/adminApi";
 import { isKeylessProvider } from "@/core/providerCredentials";
 import { testProviderConnection } from "@/core/providerClient";
 import { configuredProviderKeys } from "@/core/providerKeys";
+import { ensureFreshAccessToken } from "@/core/providerOAuthFlow";
 import { ProviderConfig } from "@/core/types";
 import { keyPreview } from "@/lib/providerLabels";
 import { markProviderConnection, readStore } from "@/lib/store";
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
   if (unauthorized) return unauthorized;
   const body = (await request.json()) as { providerId?: string; provider?: ProviderConfig; allAccounts?: boolean };
   const store = await readStore();
-  const provider =
+  let provider =
     body.provider ??
     store.providers.find((item) => item.id === body.providerId);
 
@@ -23,12 +24,16 @@ export async function POST(request: Request) {
     return finalizeAdminResponse(NextResponse.json({ ok: false, error: "Provider not found." }, { status: 404 }), request);
   }
 
+  if (provider.oauthProfile && !body.provider) {
+    const fresh = await ensureFreshAccessToken(provider);
+    if (fresh) provider = { ...provider, oauthAccessToken: fresh };
+  }
+
   const keylessAllowed =
     provider.oauthProfile ||
-    isKeylessProvider(provider) ||
-    provider.type === "kiro";
+    isKeylessProvider(provider);
 
-  if (!provider.apiKey && !keylessAllowed) {
+  if (!provider.apiKey && !keylessAllowed && !provider.oauthAccessToken) {
     return finalizeAdminResponse(
       NextResponse.json({ ok: false, error: "Provider API key is empty." }, { status: 400 }),
       request

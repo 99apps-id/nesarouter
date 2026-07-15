@@ -6,6 +6,14 @@ export interface OpenAiUsage {
   total_tokens: number;
 }
 
+/** Cloud Code wraps Gemini payloads as `{ response: { candidates, usageMetadata } }`. */
+function unwrapGeminiSsePayload(payload: any): any {
+  if (payload && typeof payload === "object" && payload.response && typeof payload.response === "object") {
+    return payload.response;
+  }
+  return payload;
+}
+
 const textDecoder = new TextDecoder();
 const textEncoder = new TextEncoder();
 
@@ -98,7 +106,7 @@ export function geminiStreamToOpenAiSse(
           const data = dataLineFromEvent(event);
           if (!data) continue;
           try {
-            const parsed = JSON.parse(data);
+            const parsed = unwrapGeminiSsePayload(JSON.parse(data));
             const parts = parsed?.candidates?.[0]?.content?.parts ?? [];
             const text = parts.map((part: any) => part?.text ?? "").join("");
             const finishReason = parsed?.candidates?.[0]?.finishReason?.toLowerCase?.() ?? null;

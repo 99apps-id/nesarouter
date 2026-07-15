@@ -65,6 +65,9 @@ export function providerIdentity(input: ProviderIdentityInput | ProviderConfig):
   if (has(providerText, /zhipu|bigmodel|\bglm\b/)) {
     return { key: "zhipu", label: "Z", title, iconPath: "/providers/zhipu.png" };
   }
+  if (has(providerText, /minimax-cn|minimaxi\.com/)) {
+    return { key: "minimax-cn", label: "MM", title, iconPath: "/providers/minimax-cn.png" };
+  }
   if (has(providerText, /minimax/)) {
     return { key: "minimax", label: "MM", title, iconPath: "/providers/minimax.png" };
   }
@@ -94,6 +97,9 @@ export function providerIdentity(input: ProviderIdentityInput | ProviderConfig):
   }
   if (has(providerText, /cerebras/)) {
     return { key: "cerebras", label: "CB", title, iconPath: "/providers/cerebras.svg" };
+  }
+  if (has(providerText, /grok.?web|grok_web/)) {
+    return { key: "grok-web", label: "GW", title, iconPath: "/providers/xai.png" };
   }
   if (has(providerText, /\bxai\b|grok/)) {
     return { key: "xai", label: "X", title, iconPath: "/providers/xai.png" };
@@ -151,6 +157,9 @@ export function providerIdentity(input: ProviderIdentityInput | ProviderConfig):
   if (has(providerText, /codex|oauth-chatgpt|chatgpt/)) {
     return { key: "codex", label: "CX", title, iconPath: "/providers/codex.png" };
   }
+  if (has(providerText, /azure/)) {
+    return { key: "azure", label: "AZ", title, iconPath: "/providers/azure.png" };
+  }
   if (has(providerText, /openai/) || has(text, /\bopenai\b/)) {
     return { key: "openai", label: "AI", title, iconPath: "/providers/openai.png" };
   }
@@ -187,6 +196,42 @@ export function providerIdentity(input: ProviderIdentityInput | ProviderConfig):
   }
   if (has(text, /nvidia|nim/)) {
     return { key: "nvidia", label: "NV", title, iconPath: "/providers/nvidia.png" };
+  }
+  if (has(text, /cloudflare|workers.?ai/)) {
+    return { key: "cloudflare", label: "CF", title, iconPath: "/providers/cloudflare.svg" };
+  }
+  if (has(providerText, /vertex/)) {
+    return { key: "vertex", label: "VX", title, iconPath: "/providers/vertex.png" };
+  }
+  if (has(providerText, /oauth-qwen|qwen.?code|portal\.qwen/)) {
+    return { key: "qwen", label: "Q", title, iconPath: "/providers/qwen.png" };
+  }
+  if (has(providerText, /oauth-grok|grok.?cli|cli-chat-proxy\.grok/)) {
+    return { key: "xai", label: "X", title, iconPath: "/providers/xai.png" };
+  }
+  if (has(providerText, /kimchi/)) {
+    return { key: "kimchi", label: "KC", title, iconPath: "/providers/kimchi.png" };
+  }
+  if (has(providerText, /iflow/)) {
+    return { key: "iflow", label: "IF", title, iconPath: "/providers/iflow.png" };
+  }
+  if (has(providerText, /codebuddy|copilot\.tencent/)) {
+    return { key: "codebuddy", label: "CB", title, iconPath: "/providers/codebuddy-cn.png" };
+  }
+  if (has(providerText, /clinepass/)) {
+    return { key: "clinepass", label: "CP", title, iconPath: "/providers/clinepass.png" };
+  }
+  if (has(providerText, /\bcline\b/)) {
+    return { key: "cline", label: "CL", title, iconPath: "/providers/cline.png" };
+  }
+  if (has(providerText, /kilocode|kilo\.ai|\bkilo\b/)) {
+    return { key: "kilocode", label: "KL", title, iconPath: "/providers/kilocode.png" };
+  }
+  if (has(providerText, /blackbox/)) {
+    return { key: "blackbox", label: "BB", title, iconPath: "/providers/blackbox.png" };
+  }
+  if (has(providerText, /gitlab/)) {
+    return { key: "gitlab", label: "GL", title, iconPath: "/providers/gitlab.svg" };
   }
 
   return { key: "custom", label: initials(title), title };

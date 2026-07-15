@@ -43,6 +43,22 @@ describe("router", () => {
     expect(decision.provider.id).toBe("paid");
   });
 
+  it("honors a non-default model listed on the provider", () => {
+    const store = storeWith([
+      provider({
+        id: "deepseek",
+        name: "DeepSeek",
+        tier: "cheap",
+        model: "deepseek-v4-flash",
+        models: ["deepseek-v4-flash", "deepseek-reasoner"],
+        priority: 1
+      })
+    ]);
+    const decision = chooseProvider(store, { model: "deepseek-reasoner", messages: [{ role: "user", content: "hi" }] });
+    expect(decision.provider.id).toBe("deepseek");
+    expect(decision.provider.model).toBe("deepseek-reasoner");
+  });
+
   it("throws when an unknown model is requested", () => {
     const store = storeWith([provider({ id: "free", model: "free-model" })]);
     expect(() => chooseProvider(store, { model: "nope", messages: [] })).toThrow(/not configured/);

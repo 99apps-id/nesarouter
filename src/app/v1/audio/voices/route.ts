@@ -41,7 +41,7 @@ export async function GET(request: Request) {
     const fresh = await ensureFreshAccessToken(provider);
     if (fresh) provider = { ...provider, oauthAccessToken: fresh };
   }
-  const keys = pickActiveKeys(provider);
+  const keys = pickActiveKeys(provider, store);
   if (!keys.length) {
     return NextResponse.json({ error: { message: "No active API key." } }, { status: 502 });
   }

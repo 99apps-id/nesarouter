@@ -113,6 +113,8 @@ export function openAiChatToClaudeRequest(body: any): any {
       }))
     : undefined;
 
+  const toolChoice = mapOpenAiToolChoiceToClaude(body?.tool_choice);
+
   return {
     model: body?.model ?? "claude-sonnet-5",
     messages,
@@ -121,8 +123,25 @@ export function openAiChatToClaudeRequest(body: any): any {
     ...(typeof body?.temperature === "number" ? { temperature: body.temperature } : {}),
     ...(typeof body?.top_p === "number" ? { top_p: body.top_p } : {}),
     ...(tools ? { tools } : {}),
+    ...(toolChoice ? { tool_choice: toolChoice } : {}),
     ...(body?.stream ? { stream: true } : {})
   };
+}
+
+/** Map OpenAI chat `tool_choice` → Anthropic Messages form. */
+export function mapOpenAiToolChoiceToClaude(toolChoice: unknown): Record<string, unknown> | undefined {
+  if (toolChoice == null) return undefined;
+  if (toolChoice === "auto") return { type: "auto" };
+  if (toolChoice === "none") return { type: "none" };
+  if (toolChoice === "required") return { type: "any" };
+  if (typeof toolChoice === "object" && toolChoice !== null) {
+    const obj = toolChoice as { type?: string; function?: { name?: string }; name?: string };
+    const name = obj.function?.name ?? obj.name;
+    if ((obj.type === "function" || obj.type === "tool") && typeof name === "string" && name) {
+      return { type: "tool", name };
+    }
+  }
+  return undefined;
 }
 
 /* ----------------------- Claude response -> OpenAI chat -------------------- */
@@ -230,7 +249,42 @@ const CODEX_DEFAULT_INSTRUCTIONS = "You are a helpful coding assistant.";
 function textFromMessageContent(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
-  return content.map((part: any) => (typeof part?.text === "string" ? part.text : "")).filter(Boolean).join("\n");
+  return content
+    .map((part: any) => {
+      if (typeof part === "string") return part;
+      if (typeof part?.text === "string") return part.text;
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function responsesInputPartsFromContent(content: unknown, role: "user" | "assistant"): any[] {
+  if (typeof content === "string") {
+    return content ? [{ type: role === "assistant" ? "output_text" : "input_text", text: content }] : [];
+  }
+  if (!Array.isArray(content)) return [];
+  const parts: any[] = [];
+  for (const part of content) {
+    if (typeof part === "string") {
+      if (part) parts.push({ type: role === "assistant" ? "output_text" : "input_text", text: part });
+      continue;
+    }
+    if (typeof part?.text === "string" && part.text) {
+      parts.push({ type: role === "assistant" ? "output_text" : "input_text", text: part.text });
+      continue;
+    }
+    const imageUrl = part?.image_url?.url ?? part?.image_url;
+    if ((part?.type === "image_url" || part?.image_url) && typeof imageUrl === "string") {
+      const dataUrl = imageUrl.match(/^data:([^;]+);base64,(.+)$/i);
+      if (dataUrl) {
+        parts.push({ type: "input_image", image_url: imageUrl });
+      } else {
+        parts.push({ type: "input_text", text: `[image: ${imageUrl.slice(0, 200)}]` });
+      }
+    }
+  }
+  return parts;
 }
 
 function responsesInputContent(text: string, role: "user" | "assistant") {
@@ -250,20 +304,28 @@ export function openAiChatToResponsesRequest(body: any, options?: { codex?: bool
     if (message?.role === "tool") {
       const text = textFromMessageContent(message.content);
       if (!text) continue;
-      // Codex Responses expects tool results as user/input items; keep text fallback.
-      input.push({
-        type: "message",
-        role: "user",
-        content: responsesInputContent(`Tool result (${message.tool_call_id ?? "tool"}): ${text}`, "user")
-      });
+      if (codex) {
+        input.push({
+          type: "message",
+          role: "user",
+          content: responsesInputContent(`Tool result (${message.tool_call_id ?? "tool"}): ${text}`, "user")
+        });
+      } else {
+        input.push({
+          type: "function_call_output",
+          call_id: message.tool_call_id ?? message.id ?? "tool",
+          output: text
+        });
+      }
       continue;
     }
     const role = message?.role === "assistant" ? "assistant" : "user";
     const text = textFromMessageContent(message?.content);
-    if (!text && !Array.isArray(message?.tool_calls)) continue;
+    const hasTools = Array.isArray(message?.tool_calls) && message.tool_calls.length;
+    if (!text && !hasTools) continue;
     if (codex) {
       const parts = text ? responsesInputContent(text, role) : [];
-      if (Array.isArray(message?.tool_calls) && message.tool_calls.length) {
+      if (hasTools) {
         for (const call of message.tool_calls) {
           parts.push({
             type: "output_text",
@@ -272,8 +334,27 @@ export function openAiChatToResponsesRequest(body: any, options?: { codex?: bool
         }
       }
       if (parts.length) input.push({ type: "message", role, content: parts });
-    } else if (text) {
-      input.push({ role, content: text });
+    } else {
+      if (hasTools && role === "assistant") {
+        for (const call of message.tool_calls) {
+          input.push({
+            type: "function_call",
+            call_id: call?.id ?? `call_${call?.function?.name ?? "fn"}`,
+            name: call?.function?.name ?? "tool",
+            arguments: call?.function?.arguments ?? "{}"
+          });
+        }
+        if (text) {
+          input.push({
+            type: "message",
+            role: "assistant",
+            content: responsesInputPartsFromContent(text, "assistant")
+          });
+        }
+      } else {
+        const parts = responsesInputPartsFromContent(message?.content, role);
+        if (parts.length) input.push({ type: "message", role, content: parts });
+      }
     }
   }
 
@@ -295,6 +376,18 @@ export function openAiChatToResponsesRequest(body: any, options?: { codex?: bool
 
   if (body?.max_tokens) request.max_output_tokens = body.max_tokens;
   if (typeof body?.temperature === "number") request.temperature = body.temperature;
+  if (Array.isArray(body?.tools) && body.tools.length) {
+    request.tools = body.tools.map((tool: any) => {
+      const fn = tool?.function ?? tool;
+      return {
+        type: "function",
+        name: fn?.name,
+        description: fn?.description,
+        parameters: fn?.parameters ?? { type: "object", properties: {} }
+      };
+    });
+  }
+  if (body?.tool_choice != null) request.tool_choice = body.tool_choice;
   return request;
 }
 

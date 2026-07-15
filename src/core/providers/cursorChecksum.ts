@@ -51,14 +51,15 @@ export function generateCursorChecksum(machineId) {
   // Math.floor(Date.now() / 1e6) - same as Python implementation
   const timestamp = Math.floor(Date.now() / 1000000);
 
-  // Create byte array from timestamp (6 bytes, big-endian)
+  // Create byte array from timestamp (6 bytes, big-endian).
+  // Use division — JS `>>` is only defined for 32-bit integers.
   const byteArray = new Uint8Array([
-    (timestamp >> 40) & 0xFF,
-    (timestamp >> 32) & 0xFF,
-    (timestamp >> 24) & 0xFF,
-    (timestamp >> 16) & 0xFF,
-    (timestamp >> 8) & 0xFF,
-    timestamp & 0xFF
+    Math.trunc(timestamp / 2 ** 40) & 0xff,
+    Math.trunc(timestamp / 2 ** 32) & 0xff,
+    (timestamp >> 24) & 0xff,
+    (timestamp >> 16) & 0xff,
+    (timestamp >> 8) & 0xff,
+    timestamp & 0xff
   ]);
 
   // Jyh cipher obfuscation
@@ -97,9 +98,15 @@ export function generateCursorChecksum(machineId) {
  * @param {string} accessToken - Bearer token
  * @param {string} machineId - Machine ID (or will be generated from token)
  * @param {boolean} ghostMode - Enable ghost mode (privacy)
+ * @param {{ clientVersion?: string; clientType?: string }} options - Optional overrides from OAuth preset
  * @returns {Object} - Headers object
  */
-export function buildCursorHeaders(accessToken: string, machineId: string | null = null, ghostMode = true) {
+export function buildCursorHeaders(
+  accessToken: string,
+  machineId: string | null = null,
+  ghostMode = true,
+  options?: { clientVersion?: string; clientType?: string }
+) {
   // Clean token if it has prefix
   const cleanToken = accessToken.includes("::")
     ? accessToken.split("::")[1]
@@ -135,8 +142,8 @@ export function buildCursorHeaders(accessToken: string, machineId: string | null
     "x-amzn-trace-id": `Root=${crypto.randomUUID()}`,
     "x-client-key": clientKey,
     "x-cursor-checksum": checksum,
-    "x-cursor-client-version": "3.1.0",
-    "x-cursor-client-type": "ide",
+    "x-cursor-client-version": options?.clientVersion || "3.1.0",
+    "x-cursor-client-type": options?.clientType || "ide",
     "x-cursor-client-os": os,
     "x-cursor-client-arch": arch,
     "x-cursor-client-device-type": "desktop",

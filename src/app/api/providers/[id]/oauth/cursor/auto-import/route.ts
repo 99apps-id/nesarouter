@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { finalizeAdminResponse, requireAdmin } from "@/lib/adminApi";
 import {
+  cursorAccessTokenExpiresAt,
   cursorAutoImportNotFoundMessage,
   cursorAutoImportPartialMessage,
   findReadableCursorDbPath,
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/providers/[id]/oauth/cursor/auto-import
  * Read Cursor IDE tokens from local state.vscdb (same machine as NesaRouter).
+ * Query: createNew=1 | accountId=<id> — same targeting as manual Connect/Import.
  */
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const unauthorized = await requireAdmin(request);
@@ -24,6 +26,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   if (provider.oauthProfile !== "cursor") {
     return NextResponse.json({ error: "Provider does not support Cursor auto-import." }, { status: 400 });
   }
+
+  const url = new URL(request.url);
+  const createNew = url.searchParams.get("createNew") === "1" || url.searchParams.get("createNew") === "true";
+  const accountId = url.searchParams.get("accountId")?.trim() || undefined;
 
   try {
     const { dbPath, candidates } = await findReadableCursorDbPath();
@@ -40,14 +46,28 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
     const { tokens, errors } = await readCursorTokensFromDb(dbPath);
     if (tokens.accessToken && tokens.machineId) {
-      const expiresAt = new Date(Date.now() + 86400 * 1000).toISOString();
-      await saveProviderOAuthTokens(provider.id, {
-        accessToken: tokens.accessToken,
-        expiresAt,
-        machineId: tokens.machineId
-      }, { createNew: false });
+      // Prefer JWT exp; only omit expiry when unknown (do not invent a fake 24h TTL).
+      const expiresAt = cursorAccessTokenExpiresAt(tokens.accessToken);
+      await saveProviderOAuthTokens(
+        provider.id,
+        {
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken || undefined,
+          expiresAt,
+          machineId: tokens.machineId
+        },
+        createNew ? { createNew: true } : { createNew: false, accountId }
+      );
       return finalizeAdminResponse(
-        NextResponse.json({ found: true, imported: true, expiresAt, dbPath }),
+        NextResponse.json({
+          found: true,
+          imported: true,
+          expiresAt: expiresAt ?? null,
+          hasRefreshToken: Boolean(tokens.refreshToken),
+          dbPath,
+          createNew,
+          accountId: accountId ?? null
+        }),
         request
       );
     }

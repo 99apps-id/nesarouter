@@ -532,7 +532,7 @@ try {
       command: "node",
       args: [
         "-e",
-        "let b='';process.stdin.on('data',d=>{b+=d.toString();let i;while((i=b.indexOf('\\n'))>=0){const l=b.slice(0,i).trim();b=b.slice(i+1);if(!l)continue;let m;try{m=JSON.parse(l)}catch{continue}process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:{ok:true,echo:m.method}})+'\\n')}});"
+        "let b='';process.stdin.on('data',d=>{b+=d.toString();for(;;){const m=b.match(/^Content-Length:\\s*(\\d+)\\r?\\n\\r?\\n/i);if(!m)break;const len=+m[1],s=m[0].length;if(b.length<s+len)break;const body=b.slice(s,s+len);b=b.slice(s+len);let msg;try{msg=JSON.parse(body)}catch{continue}const out=JSON.stringify({jsonrpc:'2.0',id:msg.id,result:{ok:true,echo:msg.method}});process.stdout.write('Content-Length: '+Buffer.byteLength(out)+'\\r\\n\\r\\n'+out)}});"
       ],
       env: {}
     })

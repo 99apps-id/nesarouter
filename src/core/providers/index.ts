@@ -9,6 +9,8 @@ import { OpenAiResponsesExecutor } from "@/core/providers/openaiResponses";
 import { KiroExecutor } from "@/core/providers/kiro";
 import { OpenCodeExecutor } from "@/core/providers/opencode";
 import { CursorExecutor } from "@/core/providers/cursor";
+import { VertexExecutor } from "@/core/providers/vertex";
+import { GrokWebExecutor } from "@/core/providers/grokWeb";
 import { ProviderExecutor, UpstreamProviderError, cleanApiKey } from "@/core/providers/shared";
 
 const executors: Record<ProviderConfig["type"], ProviderExecutor> = {
@@ -20,7 +22,9 @@ const executors: Record<ProviderConfig["type"], ProviderExecutor> = {
   openai_responses: new OpenAiResponsesExecutor(),
   kiro: new KiroExecutor(),
   opencode: new OpenCodeExecutor(),
-  cursor: new CursorExecutor()
+  cursor: new CursorExecutor(),
+  vertex: new VertexExecutor(),
+  grok_web: new GrokWebExecutor()
 };
 
 export { UpstreamProviderError };
@@ -37,7 +41,8 @@ export async function listProviderModels(provider: ProviderConfig) {
   const keylessAllowed =
     provider.oauthProfile ||
     isKeylessProvider(provider) ||
-    provider.type === "kiro";
+    provider.type === "vertex" ||
+    provider.type === "grok_web";
 
   if (!cleanApiKey(provider.apiKey) && !keylessAllowed) throw new UpstreamProviderError("Provider API key is empty.", 400);
   return getProviderExecutor(provider).listModels(provider);

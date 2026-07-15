@@ -100,13 +100,8 @@ export function endpointFor(provider: ProviderConfig, apiKeyMode: boolean, useAm
 }
 
 function resolveKiroProfileArn(provider: ProviderConfig): string | undefined {
-  const fromProvider = (provider as ProviderConfig & { oauthProfileArn?: string }).oauthProfileArn?.trim();
-  if (fromProvider) return fromProvider;
-  for (const account of provider.oauthAccounts ?? []) {
-    const arn = (account as { oauthProfileArn?: string }).oauthProfileArn?.trim();
-    if (arn) return arn;
-  }
-  return undefined;
+  // Prefer the active account snapshot (set by providerForOAuthAccount); do not walk siblings.
+  return provider.oauthProfileArn?.trim() || undefined;
 }
 
 function parseHeaders(bytes: Uint8Array<ArrayBufferLike>): Record<string, string> {
@@ -231,7 +226,12 @@ export class KiroExecutor implements ProviderExecutor {
   }
 
   async validate(provider: ProviderConfig) {
-    const token = cleanApiKey(provider.apiKey || provider.oauthAccessToken || "");
+    // Prefer OAuth access token for Builder ID; apiKey is only for API-key mode Kiro.
+    const token = cleanApiKey(
+      provider.oauthProfile === "kiro"
+        ? provider.oauthAccessToken || provider.apiKey || ""
+        : provider.apiKey || provider.oauthAccessToken || ""
+    );
     if (!token) throw new UpstreamProviderError(`${provider.name} needs a Kiro API key or access token.`, 400);
     const apiKeyMode = !provider.oauthProfile && Boolean(cleanApiKey(provider.apiKey));
     const response = await proxyFetch(provider, "https://q.us-east-1.amazonaws.com/ListAvailableModels?origin=AI_EDITOR", {

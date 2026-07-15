@@ -41,6 +41,7 @@ function legacyAccountFromProvider(provider: ProviderConfig): OAuthAccount | nul
     oauthDeviceClientId: provider.oauthDeviceClientId,
     oauthDeviceClientSecret: provider.oauthDeviceClientSecret,
     oauthMachineId: provider.oauthMachineId,
+    oauthProfileArn: provider.oauthProfileArn,
     connectionStatus: provider.connectionStatus,
     lastError: provider.lastError,
     rateLimitedUntil: provider.rateLimitedUntil
@@ -105,6 +106,7 @@ export function providerForOAuthAccount(provider: ProviderConfig, account: OAuth
     oauthDeviceClientId: account.oauthDeviceClientId,
     oauthDeviceClientSecret: account.oauthDeviceClientSecret,
     oauthMachineId: account.oauthMachineId,
+    oauthProfileArn: account.oauthProfileArn,
     connectionStatus: account.connectionStatus,
     lastError: account.lastError,
     rateLimitedUntil: account.rateLimitedUntil

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { getProviderQuotaState, getProviderQuotaUsedToday } from "@/core/quota";
+import {
+  effectiveKeyQuotaLimit,
+  getKeyQuotaState,
+  getProviderQuotaState,
+  getProviderQuotaUsedToday,
+  isProviderRoutingQuotaExhausted
+} from "@/core/quota";
+import { pickActiveKeys } from "@/core/providerKeys";
 import { NesaStore, ProviderConfig, UsageLog } from "@/core/types";
 
 function makeProvider(overrides: Partial<ProviderConfig> = {}): ProviderConfig {
@@ -10,7 +17,7 @@ function makeProvider(overrides: Partial<ProviderConfig> = {}): ProviderConfig {
     tier: "cheap",
     status: "active",
     baseUrl: "https://example.com/v1",
-    apiKey: "k",
+    apiKey: "k1",
     model: "m",
     priority: 100,
     inputCostPerMTok: 0,
@@ -77,5 +84,64 @@ describe("quota", () => {
     const state = getProviderQuotaState(makeProvider(), store)!;
     expect(state.exhausted).toBe(false);
     expect(state.remaining).toBe(10000);
+  });
+
+  it("prefers explicit per-key quota over provider quota", () => {
+    const provider = makeProvider({
+      apiKeys: ["k2"],
+      keyQuotas: [{ quotaLimitTokens: 500 }, {}]
+    });
+    expect(effectiveKeyQuotaLimit(provider, 0)).toBe(500);
+    expect(effectiveKeyQuotaLimit(provider, 1)).toBe(10000);
+  });
+
+  it("tracks per-key usage and keeps other keys available", () => {
+    const provider = makeProvider({
+      apiKey: "k1",
+      apiKeys: ["k2"],
+      quotaLimitTokens: 1000,
+      keyQuotas: [{ quotaLimitTokens: 200 }, {}]
+    });
+    const store = {
+      usage: [
+        makeUsage({ id: "a", keyIndex: 0, inputTokens: 150, outputTokens: 50 }),
+        makeUsage({ id: "b", keyIndex: 1, inputTokens: 100, outputTokens: 0 })
+      ]
+    } as unknown as NesaStore;
+
+    expect(getKeyQuotaState(provider, store, 0)?.exhausted).toBe(true);
+    expect(getKeyQuotaState(provider, store, 1)?.exhausted).toBe(false);
+    expect(isProviderRoutingQuotaExhausted(provider, store)).toBe(false);
+
+    const active = pickActiveKeys(provider, store);
+    expect(active.map((item) => item.index)).toEqual([1]);
+  });
+
+  it("prefers explicit-quota keys first when both remain", () => {
+    const provider = makeProvider({
+      apiKey: "k1",
+      apiKeys: ["k2"],
+      quotaLimitTokens: 10000,
+      keyQuotas: [{}, { quotaLimitTokens: 5000 }]
+    });
+    const store = { usage: [] } as unknown as NesaStore;
+    const active = pickActiveKeys(provider, store);
+    expect(active[0].index).toBe(1);
+  });
+
+  it("exhausts routing only when every limited key is exhausted", () => {
+    const provider = makeProvider({
+      apiKey: "k1",
+      apiKeys: ["k2"],
+      quotaLimitTokens: 100,
+      keyQuotas: [{ quotaLimitTokens: 100 }, { quotaLimitTokens: 100 }]
+    });
+    const store = {
+      usage: [
+        makeUsage({ id: "a", keyIndex: 0, inputTokens: 100, outputTokens: 0 }),
+        makeUsage({ id: "b", keyIndex: 1, inputTokens: 100, outputTokens: 0 })
+      ]
+    } as unknown as NesaStore;
+    expect(isProviderRoutingQuotaExhausted(provider, store)).toBe(true);
   });
 });
