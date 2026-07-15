@@ -9,7 +9,14 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 const ACCESS_TOKEN_KEYS = ["cursorAuth/accessToken", "cursorAuth/token"];
+const REFRESH_TOKEN_KEYS = ["cursorAuth/refreshToken"];
 const MACHINE_ID_KEYS = ["storage.serviceMachineId", "storage.machineId", "telemetry.machineId"];
+
+export type CursorImportedTokens = {
+  accessToken: string | null;
+  refreshToken: string | null;
+  machineId: string | null;
+};
 
 export function cursorDbCandidatePaths(platform: NodeJS.Platform = process.platform) {
   const home = homedir();
@@ -45,6 +52,19 @@ export function normalizeCursorDbValue(value: unknown) {
   }
 }
 
+/** Decode JWT `exp` without verifying signature — Cursor access tokens are JWTs. */
+export function cursorAccessTokenExpiresAt(accessToken: string): string | undefined {
+  const parts = accessToken.split(".");
+  if (parts.length < 2) return undefined;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as { exp?: number };
+    if (typeof payload.exp !== "number" || !Number.isFinite(payload.exp)) return undefined;
+    return new Date(payload.exp * 1000).toISOString();
+  } catch {
+    return undefined;
+  }
+}
+
 function isSqliteLockError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   return /locked|busy|cantopen/i.test(message);
@@ -65,7 +85,7 @@ function withTempDbCopy<T>(dbPath: string, run: (path: string) => T): T {
   }
 }
 
-function extractViaBetterSqlite(dbPath: string) {
+function extractViaBetterSqlite(dbPath: string): CursorImportedTokens {
   const db = new Database(dbPath, { readonly: true, fileMustExist: true });
   try {
     const query = (key: string) => {
@@ -82,6 +102,15 @@ function extractViaBetterSqlite(dbPath: string) {
       }
     }
 
+    let refreshToken: string | null = null;
+    for (const key of REFRESH_TOKEN_KEYS) {
+      const raw = query(key);
+      if (raw) {
+        refreshToken = String(normalizeCursorDbValue(raw));
+        break;
+      }
+    }
+
     let machineId: string | null = null;
     for (const key of MACHINE_ID_KEYS) {
       const raw = query(key);
@@ -91,17 +120,20 @@ function extractViaBetterSqlite(dbPath: string) {
       }
     }
 
-    if (!accessToken || !machineId) {
+    if (!accessToken || !machineId || !refreshToken) {
       const fuzzy = db
         .prepare(
-          "SELECT key, value FROM itemTable WHERE key LIKE 'cursorAuth/%' OR key LIKE '%machineId%' OR key LIKE '%MachineId%' LIMIT 20"
+          "SELECT key, value FROM itemTable WHERE key LIKE 'cursorAuth/%' OR key LIKE '%machineId%' OR key LIKE '%MachineId%' LIMIT 30"
         )
         .all() as Array<{ key: string; value?: string }>;
       for (const row of fuzzy) {
         const value = row.value ? String(normalizeCursorDbValue(row.value)) : "";
         if (!value) continue;
-        if (!accessToken && /cursorAuth/i.test(row.key) && /token|access/i.test(row.key) && value.length >= 50) {
+        if (!accessToken && /cursorAuth/i.test(row.key) && /access/i.test(row.key) && value.length >= 50) {
           accessToken = value;
+        }
+        if (!refreshToken && /cursorAuth/i.test(row.key) && /refresh/i.test(row.key) && value.length >= 20) {
+          refreshToken = value;
         }
         if (!machineId && /machine/i.test(row.key) && value.length >= 8 && value.length <= 80) {
           machineId = value;
@@ -109,13 +141,13 @@ function extractViaBetterSqlite(dbPath: string) {
       }
     }
 
-    return { accessToken, machineId };
+    return { accessToken, refreshToken, machineId };
   } finally {
     db.close();
   }
 }
 
-async function extractViaCli(dbPath: string) {
+async function extractViaCli(dbPath: string): Promise<CursorImportedTokens> {
   const query = async (sql: string) => {
     const { stdout } = await execFileAsync("sqlite3", [dbPath, sql], { timeout: 10_000 });
     return stdout.trim();
@@ -126,6 +158,18 @@ async function extractViaCli(dbPath: string) {
       const raw = await query(`SELECT value FROM itemTable WHERE key='${key}' LIMIT 1`);
       if (raw) {
         accessToken = String(normalizeCursorDbValue(raw));
+        break;
+      }
+    } catch {
+      /* next */
+    }
+  }
+  let refreshToken: string | null = null;
+  for (const key of REFRESH_TOKEN_KEYS) {
+    try {
+      const raw = await query(`SELECT value FROM itemTable WHERE key='${key}' LIMIT 1`);
+      if (raw) {
+        refreshToken = String(normalizeCursorDbValue(raw));
         break;
       }
     } catch {
@@ -144,7 +188,7 @@ async function extractViaCli(dbPath: string) {
       /* next */
     }
   }
-  return { accessToken, machineId };
+  return { accessToken, refreshToken, machineId };
 }
 
 export async function findReadableCursorDbPath(platform: NodeJS.Platform = process.platform) {
@@ -191,7 +235,10 @@ export async function readCursorTokensFromDb(dbPath: string) {
     errors.push(error instanceof Error ? error.message : String(error));
   }
 
-  return { tokens: tokens ?? { accessToken: null, machineId: null }, errors };
+  return {
+    tokens: tokens ?? { accessToken: null, refreshToken: null, machineId: null },
+    errors
+  };
 }
 
 export function cursorAutoImportNotFoundMessage(platform: NodeJS.Platform, candidates: string[]) {

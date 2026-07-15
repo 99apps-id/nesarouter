@@ -23,7 +23,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   try {
-    sendToChild(server.id, body);
+    sendToChild(server, body);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json(

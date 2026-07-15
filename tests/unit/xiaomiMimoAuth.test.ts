@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { xiaomiMimoAuthHeaders, xiaomiMimoCredentialHint } from "@/core/providers/shared";
+import { azureOpenAiAuthHeaders, xiaomiMimoAuthHeaders, xiaomiMimoCredentialHint } from "@/core/providers/shared";
 import type { ProviderConfig } from "@/core/types";
 
 function provider(partial: Partial<ProviderConfig>): ProviderConfig {
@@ -46,5 +46,17 @@ describe("xiaomi mimo auth helpers", () => {
         "tp-abc"
       )
     ).toBeUndefined();
+  });
+});
+
+describe("azure openai auth helpers", () => {
+  it("adds api-key header for Azure OpenAI hosts", () => {
+    expect(
+      azureOpenAiAuthHeaders(
+        "key",
+        provider({ id: "azure-openai", baseUrl: "https://myres.openai.azure.com/openai/v1" })
+      )
+    ).toEqual({ "api-key": "key" });
+    expect(azureOpenAiAuthHeaders("key", provider({ baseUrl: "https://api.openai.com/v1" }))).toEqual({});
   });
 });

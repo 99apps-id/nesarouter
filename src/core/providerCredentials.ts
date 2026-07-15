@@ -3,6 +3,8 @@ import { ProviderConfig } from "@/core/types";
 /** Providers that work without a user API key (public bearer, localhost, etc.). */
 export function isKeylessProvider(provider: ProviderConfig) {
   if (provider.type === "opencode") return true;
+  if (provider.id === "mimo-code-free") return true;
+  if (/xiaomimimo\.com\/api\/free-ai/i.test(provider.baseUrl)) return true;
   if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(provider.baseUrl)) return true;
   return false;
 }

@@ -39,7 +39,9 @@ export interface CliToolConfig {
 }
 
 function v1Base(baseUrl: string) {
-  return `${baseUrl}/v1`;
+  const trimmed = baseUrl.replace(/\/$/, "");
+  if (/\/v1$/i.test(trimmed)) return trimmed;
+  return `${trimmed}/v1`;
 }
 
 function loopbackBase(baseUrl: string) {
@@ -125,14 +127,14 @@ export function buildCliToolConfig(tool: CliToolId, baseUrl: string, apiKey: str
       };
     case "codex":
       return {
-        summary: "OpenAI Codex CLI — Responses endpoint",
+        summary: "OpenAI Codex CLI — Responses endpoint via NesaRouter /v1",
         files: [
           {
             path: "~/.codex/config.toml",
-            content: `model = "${model}"\n\n[model_providers.nesa]\nname = "NesaRouter"\nbase_url = "${baseUrl}"\nenv_key = "OPENAI_API_KEY"`
+            content: `model = "${model}"\n\n[model_providers.nesa]\nname = "NesaRouter"\nbase_url = "${v1}"\nenv_key = "OPENAI_API_KEY"`
           }
         ],
-        env: { OPENAI_BASE_URL: baseUrl, OPENAI_API_KEY: apiKey, OPENAI_MODEL: model }
+        env: { OPENAI_BASE_URL: v1, OPENAI_API_KEY: apiKey, OPENAI_MODEL: model }
       };
     case "gemini-cli":
       return {
@@ -180,9 +182,9 @@ export function buildCliToolConfig(tool: CliToolId, baseUrl: string, apiKey: str
             path: "~/.hermes/config.yaml",
             content: `model:\n  default: "${model}"\n  provider: "custom"\n  base_url: "${v1}"\n`
           },
-          { path: "~/.hermes/.env", content: `OPENAI_API_KEY=${apiKey}\n` }
+          { path: "~/.hermes/.env", content: `OPENAI_API_KEY=${apiKey}\nOPENAI_BASE_URL=${v1}\n` }
         ],
-        env: { OPENAI_API_KEY: apiKey }
+        env: { OPENAI_BASE_URL: v1, OPENAI_API_KEY: apiKey }
       };
     case "openclaw":
       return {
@@ -202,7 +204,7 @@ export function buildCliToolConfig(tool: CliToolId, baseUrl: string, apiKey: str
                 models: {
                   providers: {
                     nesa: {
-                      baseUrl: `${loopback}/v1`,
+                      baseUrl: v1Base(loopback),
                       apiKey,
                       api: "openai-completions",
                       models: [{ id: model, name: "NesaRouter" }]

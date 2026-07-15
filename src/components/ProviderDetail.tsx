@@ -8,6 +8,11 @@ import { ProviderConfig } from "@/core/types";
 import ProviderIcon from "@/components/ProviderIcon";
 import { adminFetch, ADMIN_SESSION_EXPIRED, isAdminUnauthorized, scheduleLoginRedirect } from "@/lib/adminFetch";
 import { parseOAuthCallbackPaste } from "@/core/oauthCallbackPaste";
+import {
+  extractCloudflareAccountId,
+  isCloudflareWorkersAiProvider,
+  withCloudflareAccountId
+} from "@/lib/cloudflareWorkersAi";
 
 export default function ProviderDetail({
   provider,
@@ -62,6 +67,7 @@ export default function ProviderDetail({
   const [device, setDevice] = useState<{ userCode: string; verificationUri: string; interval: number } | null>(null);
   const [devicePolling, setDevicePolling] = useState(false);
   const [cursorImporting, setCursorImporting] = useState(false);
+  const [vertexImporting, setVertexImporting] = useState(false);
   const [error, setError] = useState("");
   const [oauthTarget, setOauthTarget] = useState<{ accountId?: string; createNew: boolean }>({ createNew: false });
   const [liveOAuthAccounts, setLiveOAuthAccounts] = useState(oauthAccountSummaries);
@@ -206,6 +212,11 @@ export default function ProviderDetail({
       setKeys([...keys, result.preview]);
       setKeyCountState(result.count);
       setNewKey("");
+      setDraft((prev) => {
+        const next = Array.isArray(prev.keyQuotas) ? [...prev.keyQuotas] : [];
+        while (next.length < result.count) next.push({});
+        return { ...prev, keyQuotas: next };
+      });
     } else {
       setError(result.error ?? "Failed to add key.");
     }
@@ -222,8 +233,26 @@ export default function ProviderDetail({
     if (response.ok) {
       setKeys(keys.filter((_, i) => i !== index));
       setKeyCountState(result.count);
+      setDraft((prev) => {
+        const next = Array.isArray(prev.keyQuotas) ? [...prev.keyQuotas] : [];
+        if (index >= 0 && index < next.length) next.splice(index, 1);
+        return { ...prev, keyQuotas: next.length ? next : undefined };
+      });
     } else {
       setError(result.error ?? "Failed to remove key.");
+    }
+  }
+
+  async function saveKeyQuota(index: number) {
+    const quotaLimitTokens = Number(draft.keyQuotas?.[index]?.quotaLimitTokens ?? 0) || 0;
+    const response = await adminFetch(`/api/providers/${draft.id}/keys`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ index, quotaLimitTokens })
+    });
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      setError(result.error ?? "Failed to save key quota.");
     }
   }
 
@@ -471,7 +500,11 @@ export default function ProviderDetail({
     setOauthMessage("");
     setCursorImporting(true);
     try {
-      const detect = await adminFetch(`/api/providers/${draft.id}/oauth/cursor/auto-import`);
+      const params = new URLSearchParams();
+      if (oauthTarget.createNew) params.set("createNew", "1");
+      else if (oauthTarget.accountId) params.set("accountId", oauthTarget.accountId);
+      const qs = params.toString();
+      const detect = await adminFetch(`/api/providers/${draft.id}/oauth/cursor/auto-import${qs ? `?${qs}` : ""}`);
       if (guardAdminResponse(detect, setError)) return;
       const found = await detect.json().catch(() => ({}));
       if (!detect.ok || !found.imported) {
@@ -479,10 +512,34 @@ export default function ProviderDetail({
         setError(found.error ?? "Could not auto-import from Cursor IDE. Paste tokens manually.");
         return;
       }
-      setOauthMessage("Imported token from local Cursor IDE.");
+      setOauthMessage(
+        oauthTarget.createNew
+          ? "Imported token from local Cursor IDE into a new account."
+          : "Imported token from local Cursor IDE."
+      );
       router.refresh();
     } finally {
       setCursorImporting(false);
+    }
+  }
+
+  async function importVertexAdc() {
+    setError("");
+    setOauthMessage("");
+    setVertexImporting(true);
+    try {
+      const response = await adminFetch(`/api/providers/${draft.id}/vertex/import-adc`, { method: "POST" });
+      if (guardAdminResponse(response, setError)) return;
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(result.error ?? "Could not import local ADC credentials.");
+        return;
+      }
+      if (result.projectId) setDraft((prev) => ({ ...prev, oauthProjectId: result.projectId }));
+      setOauthMessage(result.message ?? "Imported local Application Default Credentials.");
+      router.refresh();
+    } finally {
+      setVertexImporting(false);
     }
   }
 
@@ -496,8 +553,15 @@ export default function ProviderDetail({
     });
     if (guardAdminResponse(response, setError)) return;
     const result = await response.json().catch(() => ({}));
-    if (response.ok && result.user_code) {
-      setDevice({ userCode: result.user_code, verificationUri: result.verification_uri, interval: result.interval ?? 5 });
+    if (response.ok && result.verification_uri) {
+      setDevice({
+        userCode: result.user_code || "",
+        verificationUri: result.verification_uri,
+        interval: result.interval ?? 5
+      });
+      if (result.openUrl || !result.user_code) {
+        window.open(result.verification_uri, "_blank", "noopener,noreferrer");
+      }
     } else {
       setError(result.error ?? "Failed to start device flow.");
     }
@@ -530,12 +594,28 @@ export default function ProviderDetail({
   const connectionStatus = draft.connectionStatus ?? "unknown";
   const connectionLabel = connectionStatus === "connected" ? "Connected" : connectionStatus === "error" ? "Error" : "Not tested";
   const isAccountProvider = Boolean(draft.oauthProfile);
-  const usesDeviceFlow = draft.oauthProfile === "github_copilot" || draft.oauthProfile === "kiro";
-  const usesCursorImport = draft.oauthProfile === "cursor";
-  const usesLoopbackCallbackPaste = draft.oauthProfile === "openai_codex";
+  const oauthPresetMeta = draft.oauthProfile
+    ? ({
+        github_copilot: { device: true, label: "GitHub" },
+        kiro: { device: true, label: "AWS Builder ID" },
+        qwen_code: { device: true, label: "Qwen" },
+        grok_cli: { device: true, label: "xAI" },
+        codebuddy_cn: { device: true, label: "CodeBuddy" },
+        kilocode: { device: true, label: "Kilo" },
+        openai_codex: { loopback: true },
+        antigravity: { loopback: true },
+        kimchi: { loopback: true },
+        iflow: { loopback: true },
+        cline: { loopback: true },
+        cursor: { import: true }
+      } as Record<string, { device?: boolean; loopback?: boolean; import?: boolean; label?: string }>)[draft.oauthProfile]
+    : undefined;
+  const usesDeviceFlow = Boolean(oauthPresetMeta?.device);
+  const usesCursorImport = Boolean(oauthPresetMeta?.import);
+  const usesLoopbackCallbackPaste = Boolean(oauthPresetMeta?.loopback) || draft.oauthProfile === "openai_codex";
   const showOauthPastePanel = Boolean(oauthPaste) || usesLoopbackCallbackPaste;
   const oauthPasteMode = oauthPaste?.mode ?? (usesLoopbackCallbackPaste ? "callbackUrl" : "code");
-  const deviceVendorLabel = draft.oauthProfile === "kiro" ? "AWS Builder ID" : "GitHub";
+  const deviceVendorLabel = oauthPresetMeta?.label ?? "vendor";
 
   return (
     <div className="providers-stack">
@@ -596,6 +676,9 @@ export default function ProviderDetail({
               <option value="github_copilot">GitHub Copilot</option>
               <option value="kiro">Kiro / custom transport</option>
               <option value="cursor">Cursor IDE</option>
+              <option value="vertex">Vertex AI (ADC / SA / key)</option>
+              <option value="opencode">OpenCode Zen</option>
+              <option value="grok_web">Grok Web (SSO cookie)</option>
             </select>
           </label>
           <label>
@@ -617,6 +700,85 @@ export default function ProviderDetail({
               spellCheck={false}
             />
           </label>
+          {isCloudflareWorkersAiProvider(draft) && draft.type !== "vertex" ? (
+            <label>
+              Cloudflare Account ID
+              <input
+                suppressHydrationWarning
+                value={extractCloudflareAccountId(draft.baseUrl, draft.oauthProjectId)}
+                onChange={(event) => {
+                  const accountId = event.target.value;
+                  setDraft({
+                    ...draft,
+                    oauthProjectId: accountId || undefined,
+                    baseUrl: withCloudflareAccountId(draft.baseUrl, accountId)
+                  });
+                }}
+                placeholder="From Workers AI → Use REST API"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+          ) : null}
+          {draft.type === "vertex" ? (
+            <>
+              <label>
+                GCP Project ID
+                <input
+                  suppressHydrationWarning
+                  value={draft.oauthProjectId ?? ""}
+                  onChange={(event) => setDraft({ ...draft, oauthProjectId: event.target.value || undefined })}
+                  placeholder={
+                    draft.id.includes("vertex-claude") || draft.model.startsWith("claude")
+                      ? "my-gcp-project (required · SA/ADC only)"
+                      : "my-gcp-project"
+                  }
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </label>
+              <label>
+                Vertex location
+                <input
+                  suppressHydrationWarning
+                  value={
+                    draft.vertexLocation ??
+                    (draft.id.includes("vertex-claude") || draft.model.startsWith("claude") ? "global" : "us-central1")
+                  }
+                  onChange={(event) => setDraft({ ...draft, vertexLocation: event.target.value || undefined })}
+                  placeholder={draft.id.includes("vertex-claude") ? "global" : "us-central1"}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </label>
+            </>
+          ) : null}
+          {draft.oauthProfile === "kiro" ? (
+            <label>
+              Kiro profile ARN
+              <input
+                suppressHydrationWarning
+                value={draft.oauthProfileArn ?? ""}
+                onChange={(event) => setDraft({ ...draft, oauthProfileArn: event.target.value.trim() || undefined })}
+                placeholder="arn:aws:codewhisperer:us-east-1:ACCOUNT:profile/…"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+          ) : null}
+          {draft.oauthProfile === "antigravity" || draft.oauthProfile === "gemini_cli" ? (
+            <label>
+              Cloud Code project ID
+              <input
+                suppressHydrationWarning
+                value={draft.oauthProjectId ?? ""}
+                onChange={(event) => setDraft({ ...draft, oauthProjectId: event.target.value.trim() || undefined })}
+                placeholder="From loadCodeAssist / GCP project"
+                autoComplete="off"
+                spellCheck={false}
+              />
+            </label>
+          ) : null}
           <label>
             Priority
             <input suppressHydrationWarning type="number" min="1" step="1" value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: Number(event.target.value) })} />
@@ -630,9 +792,12 @@ export default function ProviderDetail({
             <input suppressHydrationWarning type="number" min="0" step="0.01" value={draft.outputCostPerMTok} onChange={(event) => setDraft({ ...draft, outputCostPerMTok: Number(event.target.value) })} />
           </label>
           <label>
-            Daily token quota
+            Daily token quota (provider default)
             <input suppressHydrationWarning type="number" min="0" step="1000" placeholder="0 = unlimited" value={draft.quotaLimitTokens ?? 0} onChange={(event) => setDraft({ ...draft, quotaLimitTokens: Number(event.target.value) || undefined })} />
           </label>
+          <p className="subtle" style={{ gridColumn: "1 / -1", marginTop: "-0.5rem" }}>
+            Keys without their own quota inherit this provider limit. Explicit per-key quotas are preferred when routing.
+          </p>
           <label>
             Outbound proxy URL (optional)
             <input suppressHydrationWarning value={draft.proxyUrl ?? ""} onChange={(event) => setDraft({ ...draft, proxyUrl: event.target.value || undefined })} placeholder="http://host:port — applied to upstream calls" />
@@ -669,12 +834,40 @@ export default function ProviderDetail({
           </div>
           <KeyRound size={18} />
         </div>
-        <p className="compact-copy">Add one key or token per account. All accounts are encrypted, rotated in turn, and cooled down separately after quota or rate-limit errors.</p>
+        <p className="compact-copy">
+          {draft.type === "vertex"
+            ? draft.id.includes("vertex-claude") || draft.model.startsWith("claude")
+              ? "Claude on Vertex needs Service Account or ADC JSON (not an API key). Enable the model in Vertex Model Garden, set Project ID, location usually global."
+              : "Paste Service Account JSON, ADC authorized_user JSON (from gcloud auth application-default login), or a Vertex API key. Set GCP Project ID above for SA/ADC."
+            : draft.type === "grok_web"
+              ? "Paste the grok.com SSO cookie from DevTools → Application → Cookies → sso (raw value or sso=…). Re-paste when it expires — this is not OAuth."
+              : "Add one key or token per account. All accounts are encrypted, rotated in turn, and cooled down separately after quota or rate-limit errors. Set a daily token quota per key (0 = inherit provider quota)."}
+        </p>
         <div className="key-list">
           {keys.length === 0 ? <p className="subtle">No keys saved.</p> : keys.map((preview, index) => (
             <div key={index} className="key-row">
               <span className="key-preview"><KeyRound size={14} /> {preview}</span>
               {index === 0 ? <span className="status success">account 1</span> : <span className="status neutral">account {index + 1}</span>}
+              <label className="key-quota">
+                Daily quota
+                <input
+                  suppressHydrationWarning
+                  type="number"
+                  min="0"
+                  step="1000"
+                  title={draft.quotaLimitTokens ? `0 = inherit provider (${draft.quotaLimitTokens.toLocaleString()})` : "0 = unlimited (no provider quota)"}
+                  placeholder="0 = inherit"
+                  value={draft.keyQuotas?.[index]?.quotaLimitTokens ?? 0}
+                  onChange={(event) => {
+                    const value = Number(event.target.value) || 0;
+                    const next = Array.isArray(draft.keyQuotas) ? [...draft.keyQuotas] : [];
+                    while (next.length <= index) next.push({});
+                    next[index] = value > 0 ? { quotaLimitTokens: value } : {};
+                    setDraft({ ...draft, keyQuotas: next });
+                  }}
+                  onBlur={() => saveKeyQuota(index)}
+                />
+              </label>
               <button className="button danger-button" type="button" onClick={() => removeKey(index)}>
                 <Trash2 size={14} /> Remove
               </button>
@@ -685,7 +878,13 @@ export default function ProviderDetail({
           <input
             suppressHydrationWarning
             type="password"
-            placeholder="Paste API key or access token"
+            placeholder={
+              draft.type === "vertex"
+                ? "Paste SA / ADC JSON or API key"
+                : draft.type === "grok_web"
+                  ? "Paste grok.com SSO cookie"
+                  : "Paste API key or access token"
+            }
             value={newKey}
             onChange={(event) => setNewKey(event.target.value)}
             autoComplete="new-password"
@@ -694,6 +893,11 @@ export default function ProviderDetail({
           <button className="button primary" type="button" onClick={addKey} disabled={!newKey.trim()}>
             <Plus size={16} /> Add key
           </button>
+          {draft.type === "vertex" ? (
+            <button className="button" type="button" onClick={importVertexAdc} disabled={vertexImporting}>
+              <PlugZap size={16} /> {vertexImporting ? "Importing…" : "Import local ADC"}
+            </button>
+          ) : null}
         </div>
       </section> : null}
 
@@ -780,11 +984,11 @@ export default function ProviderDetail({
           {oauthTarget.createNew ? <p className="subtle">Adding new account — Connect / device flow / import will attach to a new slot.</p> : oauthTarget.accountId ? <p className="subtle">Active slot: {liveOAuthAccounts.find((item) => item.id === oauthTarget.accountId)?.name ?? "selected account"}</p> : null}
           <p className="compact-copy">
             {hasOAuthToken
-              ? `Connected${draft.oauthTokenExpiresAt ? ` · expires ${new Date(draft.oauthTokenExpiresAt).toLocaleString()}` : ""}${draft.oauthProjectId ? ` · project ${draft.oauthProjectId}` : ""}${draft.oauthMachineId ? " · machine id set" : ""}. Tokens refresh automatically where supported.`
+              ? `Connected${draft.oauthTokenExpiresAt ? ` · expires ${new Date(draft.oauthTokenExpiresAt).toLocaleString()}` : ""}${draft.oauthProjectId ? ` · project ${draft.oauthProjectId}` : ""}${draft.oauthMachineId ? " · machine id set" : ""}${draft.oauthProfileArn ? " · profile ARN set" : ""}. Tokens refresh automatically where supported.`
               : usesDeviceFlow
                 ? `Not connected — start the device flow, then authorize NesaRouter with ${deviceVendorLabel} in a browser.`
                 : usesCursorImport
-                  ? "Not connected — auto-import reads Cursor on the same machine as NesaRouter (not from your browser PC when using VPS). Or paste access token + machine id manually."
+                  ? "Not connected — auto-import reads Cursor on the same machine as NesaRouter (not from your browser PC when using VPS). Or paste access token + machine id (+ refresh token if available) manually."
                   : draft.oauthProfile === "openai_codex"
                     ? "Not connected — Connect opens ChatGPT. After redirect to localhost (page may error), copy the FULL URL from the address bar (…?code=…&state=…) and paste it here, then Save — same as 9router."
                     : "Not connected — Connect opens the vendor login in a new tab. Claude / Gemini: paste the code. ChatGPT: paste the full localhost callback URL."}
@@ -806,8 +1010,9 @@ export default function ProviderDetail({
               </div>
               {showImport ? (
                 <div className="oauth-import">
-                  <p className="subtle">From Cursor state.vscdb: cursorAuth/accessToken and storage.serviceMachineId</p>
+                  <p className="subtle">From Cursor state.vscdb: cursorAuth/accessToken, cursorAuth/refreshToken, storage.serviceMachineId</p>
                   <input suppressHydrationWarning type="password" placeholder="access_token" value={importTok.accessToken} onChange={(e) => setImportTok({ ...importTok, accessToken: e.target.value })} />
+                  <input suppressHydrationWarning type="password" placeholder="refresh_token (optional, enables auto-refresh)" value={importTok.refreshToken} onChange={(e) => setImportTok({ ...importTok, refreshToken: e.target.value })} />
                   <input suppressHydrationWarning type="password" placeholder="machine_id" value={importTok.machineId} onChange={(e) => setImportTok({ ...importTok, machineId: e.target.value })} />
                   <button className="button primary" type="button" onClick={importToken} disabled={!importTok.accessToken.trim()}>
                     <Save size={14} /> Save token
@@ -837,8 +1042,14 @@ export default function ProviderDetail({
               </div>
               {device ? (
                 <div className="oauth-import">
-                  <p className="subtle">Open {device.verificationUri} and enter this code:</p>
-                  <pre className="code-block" style={{ fontSize: "1.4rem", letterSpacing: "0.2em" }}>{device.userCode}</pre>
+                  {device.userCode ? (
+                    <>
+                      <p className="subtle">Open {device.verificationUri} and enter this code:</p>
+                      <pre className="code-block" style={{ fontSize: "1.4rem", letterSpacing: "0.2em" }}>{device.userCode}</pre>
+                    </>
+                  ) : (
+                    <p className="subtle">Authorize in the browser tab that opened, then click poll when finished.</p>
+                  )}
                   <a className="button primary" href={device.verificationUri} target="_blank" rel="noreferrer">Open {deviceVendorLabel} device page</a>
                 </div>
               ) : null}

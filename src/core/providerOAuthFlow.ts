@@ -1,8 +1,9 @@
-import { getPreset, OAuthPreset } from "@/core/oauthProviderPresets";
-import { refreshKiroToken, refreshToken } from "@/core/oauthPkce";
+import { getPreset, type OAuthPreset } from "@/core/oauthProviderPresets";
+import { refreshCodebuddyToken, refreshCursorToken, refreshKiroToken, refreshToken } from "@/core/oauthPkce";
 import { configuredOAuthAccounts, providerForOAuthAccount } from "@/core/oauthAccounts";
+import { cursorAccessTokenExpiresAt } from "@/core/cursorTokenImport";
 import { ProviderConfig } from "@/core/types";
-import { readProviderById, saveProviderOAuthTokens } from "@/lib/store";
+import { readProviderById, saveProviderOAuthTokens, markOAuthAccountConnection } from "@/lib/store";
 
 function tokenNeedsRefresh(provider: ProviderConfig, preset: OAuthPreset): boolean {
   if (!provider.oauthAccessToken) return false;
@@ -94,18 +95,30 @@ export async function ensureFreshAccessToken(provider: ProviderConfig, accountId
   if (!snapshot.oauthRefreshToken) return snapshot.oauthAccessToken;
 
   try {
-    const tokens = preset.kiroDeviceFlow && snapshot.oauthDeviceClientId && snapshot.oauthDeviceClientSecret
+    if (preset.kiroDeviceFlow) {
+      if (!snapshot.oauthDeviceClientId || !snapshot.oauthDeviceClientSecret) {
+        // Never fall through to generic OAuth refresh — AWS OIDC requires the registered device client.
+        return snapshot.oauthAccessToken;
+      }
+    }
+    const tokens = preset.kiroDeviceFlow
       ? await refreshKiroToken(
           preset.kiroRegion ?? "us-east-1",
-          snapshot.oauthDeviceClientId,
-          snapshot.oauthDeviceClientSecret,
+          snapshot.oauthDeviceClientId!,
+          snapshot.oauthDeviceClientSecret!,
           snapshot.oauthRefreshToken
         )
-      : await refreshToken(preset, snapshot.oauthRefreshToken);
+      : preset.codebuddyPoll
+        ? await refreshCodebuddyToken(preset, snapshot.oauthRefreshToken)
+        : preset.profile === "cursor"
+          ? await refreshCursorToken(preset, snapshot.oauthRefreshToken)
+          : await refreshToken(preset, snapshot.oauthRefreshToken);
     const accessToken = tokens.access_token;
     if (!accessToken) return snapshot.oauthAccessToken;
     const refreshTokenValue = tokens.refresh_token ?? snapshot.oauthRefreshToken;
-    const expiresAt = computeExpiry(tokens.expires_in);
+    const expiresAt =
+      computeExpiry(tokens.expires_in) ??
+      (preset.profile === "cursor" ? cursorAccessTokenExpiresAt(accessToken) : undefined);
     await saveProviderOAuthTokens(snapshot.id, {
       accessToken,
       refreshToken: refreshTokenValue,
@@ -114,7 +127,22 @@ export async function ensureFreshAccessToken(provider: ProviderConfig, accountId
       deviceClientSecret: snapshot.oauthDeviceClientSecret
     }, { accountId: account.id });
     return accessToken;
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const fatal =
+      /revoked|invalid_grant|already.?used|shouldLogout|expired.*refresh|unauthorized|invalid_token/i.test(message);
+    if (fatal) {
+      try {
+        await markOAuthAccountConnection(
+          snapshot.id,
+          account.id,
+          false,
+          `OAuth refresh failed: ${message.slice(0, 240)}. Reconnect this account.`
+        );
+      } catch {
+        /* best-effort */
+      }
+    }
     return snapshot.oauthAccessToken;
   }
 }

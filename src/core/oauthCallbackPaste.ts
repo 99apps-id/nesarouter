@@ -5,18 +5,18 @@ export function parseOAuthCallbackPaste(raw: string, fallbackState?: string) {
   const trimmed = raw.trim().replace(/^['"]|['"]$/g, "");
   if (!trimmed) return { code: "", state: fallbackState };
 
-  // Full callback URL from the browser address bar (9router / Codex style).
-  if (/^https?:\/\//i.test(trimmed) || trimmed.includes("://") || trimmed.includes("code=")) {
+  // Full callback URL from the browser address bar (9router / Codex / Kimchi style).
+  if (/^https?:\/\//i.test(trimmed) || trimmed.includes("://") || /[?&#](code|token)=/i.test(trimmed)) {
     try {
       const href = trimmed.includes("://") ? trimmed : `http://localhost${trimmed.startsWith("/") ? "" : "/"}${trimmed}`;
       const url = new URL(href);
-      const code = url.searchParams.get("code")?.trim() || "";
+      const code = (url.searchParams.get("code") || url.searchParams.get("token"))?.trim() || "";
       const state = url.searchParams.get("state")?.trim() || fallbackState;
       if (code) return { code, state };
     } catch {
       /* fall through */
     }
-    const codeMatch = trimmed.match(/[?&#]code=([^&#\s]+)/i);
+    const codeMatch = trimmed.match(/[?&#](?:code|token)=([^&#\s]+)/i);
     const stateMatch = trimmed.match(/[?&#]state=([^&#\s]+)/i);
     if (codeMatch?.[1]) {
       return {

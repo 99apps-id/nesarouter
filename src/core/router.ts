@@ -5,7 +5,7 @@ import { detectTaskType, estimateCost, estimateOutputTokens, estimateTokens, ext
 import { parsePrefixedModel } from "@/core/providerPrefixes";
 import { hasRoutableOAuthConnection } from "@/core/oauthAccounts";
 import { providerHasCredential } from "@/core/providerCredentials";
-import { getProviderQuotaState, providerQuotaReason } from "@/core/quota";
+import { isProviderRoutingQuotaExhausted, providerRoutingQuotaReason } from "@/core/quota";
 import { providerGroup } from "@/lib/providerGroups";
 
 const tierRank: Record<ProviderTier, number> = {
@@ -133,9 +133,8 @@ export function chooseProvider(
       skippedProviders.push({ providerId: provider.id, reason: "Provider disabled, missing key, or in cooldown." });
       return false;
     }
-    const quota = getProviderQuotaState(provider, store);
-    if (quota?.exhausted) {
-      skippedProviders.push({ providerId: provider.id, reason: providerQuotaReason(quota) });
+    if (isProviderRoutingQuotaExhausted(provider, store)) {
+      skippedProviders.push({ providerId: provider.id, reason: providerRoutingQuotaReason(provider, store) });
       return false;
     }
     return true;
@@ -144,37 +143,32 @@ export function chooseProvider(
   const mode = effectiveRoutingMode(store);
   const afterAlias = resolveModelAlias(store.aliases, requestedModel(body));
   const prefixed = parsePrefixedModel(afterAlias, store.providers);
-  const model = prefixed ? prefixed.providerId : afterAlias;
+  const requested = afterAlias;
   const comboConstraint = combo && combo.providerIds.length ? combo : undefined;
 
-  const requestedProviderAny = !isAutoModel(model) && !comboConstraint
-    ? store.providers.find((provider) =>
-        prefixed ? provider.id === prefixed.providerId : matchesRequestedModel(provider, model)
-      )
-    : undefined;
+  // Explicit model id → all providers that advertise it (enables cross-provider fallback).
+  const modelMatchers = !isAutoModel(requested) && !comboConstraint && !prefixed
+    ? store.providers.filter((provider) => matchesRequestedModel(provider, requested))
+    : [];
 
-  if (!isAutoModel(model) && !comboConstraint) {
-    if (!requestedProviderAny) {
-      throw new Error(
-        prefixed
-          ? `Provider '${prefixed.prefix}' → ${prefixed.providerId} is not configured.`
-          : `Model '${model}' is not configured.`
-      );
+  if (!isAutoModel(requested) && !comboConstraint && !prefixed) {
+    if (!modelMatchers.length) {
+      throw new Error(`Model '${requested}' is not configured.`);
     }
-    if (excludedProviderIds.includes(requestedProviderAny.id)) throw new Error(`Model '${afterAlias || model}' failed.`);
+    const anyUsableLeft = modelMatchers.some((provider) => !excludedProviderIds.includes(provider.id));
+    if (!anyUsableLeft) {
+      throw new Error(`Model '${requested}' failed on all matching providers.`);
+    }
   }
 
-  const requestedProvider = requestedProviderAny
-    ? activeProviders.find((provider) => provider.id === requestedProviderAny.id)
-    : undefined;
-
-  if (!isAutoModel(model) && !comboConstraint && !requestedProvider) {
-    const skipReason = skippedProviders.find((item) => item.providerId === requestedProviderAny?.id)?.reason;
-    throw new Error(
-      skipReason
-        ? `Model '${afterAlias || model}' is unavailable: ${skipReason}`
-        : `Model '${afterAlias || model}' is not available or its provider is inactive.`
-    );
+  if (prefixed && !comboConstraint) {
+    const exists = store.providers.some((provider) => provider.id === prefixed.providerId);
+    if (!exists) {
+      throw new Error(`Provider '${prefixed.prefix}' → ${prefixed.providerId} is not configured.`);
+    }
+    if (excludedProviderIds.includes(prefixed.providerId)) {
+      throw new Error(`Model '${afterAlias}' failed.`);
+    }
   }
 
   let candidates: ProviderConfig[];
@@ -183,23 +177,60 @@ export function chooseProvider(
       .filter((provider) => comboConstraint.providerIds.includes(provider.id))
       .sort((a, b) => comboConstraint.providerIds.indexOf(a.id) - comboConstraint.providerIds.indexOf(b.id));
     candidates = applyComboStrategy(ordered, store, comboConstraint.strategy);
+  } else if (prefixed) {
+    const hit = activeProviders.find((provider) => provider.id === prefixed.providerId);
+    if (!hit) {
+      const skipReason = skippedProviders.find((item) => item.providerId === prefixed.providerId)?.reason;
+      throw new Error(
+        skipReason
+          ? `Model '${afterAlias}' is unavailable: ${skipReason}`
+          : `Model '${afterAlias}' is not available or its provider is inactive.`
+      );
+    }
+    candidates = [hit];
+  } else if (!isAutoModel(requested)) {
+    const matches = activeProviders.filter((provider) => matchesRequestedModel(provider, requested));
+    if (!matches.length) {
+      const skipReason = skippedProviders.find((item) =>
+        modelMatchers.some((provider) => provider.id === item.providerId)
+      )?.reason;
+      throw new Error(
+        skipReason
+          ? `Model '${requested}' is unavailable: ${skipReason}`
+          : `Model '${requested}' is not available or its provider is inactive.`
+      );
+    }
+    candidates = applyProviderStrategy(sortProviders(matches, mode, taskType), store);
   } else {
     const pinManual =
       mode === "manual" && store.router.manualProviderId
         ? activeProviders.find((provider) => provider.id === store.router.manualProviderId)
         : undefined;
-    if (mode === "manual" && store.router.manualProviderId && !pinManual && !requestedProvider) {
+    if (mode === "manual" && store.router.manualProviderId && !pinManual) {
       throw new Error(
         `Manual provider '${store.router.manualProviderId}' is not active or has no usable credentials. Activate it under Providers, or pick another Manual provider.`
       );
     }
-    const manual = requestedProvider ?? pinManual;
-    candidates = manual ? [manual] : applyProviderStrategy(sortProviders(activeProviders, mode, taskType), store);
+    candidates = pinManual ? [pinManual] : applyProviderStrategy(sortProviders(activeProviders, mode, taskType), store);
   }
 
   for (const provider of candidates) {
-    const selectedProvider =
-      prefixed && provider.id === prefixed.providerId ? { ...provider, model: prefixed.modelId } : provider;
+    let selectedProvider = provider;
+    if (prefixed && provider.id === prefixed.providerId) {
+      selectedProvider = { ...provider, model: prefixed.modelId };
+    } else if (!isAutoModel(requested) && !comboConstraint) {
+      const listed =
+        provider.model.toLowerCase() === requested.toLowerCase()
+          ? provider.model
+          : provider.models?.find((item) => item.toLowerCase() === requested.toLowerCase());
+      if (listed) selectedProvider = { ...provider, model: listed };
+      else if (
+        provider.id.toLowerCase() !== requested.toLowerCase() &&
+        provider.name.toLowerCase() !== requested.toLowerCase()
+      ) {
+        selectedProvider = { ...provider, model: requested };
+      }
+    }
     const estimatedCostUsd = estimateCost(
       estimatedInputTokens,
       estimatedOutputTokens,
@@ -222,11 +253,11 @@ export function chooseProvider(
       skippedProviders,
       routingReason: comboConstraint
         ? `Combo ${comboConstraint.name} selected ${selectedProvider.name}; budget ${budgetStatus}.`
-        : requestedProvider
-          ? prefixed
-            ? `Prefix ${prefixed.prefix}/${prefixed.modelId} selected ${selectedProvider.name}; budget ${budgetStatus}.`
-            : `Model ${model} selected ${selectedProvider.name}; budget ${budgetStatus}.`
-          : `${mode}/${store.router.providerStrategy ?? "priority"} selected ${selectedProvider.name} for ${taskType}; budget ${budgetStatus}.`
+        : prefixed
+          ? `Prefix ${prefixed.prefix}/${prefixed.modelId} selected ${selectedProvider.name}; budget ${budgetStatus}.`
+          : !isAutoModel(requested)
+            ? `Model ${requested} selected ${selectedProvider.name}; budget ${budgetStatus}.`
+            : `${mode}/${store.router.providerStrategy ?? "priority"} selected ${selectedProvider.name} for ${taskType}; budget ${budgetStatus}.`
     };
   }
 

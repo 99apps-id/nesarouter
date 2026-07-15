@@ -51,7 +51,17 @@ const from9router = {
   "chutes.png": "chutes.png",
   "volcengine-ark.png": "volcengine.png",
   "byteplus.png": "byteplus.png",
-  "alicode.png": "alibaba-cloud.png"
+  "alicode.png": "alibaba-cloud.png",
+  "azure.png": "azure.png",
+  "blackbox.png": "blackbox.png",
+  "iflow.png": "iflow.png",
+  "kilocode.png": "kilocode.png",
+  "cline.png": "cline.png",
+  "clinepass.png": "clinepass.png",
+  "codebuddy-cn.png": "codebuddy-cn.png",
+  "minimax-cn.png": "minimax-cn.png",
+  "kimchi.png": "kimchi.png",
+  "vertex.png": "vertex.png"
 };
 
 /** Direct official / distinct vendor URLs (overrides 9router duplicates) */

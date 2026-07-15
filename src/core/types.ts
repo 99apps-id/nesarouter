@@ -28,6 +28,8 @@ export interface OAuthAccount {
   oauthDeviceClientId?: string;
   oauthDeviceClientSecret?: string;
   oauthMachineId?: string;
+  /** Kiro CodeWhisperer / Builder ID profile ARN (optional). */
+  oauthProfileArn?: string;
   connectionStatus?: ProviderConnectionStatus;
   lastError?: string;
   lastCheckedAt?: string;
@@ -38,7 +40,7 @@ export interface OAuthAccount {
 export interface ProviderConfig {
   id: string;
   name: string;
-  type: "openai_compatible" | "gemini" | "gemini_cli" | "anthropic_messages" | "openai_responses" | "github_copilot" | "kiro" | "opencode" | "cursor";
+  type: "openai_compatible" | "gemini" | "gemini_cli" | "anthropic_messages" | "openai_responses" | "github_copilot" | "kiro" | "opencode" | "cursor" | "vertex" | "grok_web";
   tier: ProviderTier;
   status: ProviderStatus;
   baseUrl: string;
@@ -55,12 +57,31 @@ export interface ProviderConfig {
   lastError?: string;
   connectionStatus?: ProviderConnectionStatus;
   lastCheckedAt?: string;
-  /** Daily token quota cap per provider (0/undefined = unlimited). */
+  /** Daily token quota cap per provider (0/undefined = unlimited). Inherited by keys without their own quota. */
   quotaLimitTokens?: number;
+  /**
+   * Per-API-key daily token caps, index-aligned with `[apiKey, ...apiKeys]`.
+   * `quotaLimitTokens` > 0 overrides the provider cap for that key; unset/0 inherits provider.
+   */
+  keyQuotas?: Array<{ quotaLimitTokens?: number }>;
   /** Outbound proxy URL applied to this provider's upstream calls (http/https/socks). */
   proxyUrl?: string;
-  /** OAuth subscription auth (e.g. Claude/ChatGPT/Gemini CLI/GitHub Copilot/Kiro/Antigravity/Cursor). */
-  oauthProfile?: "anthropic_claude" | "openai_codex" | "gemini_cli" | "github_copilot" | "kiro" | "antigravity" | "cursor";
+  /** OAuth subscription auth (Claude/Codex/Gemini/Copilot/Kiro/Antigravity/Cursor + specialty). */
+  oauthProfile?:
+    | "anthropic_claude"
+    | "openai_codex"
+    | "gemini_cli"
+    | "github_copilot"
+    | "kiro"
+    | "antigravity"
+    | "cursor"
+    | "qwen_code"
+    | "grok_cli"
+    | "kimchi"
+    | "iflow"
+    | "codebuddy_cn"
+    | "cline"
+    | "kilocode";
   /** Multiple OAuth accounts per provider (round-robin + per-account cooldown). */
   oauthAccounts?: OAuthAccount[];
   oauthAccessToken?: string;
@@ -70,13 +91,17 @@ export interface ProviderConfig {
   /** GitHub Copilot short-lived session token (derived from the GitHub access token). */
   oauthCopilotToken?: string;
   oauthCopilotTokenExpiresAt?: string;
-  /** Antigravity / Gemini CLI Cloud Code project id from loadCodeAssist. */
+  /** Antigravity / Gemini CLI Cloud Code project id from loadCodeAssist. Also Vertex GCP project id. */
   oauthProjectId?: string;
+  /** Vertex AI region (default us-central1). */
+  vertexLocation?: string;
   /** Kiro AWS OIDC registered client (Builder ID device flow). */
   oauthDeviceClientId?: string;
   oauthDeviceClientSecret?: string;
   /** Cursor IDE machine id from state.vscdb (checksum). */
   oauthMachineId?: string;
+  /** Kiro CodeWhisperer profile ARN — when set, runtime.kiro.dev is used instead of Amazon Q fallback. */
+  oauthProfileArn?: string;
 }
 
 export interface Combo {
@@ -168,7 +193,11 @@ export interface UsageLog {
   routingReason: string;
   status: "success" | "error";
   error?: string;
+  /** USD avoided on a cache hit (misses leave this unset). */
+  savedCostUsd?: number;
   skippedProviders?: Array<{ providerId: string; reason: string }>;
+  /** Index into configuredProviderKeys (`0` = primary apiKey). */
+  keyIndex?: number;
 }
 
 export interface CacheEntry {
