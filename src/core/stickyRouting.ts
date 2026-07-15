@@ -47,17 +47,23 @@ function firstUserBlob(body: any): string {
   return "";
 }
 
+function clientNamespace(request?: Request) {
+  const credential = request?.headers.get("authorization")?.trim() || "anonymous";
+  return crypto.createHash("sha256").update(credential).digest("hex").slice(0, 16);
+}
+
 /**
  * Session key for sticky routing.
  * Prefer explicit client headers/metadata; otherwise hash early user text + model
  * so tool-followups of the same agent turn map together.
  */
 export function stickySessionKey(body: any, request?: Request): string | null {
+  const namespace = clientNamespace(request);
   const headerKey =
     request?.headers.get("x-nesa-session")?.trim() ||
     request?.headers.get("x-nesa-sticky")?.trim() ||
     "";
-  if (headerKey) return `hdr:${headerKey.slice(0, 128)}`;
+  if (headerKey) return `${namespace}:hdr:${headerKey.slice(0, 128)}`;
 
   const meta = body?.metadata;
   if (meta && typeof meta === "object") {
@@ -65,7 +71,7 @@ export function stickySessionKey(body: any, request?: Request): string | null {
       (typeof meta.nesa_session === "string" && meta.nesa_session.trim()) ||
       (typeof meta.nesa_sticky === "string" && meta.nesa_sticky.trim()) ||
       "";
-    if (fromMeta) return `meta:${fromMeta.slice(0, 128)}`;
+    if (fromMeta) return `${namespace}:meta:${fromMeta.slice(0, 128)}`;
   }
 
   if (!isAgentContinuation(body)) return null;
@@ -74,7 +80,7 @@ export function stickySessionKey(body: any, request?: Request): string | null {
   const seed = `${model}\n${firstUserBlob(body)}`;
   if (!seed.trim()) return null;
   const digest = crypto.createHash("sha256").update(seed).digest("hex").slice(0, 24);
-  return `auto:${digest}`;
+  return `${namespace}:auto:${digest}`;
 }
 
 export function peekStickyProvider(sessionKey: string | null | undefined): string | null {

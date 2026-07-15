@@ -1255,16 +1255,20 @@ export interface LoginLockState {
   lockedUntil?: string;
 }
 
-export async function readLoginLockState(): Promise<LoginLockState> {
-  return readSetting<LoginLockState>(getDb(), "loginLock", { failedAttempts: 0 });
+function loginLockSettingKey(lockKey = "default") {
+  return `loginLock:${lockKey}`;
 }
 
-export async function writeLoginLockState(state: LoginLockState) {
-  writeSetting(getDb(), "loginLock", state);
+export async function readLoginLockState(lockKey = "default"): Promise<LoginLockState> {
+  return readSetting<LoginLockState>(getDb(), loginLockSettingKey(lockKey), { failedAttempts: 0 });
 }
 
-export async function clearLoginLockState() {
-  writeSetting(getDb(), "loginLock", { failedAttempts: 0 });
+export async function writeLoginLockState(state: LoginLockState, lockKey = "default") {
+  writeSetting(getDb(), loginLockSettingKey(lockKey), state);
+}
+
+export async function clearLoginLockState(lockKey = "default") {
+  writeSetting(getDb(), loginLockSettingKey(lockKey), { failedAttempts: 0 });
 }
 
 function preserveOptionalSecret(

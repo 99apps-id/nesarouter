@@ -23,7 +23,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   try {
-    sendToChild(server, body);
+    const url = new URL(request.url);
+    const sessionId = request.headers.get("x-nesa-mcp-session")?.trim() || url.searchParams.get("sessionId")?.trim() || undefined;
+    sendToChild(server, body, sessionId);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json(

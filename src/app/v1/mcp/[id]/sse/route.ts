@@ -23,6 +23,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       };
       const sid = registerSession(server, send);
       send(`event: ready\ndata: ${JSON.stringify({ server: server.name, sessionId: sid })}\n\n`);
+      send(`event: endpoint\ndata: /v1/mcp/${encodeURIComponent(server.id)}/rpc?sessionId=${encodeURIComponent(sid)}\n\n`);
 
       const close = () => {
         unregisterSession(server.id, sid);

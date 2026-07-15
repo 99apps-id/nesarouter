@@ -6,7 +6,7 @@ import {
   rememberStickyProvider,
   stickySessionKey
 } from "@/core/stickyRouting";
-import { chooseProvider } from "@/core/router";
+import { chooseProvider, findCombo } from "@/core/router";
 import { defaultStore } from "@/lib/defaults";
 import { NesaStore, ProviderConfig } from "@/core/types";
 
@@ -42,6 +42,48 @@ describe("stickyRouting", () => {
       })
     ).toBe(true);
     expect(isAgentContinuation({ previous_response_id: "resp_1" })).toBe(true);
+  });
+
+  it("namespaces explicit session ids by API credential", () => {
+    const body = { model: "auto", messages: [{ role: "tool", content: "done" }] };
+    const first = new Request("http://localhost/v1/chat/completions", {
+      headers: { authorization: "Bearer client-one", "x-nesa-session": "shared" }
+    });
+    const second = new Request("http://localhost/v1/chat/completions", {
+      headers: { authorization: "Bearer client-two", "x-nesa-session": "shared" }
+    });
+
+    expect(stickySessionKey(body, first)).not.toBe(stickySessionKey(body, second));
+  });
+
+  it("preserves fallback combo order even when a sticky provider is preferred", () => {
+    const store: NesaStore = {
+      ...defaultStore,
+      providers: [
+        provider({ id: "first", name: "First", priority: 1 }),
+        provider({ id: "second", name: "Second", priority: 2 })
+      ],
+      usage: []
+    };
+    const combo = { id: "stable", name: "Stable", providerIds: ["first", "second"], strategy: "fallback" as const };
+
+    const decision = chooseProvider(store, { model: "stable", messages: [] }, [], combo, {
+      preferProviderId: "second"
+    });
+    expect(decision.provider.id).toBe("first");
+    expect(decision.routingReason).not.toMatch(/Sticky session/i);
+  });
+
+  it("resolves an exact combo id before a legacy conflicting name", () => {
+    const store: NesaStore = {
+      ...defaultStore,
+      combos: [
+        { id: "legacy", name: "target", providerIds: ["first"], strategy: "fallback" },
+        { id: "target", name: "Target by ID", providerIds: ["second"], strategy: "fallback" }
+      ]
+    };
+
+    expect(findCombo(store, "target")?.id).toBe("target");
   });
 
   it("pins the sticky provider on agent follow-up turns", () => {

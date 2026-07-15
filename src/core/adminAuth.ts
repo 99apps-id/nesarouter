@@ -25,6 +25,18 @@ import { cookieSecurePreferred } from "@/core/publicUrl";
 export { adminCookieName, peekAdminCookie, timingSafeEqualString } from "@/core/adminSessionCookie";
 
 export const defaultAdminPassword = "nesa123456";
+export const MAX_LOGIN_ATTEMPTS = 5;
+
+export function loginRateLimitKey(request: Request) {
+  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const address =
+    request.headers.get("cf-connecting-ip")?.trim() ||
+    request.headers.get("x-real-ip")?.trim() ||
+    forwarded;
+  const userAgent = request.headers.get("user-agent")?.slice(0, 256) || "unknown";
+  const identity = address ? `ip:${address.toLowerCase()}` : `local:${userAgent}`;
+  return crypto.createHash("sha256").update(identity).digest("hex").slice(0, 32);
+}
 
 export async function adminAuthEnabled() {
   return true;
@@ -60,11 +72,11 @@ export async function shouldShowBootstrapPasswordHint() {
   return (await adminLoginPasswordHint()) === "default";
 }
 
-export async function readLoginLock() {
-  const state = await readLoginLockState();
+export async function readLoginLock(lockKey = "default") {
+  const state = await readLoginLockState(lockKey);
   const lockedUntilTime = state.lockedUntil ? new Date(state.lockedUntil).getTime() : 0;
   if (lockedUntilTime && lockedUntilTime <= Date.now()) {
-    await clearLoginLockState();
+    await clearLoginLockState(lockKey);
     return { failedAttempts: 0, locked: false, remainingMs: 0 };
   }
 
@@ -76,16 +88,16 @@ export async function readLoginLock() {
   };
 }
 
-export async function recordLoginFailure() {
-  const state = await readLoginLockState();
+export async function recordLoginFailure(lockKey = "default") {
+  const state = await readLoginLockState(lockKey);
   const failedAttempts = state.failedAttempts + 1;
-  const lockedUntil = failedAttempts >= 3 ? new Date(Date.now() + 30 * 60_000).toISOString() : undefined;
-  await writeLoginLockState({ failedAttempts, lockedUntil });
-  return readLoginLock();
+  const lockedUntil = failedAttempts >= MAX_LOGIN_ATTEMPTS ? new Date(Date.now() + 30 * 60_000).toISOString() : undefined;
+  await writeLoginLockState({ failedAttempts, lockedUntil }, lockKey);
+  return readLoginLock(lockKey);
 }
 
-export async function recordLoginSuccess() {
-  await clearLoginLockState();
+export async function recordLoginSuccess(lockKey = "default") {
+  await clearLoginLockState(lockKey);
 }
 
 export function hashAdminPassword(password: string) {

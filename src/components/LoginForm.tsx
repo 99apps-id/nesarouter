@@ -9,6 +9,7 @@ type LoginLock = {
   lockedUntil?: string;
   remainingMs?: number;
   failedAttempts?: number;
+  maxAttempts?: number;
 };
 
 function minutesLeft(ms = 0) {
@@ -63,7 +64,7 @@ export default function LoginForm({
       setLocked(true);
       setError(`Login locked. Try again in ${minutesLeft(result.remainingMs)} minutes.`);
     } else {
-      const remainingAttempts = Math.max(0, 3 - Number(result.failedAttempts ?? 0));
+      const remainingAttempts = Math.max(0, Number(result.maxAttempts ?? 5) - Number(result.failedAttempts ?? 0));
       setError(remainingAttempts ? `${result.error ?? "Login failed."} ${remainingAttempts} tries left.` : (result.error ?? "Login failed."));
     }
     setLoading(false);

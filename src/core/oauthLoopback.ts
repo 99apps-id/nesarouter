@@ -20,8 +20,27 @@ function loopbackMap() {
   return globalThis.__nesaOauthLoopbacks;
 }
 
+const OAUTH_STATE_TTL_MS = 10 * 60_000;
+
+export function escapeOAuthHtml(value: string) {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;"
+    };
+    return entities[character];
+  });
+}
+
 function htmlPage(title: string, body: string) {
-  return `<!doctype html><html><head><meta charset="utf-8"/><title>${title}</title></head><body style="font-family:system-ui;padding:2rem;max-width:40rem">${body}</body></html>`;
+  return `<!doctype html><html><head><meta charset="utf-8"/><meta name="referrer" content="no-referrer"/><title>${escapeOAuthHtml(title)}</title></head><body style="font-family:system-ui;padding:2rem;max-width:40rem">${body}</body></html>`;
+}
+
+function backLink(entry: LoopbackEntry) {
+  return `<p><a href="${escapeOAuthHtml(entry.successRedirect)}">Back to NesaRouter</a></p>`;
 }
 
 async function handleLoopbackCallback(req: http.IncomingMessage, res: http.ServerResponse, entry: LoopbackEntry) {
@@ -36,7 +55,7 @@ async function handleLoopbackCallback(req: http.IncomingMessage, res: http.Serve
     const errorParam = url.searchParams.get("error");
     if (errorParam) {
       res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
-      res.end(htmlPage("OAuth error", `<p>Authorization failed: <code>${errorParam}</code></p><p><a href="${entry.successRedirect}">Back to NesaRouter</a></p>`));
+      res.end(htmlPage("OAuth error", `<p>Authorization failed: <code>${escapeOAuthHtml(errorParam)}</code></p>${backLink(entry)}`));
       return;
     }
 
@@ -46,7 +65,7 @@ async function handleLoopbackCallback(req: http.IncomingMessage, res: http.Serve
 
     if (!state) {
       res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
-      res.end(htmlPage("OAuth error", `<p>Missing state.</p><p><a href="${entry.successRedirect}">Back to NesaRouter</a></p>`));
+      res.end(htmlPage("OAuth error", `<p>Missing state.</p>${backLink(entry)}`));
       return;
     }
 
@@ -54,6 +73,13 @@ async function handleLoopbackCallback(req: http.IncomingMessage, res: http.Serve
     if (!pending) {
       res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
       res.end(htmlPage("OAuth error", `<p>Invalid or expired OAuth state. Start Connect again from NesaRouter.</p>`));
+      return;
+    }
+    const createdAt = new Date(pending.createdAt).getTime();
+    if (!Number.isFinite(createdAt) || Date.now() - createdAt > OAUTH_STATE_TTL_MS) {
+      await deleteOAuthPending(state);
+      res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
+      res.end(htmlPage("OAuth error", "<p>Invalid or expired OAuth state. Start Connect again from NesaRouter.</p>"));
       return;
     }
     await deleteOAuthPending(state);
@@ -80,7 +106,7 @@ async function handleLoopbackCallback(req: http.IncomingMessage, res: http.Serve
     } else {
       if (!code) {
         res.writeHead(400, { "content-type": "text/html; charset=utf-8" });
-        res.end(htmlPage("OAuth error", `<p>Missing code.</p><p><a href="${entry.successRedirect}">Back to NesaRouter</a></p>`));
+        res.end(htmlPage("OAuth error", `<p>Missing code.</p>${backLink(entry)}`));
         return;
       }
       const tokens = await exchangeCode(preset, code, pending.redirectUri, pending.codeVerifier);
@@ -106,14 +132,14 @@ async function handleLoopbackCallback(req: http.IncomingMessage, res: http.Serve
       htmlPage(
         "Connected",
         `<p><strong>OAuth connected.</strong> You can close this tab and return to NesaRouter.</p>
-         <p><a href="${done}">Open NesaRouter providers</a></p>
+         <p><a href="${escapeOAuthHtml(done)}">Open NesaRouter providers</a></p>
          <script>setTimeout(function(){ window.close(); }, 1200);</script>`
       )
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : "exchange failed";
     res.writeHead(500, { "content-type": "text/html; charset=utf-8" });
-    res.end(htmlPage("OAuth error", `<p>${message}</p><p><a href="${entry.successRedirect}">Back to NesaRouter</a></p>`));
+    res.end(htmlPage("OAuth error", `<p>${escapeOAuthHtml(message)}</p>${backLink(entry)}`));
   }
 }
 
