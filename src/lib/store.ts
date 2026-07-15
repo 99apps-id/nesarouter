@@ -7,38 +7,72 @@ import { defaultStore } from "@/lib/defaults";
 import { decryptSecret, encryptSecret, isRedactedSecret } from "@/lib/crypto";
 
 const projectDataRoot = process.env.INIT_CWD || process.cwd();
-const dataDir = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(projectDataRoot, "data");
-const dbPath = path.join(dataDir, "nesa-router.sqlite");
-const legacyStorePath = path.join(dataDir, "nesa-store.json");
 
 let db: Database.Database | undefined;
+let activeDbPath: string | undefined;
+const defaultProvidersEnsured = new Set<string>();
+
+function resolveDataDir() {
+  return process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(projectDataRoot, "data");
+}
+
+function resolveDbPath(dir = resolveDataDir()) {
+  return path.join(dir, "nesa-router.sqlite");
+}
+
+function resolveLegacyStorePath(dir = resolveDataDir()) {
+  return path.join(dir, "nesa-store.json");
+}
 
 function getDb() {
+  const dataDir = resolveDataDir();
+  const dbPath = resolveDbPath(dataDir);
+  if (db && activeDbPath !== dbPath) {
+    db.close();
+    db = undefined;
+    activeDbPath = undefined;
+  }
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
   if (!db) {
     db = new Database(dbPath);
+    activeDbPath = dbPath;
+    db.pragma("busy_timeout = 5000");
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
     migrate(db);
     seedIfEmpty(db);
   }
-  // Always re-check: new presets (e.g. Runware.ai) must appear without requiring
-  // a full process restart after hot-reload / code update.
-  ensureDefaultProviders(db);
+  // Re-check catalog presets once per DB path. Manual seedMissingProviders()
+  // still forces a sync without making every request take a write lock.
+  if (!defaultProvidersEnsured.has(dbPath)) {
+    ensureDefaultProviders(db);
+    defaultProvidersEnsured.add(dbPath);
+  }
   return db;
 }
 
 /** Insert any catalog presets missing from the DB. Returns newly added ids. */
 export function seedMissingProviders(): string[] {
+  const dataDir = resolveDataDir();
+  const dbPath = resolveDbPath(dataDir);
+  if (db && activeDbPath !== dbPath) {
+    db.close();
+    db = undefined;
+    activeDbPath = undefined;
+  }
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
   if (!db) {
     db = new Database(dbPath);
+    activeDbPath = dbPath;
+    db.pragma("busy_timeout = 5000");
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
     migrate(db);
     seedIfEmpty(db);
   }
-  return ensureDefaultProviders(db);
+  const added = ensureDefaultProviders(db);
+  defaultProvidersEnsured.add(dbPath);
+  return added;
 }
 
 function migrate(database: Database.Database) {
@@ -171,6 +205,7 @@ function seedIfEmpty(database: Database.Database) {
   if (providerCount.count > 0) return;
 
   let seed = defaultStore;
+  const legacyStorePath = resolveLegacyStorePath();
   if (existsSync(legacyStorePath)) {
     try {
       seed = { ...defaultStore, ...(JSON.parse(readFileSync(legacyStorePath, "utf8")) as Partial<NesaStore>) };
@@ -1618,7 +1653,7 @@ export async function deleteDevicePending(providerId: string, accountId?: string
 }
 
 export function getDataDir() {
-  return dataDir;
+  return resolveDataDir();
 }
 
 export interface TunnelSettings {
