@@ -18,7 +18,7 @@ if (!existsSync(dbPath)) {
 }
 
 const db = new Database(dbPath);
-db.prepare("DELETE FROM settings WHERE key = 'loginLock'").run();
+db.prepare("DELETE FROM settings WHERE key = 'loginLock' OR key LIKE 'loginLock:%'").run();
 db.close();
 
 console.log(`Login lock cleared for ${dataDir}. Password and sessions were not changed.`);

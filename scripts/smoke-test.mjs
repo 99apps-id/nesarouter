@@ -215,7 +215,7 @@ async function cleanup(server) {
     db.prepare("DELETE FROM providers WHERE id IN (?, ?, ?, ?)").run(providerId, quotaProviderId, quotaTokenProviderId, geminiCliId);
     db.prepare("DELETE FROM combos WHERE id = ?").run(comboId);
     db.prepare("DELETE FROM mcp_servers WHERE id = ?").run(mcpServerId);
-    db.prepare("DELETE FROM settings WHERE key = ?").run("loginLock");
+    db.prepare("DELETE FROM settings WHERE key = ? OR key LIKE ?").run("loginLock", "loginLock:%");
     db.prepare("DELETE FROM settings WHERE key = ?").run("aliases");
     db.close();
   } catch {}
@@ -243,28 +243,25 @@ const server = await Promise.all([
 ]);
 
 try {
-  const wrong1 = await request("/api/auth/login", {
+  // MAX_LOGIN_ATTEMPTS is 5 — lock on the 5th failure (per-client lock keys).
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    const wrong = await request("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ password: `wrong-password-${attempt}` })
+    });
+    assert(wrong.response.status === 401, `wrong login ${attempt} should be 401`);
+  }
+  const wrong5 = await request("/api/auth/login", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ password: "wrong-password-1" })
+    body: JSON.stringify({ password: "wrong-password-5" })
   });
-  const wrong2 = await request("/api/auth/login", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ password: "wrong-password-2" })
-  });
-  const wrong3 = await request("/api/auth/login", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ password: "wrong-password-3" })
-  });
-  assert(wrong1.response.status === 401, "first wrong login should be 401");
-  assert(wrong2.response.status === 401, "second wrong login should be 401");
-  assert(wrong3.response.status === 423, "third wrong login should lock login");
+  assert(wrong5.response.status === 423, "fifth wrong login should lock login");
 
   {
     const db = new Database(`${dataDir}/nesa-router.sqlite`);
-    db.prepare("DELETE FROM settings WHERE key = ?").run("loginLock");
+    db.prepare("DELETE FROM settings WHERE key = ? OR key LIKE ?").run("loginLock", "loginLock:%");
     db.close();
   }
 
