@@ -2,6 +2,12 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.34 - 2026-07-16
+
+### Fixed
+
+- **Live map**: keep recent upstream traffic visible longer and animate every provider with real recent traffic, not only the latest request.
+
 ## 0.1.33 - 2026-07-15
 
 ### Fixed
