@@ -1,14 +1,14 @@
 import { ensureFreshAccessToken } from "@/core/providerOAuthFlow";
-import { configuredOAuthAccounts, providerForOAuthAccount } from "@/core/oauthAccounts";
-import { isOAuthAccountFatalError } from "@/core/oauthAccountHealth";
+import { configuredOAuthAccounts, providerWithFreshOAuthToken } from "@/core/oauthAccounts";
+import { isOAuthAccountFatalError, isOAuthAccountRoutable, oauthAccountStatusLabel } from "@/core/oauthAccountHealth";
 import { testProviderConnection, UpstreamProviderError } from "@/core/providerClient";
 import { ProviderConfig } from "@/core/types";
-import { markOAuthAccountConnection } from "@/lib/store";
+import { clearProviderCooldown, markOAuthAccountConnection } from "@/lib/store";
 
 export interface OAuthAccountStatusResult {
   id: string;
   name: string;
-  status: "connected" | "error" | "empty" | "unknown";
+  status: "connected" | "error" | "no_subscription" | "empty" | "unknown";
   lastError?: string;
   lastCheckedAt?: string;
   routable: boolean;
@@ -45,10 +45,27 @@ export async function probeOAuthAccount(
     };
   }
 
-  const snapshot = { ...providerForOAuthAccount(provider, account), oauthAccessToken: fresh };
+  const snapshot = providerWithFreshOAuthToken(provider, account, fresh);
   try {
-    await testProviderConnection(snapshot);
+    const result = await testProviderConnection(snapshot);
+    if (result?.connectionStatus === "no_subscription") {
+      const message =
+        result.message ??
+        "Google login OK — no active Cloud Code / Gemini subscription on this account.";
+      await markOAuthAccountConnection(provider.id, account.id, false, message, {
+        status: "no_subscription"
+      });
+      return {
+        id: account.id,
+        name: account.name ?? `Account ${account.index + 1}`,
+        status: "no_subscription",
+        lastError: message,
+        lastCheckedAt: new Date().toISOString(),
+        routable: false
+      };
+    }
     await markOAuthAccountConnection(provider.id, account.id, true);
+    await clearProviderCooldown(provider.id);
     return {
       id: account.id,
       name: account.name ?? `Account ${account.index + 1}`,
@@ -82,21 +99,14 @@ export async function probeAllOAuthAccounts(provider: ProviderConfig) {
 
 export function oauthAccountStatusesFromProvider(provider: ProviderConfig): OAuthAccountStatusResult[] {
   return configuredOAuthAccounts(provider).map((account) => {
-    const hasToken = Boolean(account.oauthAccessToken || account.oauthCopilotToken);
-    const status = !hasToken
-      ? "empty"
-      : account.connectionStatus === "error"
-        ? "error"
-        : account.connectionStatus === "connected"
-          ? "connected"
-          : "unknown";
+    const status = oauthAccountStatusLabel(account, provider);
     return {
       id: account.id,
       name: account.name ?? `Account ${account.index + 1}`,
       status,
       lastError: account.lastError,
       lastCheckedAt: account.lastCheckedAt,
-      routable: hasToken && account.connectionStatus !== "error"
+      routable: isOAuthAccountRoutable(account, Date.now(), provider)
     };
   });
 }

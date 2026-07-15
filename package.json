@@ -8,9 +8,9 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "next dev --port 20129",
+    "dev": "node scripts/ensure-port-free.mjs && next dev --port 20129",
     "build": "next build",
-    "start": "node scripts/start-standalone.mjs",
+    "start": "node scripts/ensure-port-free.mjs && node scripts/start-standalone.mjs",
     "smoke": "node scripts/smoke-test.mjs",
     "unlock-admin": "node scripts/unlock-admin.mjs",
     "cursor:export": "node scripts/cursor-export.mjs",

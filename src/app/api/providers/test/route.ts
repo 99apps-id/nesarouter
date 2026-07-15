@@ -3,11 +3,11 @@ import { finalizeAdminResponse, requireAdmin } from "@/lib/adminApi";
 import { isKeylessProvider } from "@/core/providerCredentials";
 import { testProviderConnection } from "@/core/providerClient";
 import { configuredProviderKeys } from "@/core/providerKeys";
-import { configuredOAuthAccounts, providerForOAuthAccount } from "@/core/oauthAccounts";
+import { applyFreshOAuthToken, configuredOAuthAccounts, providerWithFreshOAuthToken } from "@/core/oauthAccounts";
 import { ensureFreshAccessToken } from "@/core/providerOAuthFlow";
 import { ProviderConfig } from "@/core/types";
 import { keyPreview } from "@/lib/providerLabels";
-import { markOAuthAccountConnection, markProviderConnection, readStore } from "@/lib/store";
+import { clearProviderCooldown, markOAuthAccountConnection, markProviderConnection, readStore } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
 
   if (provider.oauthProfile && !body.provider) {
     const fresh = await ensureFreshAccessToken(provider);
-    if (fresh) provider = { ...provider, oauthAccessToken: fresh };
+    if (fresh) provider = applyFreshOAuthToken(provider, fresh);
   }
 
   const keylessAllowed =
@@ -77,6 +77,7 @@ export async function POST(request: Request) {
           index: number;
           preview: string;
           ok: boolean;
+          noSubscription?: boolean;
           message: string;
           models?: string[];
         }> = [];
@@ -93,8 +94,25 @@ export async function POST(request: Request) {
             continue;
           }
           try {
-            const snapshot = { ...providerForOAuthAccount(provider, account), oauthAccessToken: fresh };
+            const snapshot = providerWithFreshOAuthToken(provider, account, fresh);
             const result = await testProviderConnection(snapshot);
+            if (result?.connectionStatus === "no_subscription") {
+              const message =
+                result.message ??
+                "Google login OK — no active Cloud Code / Gemini subscription on this account.";
+              await markOAuthAccountConnection(provider.id, account.id, false, message, {
+                status: "no_subscription"
+              });
+              results.push({
+                index: account.index,
+                preview: account.name ?? `Account ${account.index + 1}`,
+                ok: false,
+                noSubscription: true,
+                message,
+                models: result?.models ?? []
+              });
+              continue;
+            }
             await markOAuthAccountConnection(provider.id, account.id, true);
             results.push({
               index: account.index,
@@ -115,21 +133,27 @@ export async function POST(request: Request) {
           }
         }
         const connected = results.filter((result) => result.ok).length;
-        await markProviderConnection(provider.id, connected > 0, connected ? undefined : results[0]?.message);
-        const models = results.find((result) => result.ok)?.models ?? [];
+        const noSub = results.filter((result) => result.noSubscription).length;
+        // Provider connectionStatus already synced via markOAuthAccountConnection.
+        if (connected > 0) await clearProviderCooldown(provider.id);
+        const models = results.find((result) => result.ok || result.noSubscription)?.models ?? [];
+        const summary =
+          connected > 0
+            ? `${provider.name} connected (${connected}/${results.length}). ${results.find((r) => r.ok)?.message ?? ""}`.trim()
+            : noSub > 0
+              ? `${provider.name}: Google login OK, but ${noSub} account(s) have no Cloud Code / Gemini subscription.`
+              : `${provider.name} test failed.`;
         return finalizeAdminResponse(
           NextResponse.json(
             {
               ok: connected > 0,
-              message:
-                connected > 0
-                  ? `${provider.name} connected (${connected}/${results.length}). ${results.find((r) => r.ok)?.message ?? ""}`.trim()
-                  : `${provider.name} test failed.`,
+              noSubscription: noSub > 0 && connected === 0,
+              message: summary,
               error: connected > 0 ? undefined : results[0]?.message,
               accounts: results,
               models
             },
-            { status: connected > 0 ? 200 : 502 }
+            { status: connected > 0 ? 200 : noSub > 0 ? 200 : 502 }
           ),
           request
         );
@@ -137,7 +161,27 @@ export async function POST(request: Request) {
     }
 
     const result = await testProviderConnection(provider);
+    if (result?.connectionStatus === "no_subscription") {
+      const message = result.message ?? "No active subscription on this account.";
+      await markProviderConnection(provider.id, false, message, { status: "no_subscription" });
+      const accounts = configuredOAuthAccounts(provider);
+      if (accounts[0]) {
+        await markOAuthAccountConnection(provider.id, accounts[0].id, false, message, {
+          status: "no_subscription"
+        });
+      }
+      return finalizeAdminResponse(
+        NextResponse.json({
+          ok: false,
+          noSubscription: true,
+          message,
+          models: result.models ?? []
+        }),
+        request
+      );
+    }
     await markProviderConnection(provider.id, true);
+    await clearProviderCooldown(provider.id);
     return finalizeAdminResponse(
       NextResponse.json({ ok: true, message: `${provider.name} connected. ${result?.message ?? ""}`.trim(), models: result?.models ?? [] }),
       request

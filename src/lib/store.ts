@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { CacheEntry, Combo, McpServer, NesaStore, OAuthAccount, ProviderConfig, UsageLog } from "@/core/types";
+import { CacheEntry, Combo, McpServer, NesaStore, OAuthAccount, ProviderConfig, ProviderConnectionStatus, UsageLog } from "@/core/types";
 import { createOAuthAccountId, defaultOAuthAccountName } from "@/core/oauthAccounts";
 import { defaultStore } from "@/lib/defaults";
 import { decryptSecret, encryptSecret, isRedactedSecret } from "@/lib/crypto";
@@ -626,6 +626,57 @@ function serializeOAuthAccounts(accounts: OAuthAccount[]) {
   return JSON.stringify(accounts.map(oauthAccountToStored));
 }
 
+/** Keep real secrets when the admin UI posts redacted placeholders (********). */
+function preserveOAuthAccountSecrets(incoming: OAuthAccount, existing?: OAuthAccount): OAuthAccount {
+  const pick = (next?: string, prev?: string) => {
+    if (next !== undefined && next !== "" && !isRedactedSecret(next)) return next;
+    return prev;
+  };
+  return {
+    ...existing,
+    ...incoming,
+    oauthAccessToken: pick(incoming.oauthAccessToken, existing?.oauthAccessToken),
+    oauthRefreshToken: pick(incoming.oauthRefreshToken, existing?.oauthRefreshToken),
+    oauthCopilotToken: pick(incoming.oauthCopilotToken, existing?.oauthCopilotToken),
+    oauthDeviceClientSecret: pick(incoming.oauthDeviceClientSecret, existing?.oauthDeviceClientSecret),
+    oauthMachineId:
+      incoming.oauthMachineId !== undefined && !isRedactedSecret(incoming.oauthMachineId)
+        ? incoming.oauthMachineId
+        : existing?.oauthMachineId ?? incoming.oauthMachineId
+  };
+}
+
+function mergeIncomingOAuthAccounts(
+  incoming: OAuthAccount[] | undefined,
+  existingRaw: string | null | undefined,
+  legacyRow?: {
+    oauth_access_token_encrypted?: string;
+    oauth_refresh_token_encrypted?: string;
+    oauth_copilot_token_encrypted?: string;
+    oauth_copilot_token_expires_at?: string;
+    oauth_token_expires_at?: string;
+    oauth_last_refresh_at?: string;
+    oauth_project_id?: string;
+    oauth_device_client_id?: string;
+    oauth_device_client_secret_encrypted?: string;
+    oauth_machine_id?: string;
+    oauth_profile_arn?: string;
+    connection_status?: string;
+    last_error?: string;
+    rate_limited_until?: string;
+  }
+): OAuthAccount[] | undefined {
+  const existing =
+    parseOAuthAccounts(existingRaw) ??
+    (legacyRow ? [legacyOAuthAccountFromRow(legacyRow)].filter(Boolean) as OAuthAccount[] : []);
+  if (incoming === undefined) return existing.length ? existing : undefined;
+  if (!incoming.length) return existing.length ? existing : undefined;
+  const byId = new Map(existing.map((account) => [account.id, account]));
+  return incoming.map((account, index) =>
+    preserveOAuthAccountSecrets(account, byId.get(account.id) ?? existing[index])
+  );
+}
+
 function legacyOAuthAccountFromRow(row: any): OAuthAccount | null {
   if (!row.oauth_access_token_encrypted && !row.oauth_copilot_token_encrypted) return null;
   return {
@@ -699,10 +750,34 @@ function syncPrimaryOAuthColumns(database: Database.Database, providerId: string
 }
 
 function providerFromRow(row: any): ProviderConfig {
-  const oauthAccounts = parseOAuthAccounts(row.oauth_accounts) ?? (() => {
+  let oauthAccounts = parseOAuthAccounts(row.oauth_accounts) ?? (() => {
     const legacy = legacyOAuthAccountFromRow(row);
     return legacy ? [legacy] : undefined;
   })();
+  // Heal account JSON that lost secrets after a redacted Save — restore from primary columns.
+  if (oauthAccounts?.length) {
+    const legacy = legacyOAuthAccountFromRow(row);
+    if (legacy && (legacy.oauthAccessToken || legacy.oauthCopilotToken)) {
+      oauthAccounts = oauthAccounts.map((account, index) => {
+        if (index !== 0) return account;
+        if (account.oauthAccessToken || account.oauthCopilotToken) return account;
+        return {
+          ...account,
+          oauthAccessToken: legacy.oauthAccessToken,
+          oauthRefreshToken: account.oauthRefreshToken || legacy.oauthRefreshToken,
+          oauthTokenExpiresAt: account.oauthTokenExpiresAt || legacy.oauthTokenExpiresAt,
+          oauthLastRefreshAt: account.oauthLastRefreshAt || legacy.oauthLastRefreshAt,
+          oauthCopilotToken: legacy.oauthCopilotToken,
+          oauthCopilotTokenExpiresAt: account.oauthCopilotTokenExpiresAt || legacy.oauthCopilotTokenExpiresAt,
+          oauthProjectId: account.oauthProjectId || legacy.oauthProjectId,
+          oauthDeviceClientId: account.oauthDeviceClientId || legacy.oauthDeviceClientId,
+          oauthDeviceClientSecret: account.oauthDeviceClientSecret || legacy.oauthDeviceClientSecret,
+          oauthMachineId: account.oauthMachineId || legacy.oauthMachineId,
+          oauthProfileArn: account.oauthProfileArn || legacy.oauthProfileArn
+        };
+      });
+    }
+  }
   const primary = oauthAccounts?.[0];
   return {
     id: row.id,
@@ -1204,8 +1279,8 @@ function preserveOptionalSecret(
 
 export async function updateProvider(provider: ProviderConfig) {
   const database = getDb();
-  const existing = database.prepare("SELECT api_key_encrypted, api_keys, models, connection_status, last_checked_at, last_error, oauth_access_token_encrypted, oauth_refresh_token_encrypted, oauth_copilot_token_encrypted, oauth_copilot_token_expires_at, oauth_project_id, oauth_device_client_id, oauth_device_client_secret_encrypted, oauth_machine_id, oauth_profile_arn, proxy_url, vertex_location, key_quotas FROM providers WHERE id = ?").get(provider.id) as
-    | { api_key_encrypted: string; api_keys?: string; models?: string; connection_status?: string; last_checked_at?: string; last_error?: string; oauth_access_token_encrypted?: string; oauth_refresh_token_encrypted?: string; oauth_copilot_token_encrypted?: string; oauth_copilot_token_expires_at?: string; oauth_project_id?: string; oauth_device_client_id?: string; oauth_device_client_secret_encrypted?: string; oauth_machine_id?: string; oauth_profile_arn?: string; proxy_url?: string; vertex_location?: string; key_quotas?: string }
+  const existing = database.prepare("SELECT api_key_encrypted, api_keys, models, connection_status, last_checked_at, last_error, oauth_access_token_encrypted, oauth_refresh_token_encrypted, oauth_copilot_token_encrypted, oauth_copilot_token_expires_at, oauth_project_id, oauth_device_client_id, oauth_device_client_secret_encrypted, oauth_machine_id, oauth_profile_arn, proxy_url, vertex_location, key_quotas, oauth_accounts, oauth_token_expires_at, oauth_last_refresh_at, rate_limited_until FROM providers WHERE id = ?").get(provider.id) as
+    | { api_key_encrypted: string; api_keys?: string; models?: string; connection_status?: string; last_checked_at?: string; last_error?: string; oauth_access_token_encrypted?: string; oauth_refresh_token_encrypted?: string; oauth_copilot_token_encrypted?: string; oauth_copilot_token_expires_at?: string; oauth_project_id?: string; oauth_device_client_id?: string; oauth_device_client_secret_encrypted?: string; oauth_machine_id?: string; oauth_profile_arn?: string; proxy_url?: string; vertex_location?: string; key_quotas?: string; oauth_accounts?: string; oauth_token_expires_at?: string; oauth_last_refresh_at?: string; rate_limited_until?: string }
     | undefined;
   const incomingApiKeys =
     provider.apiKeys === undefined
@@ -1236,6 +1311,11 @@ export async function updateProvider(provider: ProviderConfig) {
     provider.vertexLocation === undefined ? existing?.vertex_location ?? undefined : provider.vertexLocation;
   const preserveKeyQuotas =
     provider.keyQuotas === undefined ? parseKeyQuotas(existing?.key_quotas) : provider.keyQuotas;
+  const preserveOauthAccounts = mergeIncomingOAuthAccounts(
+    provider.oauthAccounts,
+    existing?.oauth_accounts,
+    existing
+  );
   const incomingApiKey =
     provider.apiKey === undefined || isRedactedSecret(provider.apiKey) ? undefined : provider.apiKey;
   const incomingStatus = provider.connectionStatus;
@@ -1256,6 +1336,7 @@ export async function updateProvider(provider: ProviderConfig) {
     apiKey: incomingApiKey ?? (existing?.api_key_encrypted ? decryptSecret(existing.api_key_encrypted) : provider.apiKey ?? ""),
     apiKeys: preserveApiKeys,
     models: preserveModels,
+    oauthAccounts: preserveOauthAccounts,
     oauthAccessToken: preserveOauthAccess,
     oauthRefreshToken: preserveOauthRefresh,
     oauthCopilotToken: preserveCopilotToken,
@@ -1271,6 +1352,10 @@ export async function updateProvider(provider: ProviderConfig) {
     ...preserveConnection
   };
   writeProviderToDb(database, merged, existing?.api_key_encrypted ?? "");
+  if (preserveOauthAccounts?.length) {
+    syncPrimaryOAuthColumns(database, provider.id, preserveOauthAccounts);
+    syncProviderOAuthConnectionStatus(database, provider.id, preserveOauthAccounts);
+  }
   return merged;
 }
 
@@ -1302,11 +1387,22 @@ export async function clearProviderCooldown(providerId: string) {
     .run(new Date().toISOString(), providerId);
 }
 
-export async function markProviderConnection(providerId: string, ok: boolean, message?: string) {
+export async function markProviderConnection(
+  providerId: string,
+  ok: boolean,
+  message?: string,
+  options?: { status?: ProviderConnectionStatus }
+) {
   const database = getDb();
+  const status: ProviderConnectionStatus = options?.status ?? (ok ? "connected" : "error");
   database
     .prepare("UPDATE providers SET connection_status = ?, last_checked_at = ?, last_error = ? WHERE id = ?")
-    .run(ok ? "connected" : "error", new Date().toISOString(), ok ? null : (message ?? "Provider test failed.").slice(0, 500), providerId);
+    .run(
+      status,
+      new Date().toISOString(),
+      status === "connected" ? null : (message ?? "Provider test failed.").slice(0, 500),
+      providerId
+    );
 }
 
 export async function addLocalApiKey(token: string) {
@@ -1463,6 +1559,12 @@ export async function saveProviderOAuthTokens(providerId: string, tokens: {
   database.prepare(`UPDATE providers SET oauth_accounts = ? WHERE id = ?`).run(serializeOAuthAccounts(accounts), providerId);
   syncPrimaryOAuthColumns(database, providerId, accounts);
   syncProviderOAuthConnectionStatus(database, providerId, accounts);
+  // Connecting OAuth should make the provider routable without a separate Active toggle.
+  if (provider.status === "disabled" || provider.status === "cooldown") {
+    database
+      .prepare("UPDATE providers SET status = 'active', rate_limited_until = NULL WHERE id = ?")
+      .run(providerId);
+  }
   return accountId;
 }
 
@@ -1522,12 +1624,24 @@ export async function clearOAuthAccount(providerId: string, accountId: string) {
 }
 
 function syncProviderOAuthConnectionStatus(database: Database.Database, providerId: string, accounts: OAuthAccount[]) {
-  const routable = accounts.filter((account) =>
-    Boolean(account.oauthAccessToken || account.oauthCopilotToken) && account.connectionStatus !== "error"
-  );
   const withToken = accounts.filter((account) => Boolean(account.oauthAccessToken || account.oauthCopilotToken));
-  const status = routable.length ? "connected" : withToken.length ? "error" : "unknown";
-  const lastError = routable.length ? null : withToken.find((account) => account.lastError)?.lastError ?? null;
+  const routable = withToken.filter(
+    (account) => account.connectionStatus !== "error" && account.connectionStatus !== "no_subscription"
+  );
+  const onlyNoSub =
+    !routable.length &&
+    withToken.length > 0 &&
+    withToken.every((account) => account.connectionStatus === "no_subscription");
+  const anyNoSub = withToken.some((account) => account.connectionStatus === "no_subscription");
+  const status = routable.length
+    ? "connected"
+    : onlyNoSub || (anyNoSub && !withToken.some((account) => account.connectionStatus === "error"))
+      ? "no_subscription"
+      : withToken.length
+        ? "error"
+        : "unknown";
+  const lastError =
+    routable.length ? null : withToken.find((account) => account.lastError)?.lastError ?? null;
   database
     .prepare("UPDATE providers SET connection_status = ?, last_checked_at = ?, last_error = ? WHERE id = ?")
     .run(status, new Date().toISOString(), lastError, providerId);
@@ -1538,18 +1652,19 @@ export async function markOAuthAccountConnection(
   accountId: string,
   ok: boolean,
   message?: string,
-  options?: { rateLimitedUntil?: string }
+  options?: { rateLimitedUntil?: string; status?: ProviderConnectionStatus }
 ) {
   const provider = await readProviderById(providerId);
   if (!provider) return;
+  const status: ProviderConnectionStatus = options?.status ?? (ok ? "connected" : "error");
   const accounts = configuredOAuthAccountsFromProvider(provider).map((account) =>
     account.id === accountId
       ? {
           ...account,
-          connectionStatus: ok ? ("connected" as const) : ("error" as const),
-          lastError: ok ? undefined : message?.slice(0, 500),
+          connectionStatus: status,
+          lastError: status === "connected" ? undefined : message?.slice(0, 500),
           lastCheckedAt: new Date().toISOString(),
-          rateLimitedUntil: options?.rateLimitedUntil ?? (ok ? undefined : account.rateLimitedUntil)
+          rateLimitedUntil: options?.rateLimitedUntil ?? (status === "connected" ? undefined : account.rateLimitedUntil)
         }
       : account
   );
@@ -1620,9 +1735,7 @@ export async function saveDevicePending(providerId: string, data: DevicePendingS
 }
 
 export async function readDevicePending(providerId: string, accountId?: string) {
-  const keys = accountId
-    ? [`devicePending:${providerId}:${accountId}`]
-    : [`devicePending:${providerId}`, ...listDevicePendingKeys(providerId)];
+  const keys = [accountId ? `devicePending:${providerId}:${accountId}` : `devicePending:${providerId}`];
   for (const key of keys) {
     const pending = readSetting<DevicePendingState | null>(getDb(), key, null);
     if (!pending) continue;

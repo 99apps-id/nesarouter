@@ -8,7 +8,7 @@ import {
   responsesResponseToOpenAi,
   responsesSseToOpenAiSse
 } from "@/core/translatorReverse";
-import { baseUrl, cleanApiKey, ProviderExecutor, proxyFetch, upstreamError } from "@/core/providers/shared";
+import { baseUrl, cleanApiKey, ProviderExecutor, proxyFetch, UpstreamProviderError, upstreamError } from "@/core/providers/shared";
 
 const CODEX_MODELS_URL = "https://chatgpt.com/backend-api/codex/models?client_version=1.0.0";
 
@@ -142,7 +142,7 @@ export class OpenAiResponsesExecutor implements ProviderExecutor {
 
     if (!response.ok) throw await upstreamError(provider, response);
     if (upstreamStream) {
-      if (!response.body) throw new Error(`${provider.name} returned no stream body.`);
+      if (!response.body) throw new UpstreamProviderError(`${provider.name} returned no stream body.`, 502);
       const sse = responsesSseToOpenAiSse(response.body, provider.model);
       if (clientWantsStream) return sse;
       // Codex backend is SSE-only; buffer for non-stream clients + /compact.
@@ -183,7 +183,7 @@ export class OpenAiResponsesExecutor implements ProviderExecutor {
 
   async validate(provider: ProviderConfig) {
     const token = cleanApiKey(provider.oauthAccessToken || provider.apiKey || "");
-    if (!token) throw new Error(`${provider.name} needs an OAuth token or API key.`);
+    if (!token) throw new UpstreamProviderError(`${provider.name} needs an OAuth token or API key.`, 400);
     const models = await this.listModels(provider);
     return {
       models,

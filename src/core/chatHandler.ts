@@ -12,10 +12,11 @@ import { compressWithPxpipe } from "@/core/pxpipe";
 import { resolveModelAlias } from "@/core/aliases";
 import { ensureFreshAccessToken } from "@/core/providerOAuthFlow";
 import { isOAuthAccountFatalError } from "@/core/oauthAccountHealth";
-import { clearOAuthAccountCooldown, markOAuthAccountCooldown, pickActiveOAuthAccounts, providerForOAuthAccount, rememberOAuthAccountUse } from "@/core/oauthAccounts";
+import { applyFreshOAuthToken, clearOAuthAccountCooldown, markOAuthAccountCooldown, pickActiveOAuthAccounts, providerWithFreshOAuthToken, rememberOAuthAccountUse } from "@/core/oauthAccounts";
 import { clearKeyCooldown, markKeyCooldown, pickActiveKeys, rememberKeyUse } from "@/core/providerKeys";
 import { acquireGate, GateTicket, QueueTimeoutError } from "@/core/requestGate";
 import { recordCacheHit, recordError, recordQueueTimeout, recordRequest } from "@/core/runtimeMetrics";
+import { peekStickyProvider, rememberStickyProvider, stickySessionKey } from "@/core/stickyRouting";
 import { appendUsage, clearProviderCooldown, markProviderFailure, markOAuthAccountConnection, readStore, saveCacheEntry } from "@/lib/store";
 import { Combo, NesaStore, ProviderConfig, RouteDecision, UsageLog } from "@/core/types";
 
@@ -73,7 +74,7 @@ async function revalidateQuotaCooldown(provider: ProviderConfig): Promise<boolea
   try {
     if (provider.oauthProfile) {
       const fresh = await ensureFreshAccessToken(provider);
-      if (fresh) provider = { ...provider, oauthAccessToken: fresh };
+      if (fresh) provider = applyFreshOAuthToken(provider, fresh);
     }
     await testProviderConnection(provider);
     await clearProviderCooldown(provider.id);
@@ -163,7 +164,7 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
     }
   }
 
-  const response = await runFallbackLoop(store, effectiveBody, key, combo);
+  const response = await runFallbackLoop(store, effectiveBody, key, combo, request);
   if (response.status >= 400) recordError();
   if (headroomApplied.applied || rtkApplied.savedChars > 0) {
     const headers = new Headers(response.headers);
@@ -182,14 +183,22 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
   return { response, combo };
 }
 
-async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: Combo | undefined): Promise<Response> {
+async function runFallbackLoop(
+  store: NesaStore,
+  body: any,
+  key: string,
+  combo: Combo | undefined,
+  request?: Request
+): Promise<Response> {
   const failedProviderIds: string[] = [];
   const errors: string[] = [];
+  const stickyKey = stickySessionKey(body, request);
+  const preferProviderId = peekStickyProvider(stickyKey) ?? undefined;
 
   while (failedProviderIds.length < store.providers.length) {
     let decision: RouteDecision;
     try {
-      decision = chooseProvider(store, body, failedProviderIds, combo);
+      decision = chooseProvider(store, body, failedProviderIds, combo, { preferProviderId });
     } catch (error) {
       return NextResponse.json(
         {
@@ -215,6 +224,8 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
     }
 
     let providerFailed = true;
+    /** OAuth upstream/account failures must not park the whole provider in cooldown. */
+    let oauthCooldownWholeProvider = false;
 
     if (decision.provider.oauthProfile) {
       const accounts = pickActiveOAuthAccounts(decision.provider);
@@ -232,9 +243,15 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
         const fresh = await ensureFreshAccessToken(decision.provider, account.id);
         if (!fresh) {
           errors.push(`${decision.provider.name} (${account.name ?? `account ${account.index + 1}`}): OAuth token unavailable.`);
+          await markOAuthAccountConnection(
+            decision.provider.id,
+            account.id,
+            false,
+            "OAuth token unavailable or refresh failed."
+          );
           continue;
         }
-        const oauthProvider = { ...providerForOAuthAccount(decision.provider, account), oauthAccessToken: fresh };
+        const oauthProvider = providerWithFreshOAuthToken(decision.provider, account, fresh);
         let ticket: GateTicket | undefined;
         try {
           ticket = await acquireGate(decision.provider.id, gateLimits(store));
@@ -249,6 +266,7 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
           await markOAuthAccountConnection(decision.provider.id, account.id, true);
           await clearProviderCooldown(decision.provider.id);
           providerFailed = false;
+          rememberStickyProvider(stickyKey, decision.provider.id);
 
           if (upstream instanceof ReadableStream) {
             return finalizeStream(store, decision, upstream, key, body, ticket);
@@ -271,7 +289,7 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
             continue;
           }
           errors.push(`${decision.provider.name}: ${error instanceof Error ? error.message : "Unknown error."}`);
-          await markProviderFailure(decision.provider.id, error instanceof Error ? error.message : "Unknown error.", 3 * 60_000);
+          oauthCooldownWholeProvider = true;
           providerFailed = true;
           break;
         }
@@ -302,6 +320,7 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
           clearKeyCooldown(decision.provider.id, picked.index);
           await clearProviderCooldown(decision.provider.id);
           providerFailed = false;
+          rememberStickyProvider(stickyKey, decision.provider.id);
 
           if (upstream instanceof ReadableStream) {
             return finalizeStream(store, decision, upstream, key, body, ticket, picked.index);
@@ -331,7 +350,11 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
     if (providerFailed) {
       failedProviderIds.push(decision.provider.id);
       const lastError = errors[errors.length - 1] ?? `${decision.provider.name} failed.`;
-      await markProviderFailure(decision.provider.id, lastError.slice(0, 500), 3 * 60_000);
+      // Account-scoped OAuth UpstreamProviderError already handled per-account;
+      // cooling the whole provider left UI "Connected" while combos skipped it.
+      if (!decision.provider.oauthProfile || oauthCooldownWholeProvider) {
+        await markProviderFailure(decision.provider.id, lastError.slice(0, 500), 3 * 60_000);
+      }
       const log: UsageLog = {
         id: requestId(),
         createdAt: new Date().toISOString(),
@@ -359,6 +382,15 @@ async function runFallbackLoop(store: NesaStore, body: any, key: string, combo: 
   }
 
   return NextResponse.json({ error: { message: "All fallback providers failed.", attempts: errors } }, { status: 502 });
+}
+
+function skippedProvidersHeader(skipped: RouteDecision["skippedProviders"] | undefined) {
+  if (!skipped?.length) return undefined;
+  return skipped
+    .slice(0, 8)
+    .map((item) => `${item.providerId}: ${item.reason}`)
+    .join(" | ")
+    .slice(0, 700);
 }
 
 async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream: any, key: string, body: any, keyIndex?: number) {
@@ -410,7 +442,10 @@ async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream:
       "x-nesa-provider": decision.provider.id,
       "x-nesa-budget-status": decision.budgetStatus,
       "x-nesa-cost-source": log.costSource,
-      "x-nesa-cache": log.cacheStatus
+      "x-nesa-cache": log.cacheStatus,
+      ...(skippedProvidersHeader(decision.skippedProviders)
+        ? { "x-nesa-skipped": skippedProvidersHeader(decision.skippedProviders)! }
+        : {})
     }
   });
 }
@@ -488,7 +523,10 @@ function finalizeStream(
         "cache-control": "no-cache",
         "x-nesa-provider": decision.provider.id,
         "x-nesa-budget-status": decision.budgetStatus,
-        "x-nesa-cost-source": baseLog.costSource
+        "x-nesa-cost-source": baseLog.costSource,
+        ...(skippedProvidersHeader(decision.skippedProviders)
+          ? { "x-nesa-skipped": skippedProvidersHeader(decision.skippedProviders)! }
+          : {})
       }
     })
   );

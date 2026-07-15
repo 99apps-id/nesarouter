@@ -9,7 +9,7 @@ export type FallbackMode = "auto" | "off";
 
 export type ProviderStatus = "active" | "disabled" | "cooldown";
 
-export type ProviderConnectionStatus = "unknown" | "connected" | "error";
+export type ProviderConnectionStatus = "unknown" | "connected" | "error" | "no_subscription";
 
 export type CostSource = "provider_usage" | "estimated" | "cached" | "free";
 

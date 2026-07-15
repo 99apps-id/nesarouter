@@ -35,6 +35,37 @@ function isProviderUsable(provider: ProviderConfig) {
   return true;
 }
 
+/** UI / combo health — why a provider would be skipped by the router right now. */
+export function describeProviderRouteReadiness(provider: ProviderConfig): { ready: boolean; reason: string } {
+  if (isProviderUsable(provider)) return { ready: true, reason: "Ready" };
+  return { ready: false, reason: providerSkipReason(provider) };
+}
+
+function pinPreferredProvider(candidates: ProviderConfig[], preferProviderId?: string) {
+  if (!preferProviderId || candidates.length <= 1) return candidates;
+  const index = candidates.findIndex((provider) => provider.id === preferProviderId);
+  if (index <= 0) return candidates;
+  return [candidates[index], ...candidates.slice(0, index), ...candidates.slice(index + 1)];
+}
+
+function providerSkipReason(provider: ProviderConfig) {
+  const cooldownExpired = provider.status === "cooldown" && provider.rateLimitedUntil && new Date(provider.rateLimitedUntil).getTime() <= Date.now();
+  if (provider.status !== "active" && !cooldownExpired) {
+    return provider.status === "cooldown"
+      ? "Provider in cooldown."
+      : "Provider disabled (set Status to Active).";
+  }
+  if (!providerHasKey(provider)) {
+    return provider.oauthProfile
+      ? "OAuth not connected or all accounts unusable."
+      : "Provider missing API key.";
+  }
+  if (provider.rateLimitedUntil && new Date(provider.rateLimitedUntil).getTime() > Date.now()) {
+    return "Provider in rate-limit cooldown.";
+  }
+  return "Provider disabled, missing key, or in cooldown.";
+}
+
 function sortProviders(providers: ProviderConfig[], mode: NesaStore["router"]["routingMode"], taskType: TaskType) {
   const preferredTiers = taskMaxTier[taskType];
   return [...providers].sort((a, b) => {
@@ -115,7 +146,8 @@ export function chooseProvider(
   store: NesaStore,
   body: any,
   excludedProviderIds: string[] = [],
-  combo?: Combo
+  combo?: Combo,
+  options?: { preferProviderId?: string }
 ): RouteDecision {
   const text = extractRequestText(body);
   const taskType = store.router.evaluatorEnabled === false ? "chat" : detectTaskType(text);
@@ -130,7 +162,7 @@ export function chooseProvider(
     }
     const usable = isProviderUsable(provider);
     if (!usable) {
-      skippedProviders.push({ providerId: provider.id, reason: "Provider disabled, missing key, or in cooldown." });
+      skippedProviders.push({ providerId: provider.id, reason: providerSkipReason(provider) });
       return false;
     }
     if (isProviderRoutingQuotaExhausted(provider, store)) {
@@ -214,6 +246,10 @@ export function chooseProvider(
     candidates = pinManual ? [pinManual] : applyProviderStrategy(sortProviders(activeProviders, mode, taskType), store);
   }
 
+  candidates = pinPreferredProvider(candidates, options?.preferProviderId);
+  const stickyPinned =
+    Boolean(options?.preferProviderId) && candidates[0]?.id === options?.preferProviderId;
+
   for (const provider of candidates) {
     let selectedProvider = provider;
     if (prefixed && provider.id === prefixed.providerId) {
@@ -243,6 +279,7 @@ export function chooseProvider(
       continue;
     }
 
+    const stickyPrefix = stickyPinned && selectedProvider.id === options?.preferProviderId ? "Sticky session · " : "";
     return {
       provider: selectedProvider,
       taskType,
@@ -251,15 +288,24 @@ export function chooseProvider(
       estimatedCostUsd,
       budgetStatus,
       skippedProviders,
-      routingReason: comboConstraint
+      routingReason: stickyPrefix + (comboConstraint
         ? `Combo ${comboConstraint.name} selected ${selectedProvider.name}; budget ${budgetStatus}.`
         : prefixed
           ? `Prefix ${prefixed.prefix}/${prefixed.modelId} selected ${selectedProvider.name}; budget ${budgetStatus}.`
           : !isAutoModel(requested)
             ? `Model ${requested} selected ${selectedProvider.name}; budget ${budgetStatus}.`
-            : `${mode}/${store.router.providerStrategy ?? "priority"} selected ${selectedProvider.name} for ${taskType}; budget ${budgetStatus}.`
+            : `${mode}/${store.router.providerStrategy ?? "priority"} selected ${selectedProvider.name} for ${taskType}; budget ${budgetStatus}.`)
     };
   }
 
-  throw new Error(comboConstraint ? `Combo ${comboConstraint.name} has no available provider within budget.` : "No active provider is available within the current budget policy.");
+  const comboSkip = comboConstraint
+    ? skippedProviders.find((item) => comboConstraint.providerIds.includes(item.providerId))?.reason
+    : undefined;
+  throw new Error(
+    comboConstraint
+      ? comboSkip
+        ? `Combo ${comboConstraint.name} unavailable: ${comboSkip}`
+        : `Combo ${comboConstraint.name} has no available provider within budget.`
+      : "No active provider is available within the current budget policy."
+  );
 }

@@ -19,24 +19,34 @@ export default function UsageTable({ usage }: { usage: UsageLog[] }) {
           <span>Send a request to `/v1/chat/completions`.</span>
         </div>
       ) : (
-        usage.map((item) => (
-          <div className="usage-row" role="row" key={item.id}>
-            <span>{new Date(item.createdAt).toLocaleTimeString()}</span>
-            <span className="provider-cell">
-              <ProviderIcon provider={{ providerName: item.providerName, model: item.model }} size="sm" active={item.status === "success"} />
-              <span className="usage-provider-copy">
-                <span>{item.providerName}</span>
-                <small>{item.taskType}</small>
+        usage.map((item) => {
+          const skipped = item.skippedProviders?.length ?? 0;
+          const skipTitle = item.skippedProviders?.map((s) => `${s.providerId}: ${s.reason}`).join("\n") ?? "";
+          return (
+            <div className="usage-row" role="row" key={item.id}>
+              <span>{new Date(item.createdAt).toLocaleTimeString()}</span>
+              <span className="provider-cell">
+                <ProviderIcon provider={{ providerName: item.providerName, model: item.model }} size="sm" active={item.status === "success"} />
+                <span className="usage-provider-copy">
+                  <span>{item.providerName}</span>
+                  <small>{item.taskType}</small>
+                </span>
               </span>
-            </span>
-            <span>{item.taskType}</span>
-            <span>{money(item.totalCostUsd)}</span>
-            <span>{item.costSource}</span>
-            <span className={`status ${item.status}`} title={item.routingReason}>
-              {item.status}
-            </span>
-          </div>
-        ))
+              <span>{item.taskType}</span>
+              <span>{money(item.totalCostUsd)}</span>
+              <span>{item.costSource}</span>
+              <span className={`status ${item.status}`} title={item.routingReason}>
+                {item.status}
+                {skipped > 0 ? (
+                  <small className="subtle" title={skipTitle}>
+                    {" "}
+                    · {skipped} skipped
+                  </small>
+                ) : null}
+              </span>
+            </div>
+          );
+        })
       )}
     </div>
   );

@@ -2196,6 +2196,11 @@ button:focus-visible {
   color: var(--success-text);
 }
 
+.status.warning {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
 .status.error {
   background: var(--danger-bg);
   color: var(--danger-text);
@@ -2227,6 +2232,11 @@ button:focus-visible {
 .test-message.ok {
   background: var(--success-bg);
   color: var(--success-text);
+}
+
+.test-message.warn {
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .test-message.error {
@@ -2452,11 +2462,21 @@ button:focus-visible {
 }
 
 .combo-chain li {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
   padding: 4px 10px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--control-bg);
   font-size: 0.85rem;
+}
+
+.combo-chain li small {
+  flex-basis: 100%;
+  font-size: 0.72rem;
 }
 
 .combo-chain li:not(:last-child)::after {

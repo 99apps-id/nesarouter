@@ -48,17 +48,42 @@ function legacyAccountFromProvider(provider: ProviderConfig): OAuthAccount | nul
   };
 }
 
+/** Provider-level OAuth columns mirror only the primary account. */
+function hydratePrimaryAccountFromProvider(account: OAuthAccount, provider: ProviderConfig, index: number): OAuthAccount {
+  if (index !== 0) return account;
+  return {
+    ...account,
+    oauthAccessToken: account.oauthAccessToken || provider.oauthAccessToken,
+    oauthRefreshToken: account.oauthRefreshToken || provider.oauthRefreshToken,
+    oauthTokenExpiresAt: account.oauthTokenExpiresAt || provider.oauthTokenExpiresAt,
+    oauthLastRefreshAt: account.oauthLastRefreshAt || provider.oauthLastRefreshAt,
+    oauthCopilotToken: account.oauthCopilotToken || provider.oauthCopilotToken,
+    oauthCopilotTokenExpiresAt: account.oauthCopilotTokenExpiresAt || provider.oauthCopilotTokenExpiresAt,
+    oauthProjectId: account.oauthProjectId || provider.oauthProjectId,
+    oauthDeviceClientId: account.oauthDeviceClientId || provider.oauthDeviceClientId,
+    oauthDeviceClientSecret: account.oauthDeviceClientSecret || provider.oauthDeviceClientSecret,
+    oauthMachineId: account.oauthMachineId || provider.oauthMachineId,
+    oauthProfileArn: account.oauthProfileArn || provider.oauthProfileArn
+  };
+}
+
 /** Normalize stored + legacy OAuth material into a stable account list. */
 export function configuredOAuthAccounts(provider: ProviderConfig): Array<OAuthAccount & { index: number }> {
   const raw = Array.isArray(provider.oauthAccounts) ? provider.oauthAccounts : [];
   const source = raw.length ? raw : [legacyAccountFromProvider(provider)].filter(Boolean) as OAuthAccount[];
   const seen = new Set<string>();
-  return source.flatMap((account, index) => {
+  const accounts = source.flatMap((account, index) => {
     const id = account.id?.trim() || `account-${index + 1}`;
     if (seen.has(id)) return [];
     seen.add(id);
-    return [{ ...account, id, index }];
+    return [{ ...hydratePrimaryAccountFromProvider(account, provider, index), id, index }];
   });
+  // Empty oauthAccounts[] with legacy columns still present (e.g. after a bad save).
+  if (!accounts.length) {
+    const legacy = legacyAccountFromProvider(provider);
+    if (legacy) return [{ ...legacy, index: 0 }];
+  }
+  return accounts;
 }
 
 export function hasOAuthConnection(provider: ProviderConfig) {
@@ -67,7 +92,7 @@ export function hasOAuthConnection(provider: ProviderConfig) {
 
 /** At least one OAuth account has a token and is not in error state. */
 export function hasRoutableOAuthConnection(provider: ProviderConfig) {
-  return configuredOAuthAccounts(provider).some((account) => isOAuthAccountRoutable(account));
+  return configuredOAuthAccounts(provider).some((account) => isOAuthAccountRoutable(account, Date.now(), provider));
 }
 
 export function oauthAccountCount(provider: ProviderConfig) {
@@ -75,13 +100,13 @@ export function oauthAccountCount(provider: ProviderConfig) {
 }
 
 export function routableOAuthAccountCount(provider: ProviderConfig) {
-  return configuredOAuthAccounts(provider).filter((account) => isOAuthAccountRoutable(account)).length;
+  return configuredOAuthAccounts(provider).filter((account) => isOAuthAccountRoutable(account, Date.now(), provider)).length;
 }
 
 export function pickActiveOAuthAccounts(provider: ProviderConfig): Array<OAuthAccount & { index: number }> {
   const now = Date.now();
   const active = configuredOAuthAccounts(provider).filter((account) => {
-    if (!isOAuthAccountRoutable(account, now)) return false;
+    if (!isOAuthAccountRoutable(account, now, provider)) return false;
     const cd = oauthCooldowns.get(cooldownKey(provider.id, account.index));
     return !(cd && cd.until > now);
   });
@@ -96,6 +121,9 @@ export function pickActiveOAuthAccounts(provider: ProviderConfig): Array<OAuthAc
 export function providerForOAuthAccount(provider: ProviderConfig, account: OAuthAccount): ProviderConfig {
   return {
     ...provider,
+    // Keep the active account identity on the request snapshot. Consumers that
+    // persist refreshed material must never infer it from token equality.
+    oauthAccounts: [{ ...account }],
     oauthAccessToken: account.oauthAccessToken,
     oauthRefreshToken: account.oauthRefreshToken,
     oauthTokenExpiresAt: account.oauthTokenExpiresAt,
@@ -111,6 +139,38 @@ export function providerForOAuthAccount(provider: ProviderConfig, account: OAuth
     lastError: account.lastError,
     rateLimitedUntil: account.rateLimitedUntil
   };
+}
+
+/**
+ * Apply a token from `ensureFreshAccessToken` onto the right credential field.
+ * GitHub Copilot returns a short-lived Copilot session token (not the GitHub access token).
+ */
+export function providerWithFreshOAuthToken(
+  provider: ProviderConfig,
+  account: OAuthAccount,
+  fresh: string
+): ProviderConfig {
+  const base = providerForOAuthAccount(provider, account);
+  if (provider.oauthProfile === "github_copilot" || provider.type === "github_copilot") {
+    return {
+      ...base,
+      oauthCopilotToken: fresh,
+      oauthAccounts: [{ ...account, oauthCopilotToken: fresh }]
+    };
+  }
+  return {
+    ...base,
+    oauthAccessToken: fresh,
+    oauthAccounts: [{ ...account, oauthAccessToken: fresh }]
+  };
+}
+
+/** Same field selection when refreshing a provider snapshot without a named account. */
+export function applyFreshOAuthToken(provider: ProviderConfig, fresh: string): ProviderConfig {
+  if (provider.oauthProfile === "github_copilot" || provider.type === "github_copilot") {
+    return { ...provider, oauthCopilotToken: fresh };
+  }
+  return { ...provider, oauthAccessToken: fresh };
 }
 
 export function createOAuthAccountId() {

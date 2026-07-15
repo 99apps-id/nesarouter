@@ -74,6 +74,23 @@ describe("GeminiCliExecutor.validate", () => {
     }) as typeof fetch;
 
     const result = await new GeminiCliExecutor().validate(provider({ oauthProjectId: undefined }));
-    expect(result.message).toMatch(/token accepted/i);
+    expect(result.message).toMatch(/access OK|accepted/i);
+    expect(result.connectionStatus).toBe("connected");
+  });
+
+  it("flags no_subscription when loadCodeAssist returns 403", async () => {
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ error: { status: "PERMISSION_DENIED" } }), { status: 403 })) as typeof fetch;
+    const result = await new GeminiCliExecutor().validate(provider());
+    expect(result.connectionStatus).toBe("no_subscription");
+    expect(result.message).toMatch(/no active/i);
+  });
+
+  it("flags no_subscription for Antigravity wording", async () => {
+    globalThis.fetch = vi.fn(async () => new Response("forbidden", { status: 403 })) as typeof fetch;
+    const result = await new GeminiCliExecutor().validate(
+      provider({ oauthProfile: "antigravity", name: "Antigravity (Google)" })
+    );
+    expect(result.connectionStatus).toBe("no_subscription");
+    expect(result.message).toMatch(/Antigravity/i);
   });
 });

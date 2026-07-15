@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/core/auth";
 import { isOAuthAccountFatalError } from "@/core/oauthAccountHealth";
-import { configuredOAuthAccounts, hasOAuthConnection, hasRoutableOAuthConnection, pickActiveOAuthAccounts, providerForOAuthAccount, rememberOAuthAccountUse, clearOAuthAccountCooldown } from "@/core/oauthAccounts";
+import { configuredOAuthAccounts, hasOAuthConnection, hasRoutableOAuthConnection, pickActiveOAuthAccounts, providerWithFreshOAuthToken, rememberOAuthAccountUse, clearOAuthAccountCooldown } from "@/core/oauthAccounts";
 import { ensureFreshAccessToken } from "@/core/providerOAuthFlow";
 import { clearKeyCooldown, markKeyCooldown, pickActiveKeys, rememberKeyUse } from "@/core/providerKeys";
 import { baseUrl, cleanApiKey, openRouterHeaders, proxyFetch, upstreamError, UpstreamProviderError } from "@/core/providers/shared";
@@ -38,7 +38,7 @@ async function resolveProvider(provider: ProviderConfig, accountId?: string): Pr
   if (!account) return null;
   const fresh = await ensureFreshAccessToken(provider, account.id);
   if (!fresh) return null;
-  return { ...providerForOAuthAccount(provider, account), oauthAccessToken: fresh };
+  return providerWithFreshOAuthToken(provider, account, fresh);
 }
 
 /**
@@ -95,12 +95,14 @@ export async function handleMediaPassthrough(
       await markProviderFailure(decision.provider.id, "OAuth not connected.", 5 * 60_000);
       return NextResponse.json({ error: { message: "OAuth not connected.", provider: decision.provider.name } }, { status: 502 });
     }
+    let oauthSawNonAccountError = false;
     for (const account of accounts) {
       const provider = await resolveProvider(decision.provider, account.id);
-      if (!provider?.oauthAccessToken) continue;
+      const bearer = provider?.oauthCopilotToken || provider?.oauthAccessToken;
+      if (!provider || !bearer) continue;
       try {
         const headers: Record<string, string> = {
-          authorization: `Bearer ${cleanApiKey(provider.oauthAccessToken)}`,
+          authorization: `Bearer ${cleanApiKey(bearer)}`,
           ...openRouterHeaders(provider)
         };
         const init = buildMediaInit(kind, options, provider, headers);
@@ -112,13 +114,19 @@ export async function handleMediaPassthrough(
         await clearProviderCooldown(provider.id);
         return await finishMediaResponse(response, provider, decision, kind, options, modelHint);
       } catch (error) {
-        if (error instanceof UpstreamProviderError && isOAuthAccountFatalError(error)) {
-          await markOAuthAccountConnection(provider.id, account.id, false, error.message);
+        if (error instanceof UpstreamProviderError) {
+          if (isOAuthAccountFatalError(error)) {
+            await markOAuthAccountConnection(provider.id, account.id, false, error.message);
+          }
+        } else {
+          oauthSawNonAccountError = true;
         }
         errors.push(error instanceof Error ? error.message : "Media request failed.");
       }
     }
-    await markProviderFailure(decision.provider.id, errors.join(" | ").slice(0, 500), 3 * 60_000);
+    if (oauthSawNonAccountError) {
+      await markProviderFailure(decision.provider.id, errors.join(" | ").slice(0, 500), 3 * 60_000);
+    }
     return NextResponse.json({ error: { message: errors[errors.length - 1] ?? "OAuth media failed." } }, { status: 502 });
   }
 

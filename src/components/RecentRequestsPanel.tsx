@@ -17,21 +17,30 @@ export default function RecentRequestsPanel({ usage }: { usage: UsageLog[] }) {
             <strong>No data</strong>
           </div>
         ) : (
-          usage.slice(0, 12).map((item) => (
-            <div className="recent-item" key={item.id}>
-              <div className="provider-cell">
-                <ProviderIcon provider={{ providerName: item.providerName, model: item.model }} size="sm" active={item.status === "success"} />
+          usage.slice(0, 12).map((item) => {
+            const skipped = item.skippedProviders?.length ?? 0;
+            const skipTitle = item.skippedProviders?.map((s) => `${s.providerId}: ${s.reason}`).join("\n") ?? "";
+            return (
+              <div className="recent-item" key={item.id}>
+                <div className="provider-cell">
+                  <ProviderIcon provider={{ providerName: item.providerName, model: item.model }} size="sm" active={item.status === "success"} />
+                  <div>
+                    <strong>{item.model}</strong>
+                    <span>{item.providerName}</span>
+                    {skipped > 0 ? (
+                      <small className="subtle" title={skipTitle}>
+                        {skipped} provider(s) skipped
+                      </small>
+                    ) : null}
+                  </div>
+                </div>
                 <div>
-                  <strong>{item.model}</strong>
-                  <span>{item.providerName}</span>
+                  <strong>{money(item.totalCostUsd)}</strong>
+                  <span>{new Date(item.createdAt).toLocaleTimeString()}</span>
                 </div>
               </div>
-              <div>
-                <strong>{money(item.totalCostUsd)}</strong>
-                <span>{new Date(item.createdAt).toLocaleTimeString()}</span>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </section>

@@ -263,4 +263,75 @@ describe("router", () => {
     store.router = { ...store.router, routingMode: "manual", manualProviderId: "premium" };
     expect(() => chooseProvider(store, { model: "auto", messages: [{ role: "user", content: "hi" }] })).toThrow(/not active/i);
   });
+
+  it("routes a combo to connected GitHub Copilot OAuth", () => {
+    const combo: Combo = {
+      id: "c-copilot",
+      name: "copilot-combo",
+      providerIds: ["oauth-github-copilot"],
+      strategy: "fallback"
+    };
+    const store = storeWith(
+      [
+        provider({
+          id: "oauth-github-copilot",
+          name: "GitHub Copilot",
+          type: "github_copilot",
+          tier: "premium",
+          apiKey: "",
+          model: "gpt-5.4",
+          oauthProfile: "github_copilot",
+          oauthAccounts: [
+            {
+              id: "a1",
+              name: "Account 1",
+              oauthAccessToken: "gho_test",
+              connectionStatus: "connected"
+            }
+          ],
+          connectionStatus: "connected"
+        })
+      ],
+      [combo]
+    );
+    const decision = chooseProvider(store, { model: "copilot-combo", messages: [{ role: "user", content: "hi" }] }, [], combo);
+    expect(decision.provider.id).toBe("oauth-github-copilot");
+  });
+
+  it("skips Copilot in cooldown with an explicit reason even when Connected", () => {
+    const combo: Combo = {
+      id: "c-copilot",
+      name: "copilot-combo",
+      providerIds: ["oauth-github-copilot"],
+      strategy: "fallback"
+    };
+    const store = storeWith(
+      [
+        provider({
+          id: "oauth-github-copilot",
+          name: "GitHub Copilot",
+          type: "github_copilot",
+          tier: "premium",
+          status: "cooldown",
+          rateLimitedUntil: new Date(Date.now() + 60_000).toISOString(),
+          apiKey: "",
+          model: "gpt-5.4",
+          oauthProfile: "github_copilot",
+          oauthAccounts: [
+            {
+              id: "a1",
+              name: "Account 1",
+              oauthAccessToken: "gho_test",
+              connectionStatus: "connected"
+            }
+          ],
+          connectionStatus: "connected"
+        })
+      ],
+      [combo]
+    );
+    expect(() =>
+      chooseProvider(store, { model: "copilot-combo", messages: [{ role: "user", content: "hi" }] }, [], combo)
+    ).toThrow(/cooldown/i);
+  });
 });
