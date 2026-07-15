@@ -2,6 +2,12 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.31 - 2026-07-15
+
+### Added
+
+- **Endpoint box**: sidebar endpoint URL can be shown or hidden; preference persists in the browser.
+
 ## 0.1.30 - 2026-07-15
 
 ### Fixed

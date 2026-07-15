@@ -52,6 +52,8 @@ export type Messages = {
     headroom: string;
     cli: string;
     endpointHint: string;
+    showEndpoint: string;
+    hideEndpoint: string;
     mainNav: string;
   };
   shell: {
@@ -286,6 +288,8 @@ export const en: Messages = {
     headroom: "Headroom",
     cli: "CLI",
     endpointHint: "Manage client keys in Keys.",
+    showEndpoint: "Show endpoint",
+    hideEndpoint: "Hide endpoint",
     mainNav: "Main navigation"
   },
   shell: {
