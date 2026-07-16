@@ -25,11 +25,13 @@ export default function AliasesManager({
   const [importText, setImportText] = useState("");
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [persistError, setPersistError] = useState("");
 
   async function persist(next: ModelAlias[]) {
     setSaved(false);
+    setPersistError("");
     const stateRes = await adminFetch("/api/state");
-    if (!stateRes.ok) return;
+    if (!stateRes.ok) { setPersistError("Could not load current settings."); return; }
     const state = await stateRes.json();
     const response = await adminFetch("/api/state", {
       method: "PUT",
@@ -39,7 +41,7 @@ export default function AliasesManager({
     if (response.ok) {
       setItems(next);
       setSaved(true);
-    }
+    } else setPersistError((await response.json().catch(() => ({}))).error ?? "Could not save aliases.");
   }
 
   async function add() {
@@ -155,6 +157,7 @@ export default function AliasesManager({
         </button>
       </div>
       <div className="combo-form" style={{ marginTop: "1rem", flexDirection: "column", alignItems: "stretch" }}>
+        {persistError ? <p className="test-message error">{persistError}</p> : null}
         <label>
           {a.importLabel}
           <textarea

@@ -16,7 +16,8 @@
     "cursor:export": "node scripts/cursor-export.mjs",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "check:public-boundary": "node scripts/check-public-boundary.mjs",
+    "test": "npm run check:public-boundary && vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {

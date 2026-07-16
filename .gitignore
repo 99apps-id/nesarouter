@@ -22,3 +22,9 @@ tsconfig.tsbuildinfo
 
 # Local user guides (do not commit/push)
 docs/guides/
+
+# Private SaaS data-plane — source of truth is NesaDigitalSolutions/private-gateway/overlay.
+# Never force-add these; public pushes must stay OSS-only.
+src/core/saas/
+tests/unit/saas*.test.ts
+tests/unit/rateWindow.test.ts

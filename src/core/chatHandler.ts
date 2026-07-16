@@ -14,7 +14,7 @@ import { ensureFreshAccessToken } from "@/core/providerOAuthFlow";
 import { isOAuthAccountFatalError } from "@/core/oauthAccountHealth";
 import { applyFreshOAuthToken, clearOAuthAccountCooldown, markOAuthAccountCooldown, pickActiveOAuthAccounts, providerWithFreshOAuthToken, rememberOAuthAccountUse } from "@/core/oauthAccounts";
 import { clearKeyCooldown, markKeyCooldown, pickActiveKeys, rememberKeyUse } from "@/core/providerKeys";
-import { acquireGate, GateTicket, QueueTimeoutError } from "@/core/requestGate";
+import { acquireGate, GateAbortedError, GateTicket, QueueTimeoutError } from "@/core/requestGate";
 import { recordCacheHit, recordError, recordQueueTimeout, recordRequest } from "@/core/runtimeMetrics";
 import { peekStickyProvider, rememberStickyProvider, stickySessionKey } from "@/core/stickyRouting";
 import { appendUsage, clearProviderCooldown, markProviderFailure, markOAuthAccountConnection, readStore, saveCacheEntry } from "@/lib/store";
@@ -68,6 +68,10 @@ function queueTimeoutResponse(error: QueueTimeoutError) {
     { error: { message: error.message, code: "queue_timeout" } },
     { status: 503, headers: { "Retry-After": "5" } }
   );
+}
+
+function gateAbortedResponse() {
+  return NextResponse.json({ error: { message: "Request cancelled." } }, { status: 499 });
 }
 
 async function revalidateQuotaCooldown(provider: ProviderConfig): Promise<boolean> {
@@ -254,9 +258,10 @@ async function runFallbackLoop(
         const oauthProvider = providerWithFreshOAuthToken(decision.provider, account, fresh);
         let ticket: GateTicket | undefined;
         try {
-          ticket = await acquireGate(decision.provider.id, gateLimits(store));
+          ticket = await acquireGate(decision.provider.id, gateLimits(store), request?.signal);
         } catch (error) {
           if (error instanceof QueueTimeoutError) return queueTimeoutResponse(error);
+          if (error instanceof GateAbortedError) return gateAbortedResponse();
           throw error;
         }
         try {
@@ -309,9 +314,10 @@ async function runFallbackLoop(
       for (const picked of keys) {
         let ticket: GateTicket | undefined;
         try {
-          ticket = await acquireGate(decision.provider.id, gateLimits(store));
+          ticket = await acquireGate(decision.provider.id, gateLimits(store), request?.signal);
         } catch (error) {
           if (error instanceof QueueTimeoutError) return queueTimeoutResponse(error);
+          if (error instanceof GateAbortedError) return gateAbortedResponse();
           throw error;
         }
         try {

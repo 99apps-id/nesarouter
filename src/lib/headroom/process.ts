@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { getDataDir } from "@/lib/store";
-import { findHeadroomBinary, findPython310, HEADROOM_COMPRESSION_EXTRAS, HeadroomExtra, EXTRA_MARKERS } from "./detect";
+import { buildHeadroomLaunchSpec, findHeadroomBinary, findPython310, HEADROOM_COMPRESSION_EXTRAS, HEADROOM_PROCESS_ENV, HeadroomExtra, EXTRA_MARKERS } from "./detect";
 
 const HEADROOM_DIR = path.join(getDataDir(), "headroom");
 const PID_FILE = path.join(HEADROOM_DIR, "proxy.pid");
@@ -49,7 +49,9 @@ export interface StartOptions {
 export async function startHeadroomProxy(opts: StartOptions = {}): Promise<{ pid: number; alreadyRunning: boolean }> {
   const safePort = Number(opts.port) > 0 && Number(opts.port) < 65536 ? Number(opts.port) : DEFAULT_PORT;
   const binary = findHeadroomBinary();
-  if (!binary) {
+  const python = binary ? null : findPython310();
+  const launch = buildHeadroomLaunchSpec(binary, python);
+  if (!launch) {
     const err = new Error("Headroom CLI not installed (run `pip install headroom-ai[proxy]`)");
     (err as any).code = "NOT_INSTALLED";
     throw err;
@@ -59,12 +61,12 @@ export async function startHeadroomProxy(opts: StartOptions = {}): Promise<{ pid
 
   ensureDir();
   const outFd = fs.openSync(LOG_FILE, "a");
-  const args = ["proxy", "--port", String(safePort), ...extrasProxyArgs({ codeAware: opts.codeAware ?? false, kompress: opts.kompress ?? true })];
-  const child = spawn(binary, args, {
+  const args = [...launch.prefixArgs, "proxy", "--port", String(safePort), ...extrasProxyArgs({ codeAware: opts.codeAware ?? false, kompress: opts.kompress ?? true })];
+  const child = spawn(launch.command, args, {
     stdio: ["ignore", outFd, outFd],
     detached: true,
     windowsHide: true,
-    env: { ...process.env }
+    env: HEADROOM_PROCESS_ENV
   });
 
   if (!child.pid) {
@@ -78,11 +80,25 @@ export async function startHeadroomProxy(opts: StartOptions = {}): Promise<{ pid
   writePid(child.pid);
 
   await new Promise<void>((resolve, reject) => {
+    let settled = false;
     const timer = setTimeout(() => {
+      settled = true;
       if (isPidAlive(child.pid!)) resolve();
       else reject(new Error("headroom proxy exited during startup — see proxy.log"));
     }, STARTUP_TIMEOUT_MS);
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      clearPid();
+      fs.closeSync(outFd);
+      const e = new Error(`Failed to spawn headroom proxy: ${error.message}`);
+      (e as any).code = "SPAWN_FAILED";
+      reject(e);
+    });
     child.once("exit", (code) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
       clearPid();
       fs.closeSync(outFd);

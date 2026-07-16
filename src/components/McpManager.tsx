@@ -47,12 +47,16 @@ export default function McpManager({ servers, baseUrl }: { servers: McpServer[];
   }
 
   async function remove(id: string) {
-    await fetch("/api/mcp", {
-      method: "DELETE",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id })
-    });
-    window.location.reload();
+    setError("");
+    try {
+      const response = await fetch("/api/mcp", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id })
+      });
+      if (response.ok) window.location.reload();
+      else setError((await response.json().catch(() => ({}))).error ?? "Failed to delete MCP server.");
+    } catch { setError("Failed to reach the server."); }
   }
 
   return (

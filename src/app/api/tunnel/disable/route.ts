@@ -8,6 +8,10 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
-  await disableTunnel();
-  return NextResponse.json({ ok: true });
+  try {
+    await disableTunnel();
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to disable tunnel." }, { status: 502 });
+  }
 }

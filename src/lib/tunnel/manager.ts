@@ -75,18 +75,8 @@ export async function enableTunnel(localPort?: number): Promise<{ tunnelUrl: str
   svc.spawnInProgress = true;
   svc.restoreAttempted = true;
   try {
-    if (isCloudflaredRunning() && settings.tunnelUrl) {
-      await writeTunnelSettings({ enabled: true, localPort: port });
-      setUnexpectedExitHandler(() => {
-        void respawn();
-      });
-      if (!watchdogTimer) {
-        watchdogTimer = setInterval(() => {
-          void respawn();
-        }, 60_000);
-      }
-      return { tunnelUrl: settings.tunnelUrl };
-    }
+    // Enable doubles as Restart: always replace the live process so a changed
+    // local port is actually applied to cloudflared.
     killCloudflared();
     setUnexpectedExitHandler(() => {
       void respawn();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExternalLink, FlaskConical, Package, Play, RefreshCw, Save, Square } from "lucide-react";
 import type { HeadroomExtra } from "@/lib/headroom/detect";
 
@@ -33,6 +33,7 @@ export default function HeadroomPanel() {
   const [message, setMessage] = useState("");
   const [logs, setLogs] = useState("");
   const [saved, setSaved] = useState(false);
+  const pipelineDirty = useRef(false);
 
   async function refresh() {
     const [statusRes, stateRes] = await Promise.all([
@@ -42,11 +43,13 @@ export default function HeadroomPanel() {
     if (statusRes?.ok) setStatus(await statusRes.json());
     if (stateRes?.ok) {
       const state = await stateRes.json();
-      setPipeline({
-        headroomEnabled: Boolean(state.router?.headroomEnabled),
-        headroomUrl: state.router?.headroomUrl || "http://localhost:8787",
-        headroomCompressUserMessages: Boolean(state.router?.headroomCompressUserMessages)
-      });
+      if (!pipelineDirty.current) {
+        setPipeline({
+          headroomEnabled: Boolean(state.router?.headroomEnabled),
+          headroomUrl: state.router?.headroomUrl || "http://localhost:8787",
+          headroomCompressUserMessages: Boolean(state.router?.headroomCompressUserMessages)
+        });
+      }
     }
     setLoading(false);
   }
@@ -83,6 +86,7 @@ export default function HeadroomPanel() {
     });
     setMessage(response.ok ? "Pipeline settings saved." : "Failed to save settings.");
     setSaved(response.ok);
+    if (response.ok) pipelineDirty.current = false;
     setBusy("");
   }
 
@@ -98,10 +102,16 @@ export default function HeadroomPanel() {
 
   async function stop() {
     setBusy("stop");
-    await fetch("/api/headroom/start?action=stop", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-    setMessage("Stopped.");
-    setBusy("");
-    refresh();
+    try {
+      const response = await fetch("/api/headroom/start?action=stop", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      const result = await response.json().catch(() => ({}));
+      setMessage(response.ok ? (result.stopped ? "Stopped." : "Proxy was not running.") : result.error ?? "Failed to stop.");
+      await refresh();
+    } catch {
+      setMessage("Failed to reach the server.");
+    } finally {
+      setBusy("");
+    }
   }
 
   async function restart() {
@@ -169,7 +179,7 @@ export default function HeadroomPanel() {
           <input
             type="checkbox"
             checked={pipeline.headroomEnabled}
-            onChange={(event) => setPipeline({ ...pipeline, headroomEnabled: event.target.checked })}
+            onChange={(event) => { pipelineDirty.current = true; setPipeline({ ...pipeline, headroomEnabled: event.target.checked }); }}
           />
           Compress chat requests via Headroom
         </label>
@@ -178,7 +188,7 @@ export default function HeadroomPanel() {
             Headroom URL
             <input
               value={pipeline.headroomUrl}
-              onChange={(event) => setPipeline({ ...pipeline, headroomUrl: event.target.value })}
+              onChange={(event) => { pipelineDirty.current = true; setPipeline({ ...pipeline, headroomUrl: event.target.value }); }}
               placeholder="http://localhost:8787"
             />
           </label>
@@ -187,7 +197,7 @@ export default function HeadroomPanel() {
           <input
             type="checkbox"
             checked={pipeline.headroomCompressUserMessages}
-            onChange={(event) => setPipeline({ ...pipeline, headroomCompressUserMessages: event.target.checked })}
+            onChange={(event) => { pipelineDirty.current = true; setPipeline({ ...pipeline, headroomCompressUserMessages: event.target.checked }); }}
           />
           Also compress user messages
         </label>

@@ -140,7 +140,7 @@ export async function ensureCloudflared(): Promise<string> {
 }
 
 let cloudflaredProcess: ReturnType<typeof spawn> | null = null;
-let intentionalKill = false;
+const intentionalKills = new WeakSet<ReturnType<typeof spawn>>();
 const pidFile = path.join(BIN_DIR, "cloudflared.pid");
 
 function savePid(pid: number) {
@@ -207,6 +207,10 @@ export async function spawnQuickTunnel(localPort: number, onUrlUpdate?: (url: st
     const timeout = setTimeout(() => {
       if (resolved) return;
       resolved = true;
+      intentionalKills.add(child);
+      try { child.kill(); } catch {}
+      if (cloudflaredProcess === child) cloudflaredProcess = null;
+      if (loadPid() === child.pid) clearPid();
       cleanup();
       reject(new Error(`Quick tunnel timed out. Last log: ${logTail.slice(-800) || "(empty)"}`));
     }, 90_000);
@@ -237,15 +241,17 @@ export async function spawnQuickTunnel(localPort: number, onUrlUpdate?: (url: st
       if (resolved) return;
       resolved = true;
       clearTimeout(timeout);
+      if (cloudflaredProcess === child) cloudflaredProcess = null;
+      if (loadPid() === child.pid) clearPid();
       cleanup();
       reject(err);
     });
 
     child.on("exit", (code) => {
-      cloudflaredProcess = null;
-      clearPid();
-      if (intentionalKill) {
-        intentionalKill = false;
+      if (cloudflaredProcess === child) cloudflaredProcess = null;
+      if (loadPid() === child.pid) clearPid();
+      if (intentionalKills.has(child)) {
+        intentionalKills.delete(child);
         clearTimeout(timeout);
         cleanup();
         if (!resolved) { resolved = true; reject(new Error("cloudflared killed")); }
@@ -266,8 +272,9 @@ export async function spawnQuickTunnel(localPort: number, onUrlUpdate?: (url: st
 }
 
 export function killCloudflared() {
-  intentionalKill = true;
-  try { cloudflaredProcess?.kill(); } catch {}
+  const managed = cloudflaredProcess;
+  if (managed) intentionalKills.add(managed);
+  try { managed?.kill(); } catch {}
   cloudflaredProcess = null;
   const pid = loadPid();
   if (pid) {

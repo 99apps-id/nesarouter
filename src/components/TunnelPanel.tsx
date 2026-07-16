@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Globe, PlugZap, Power, RefreshCw, ShieldAlert, Waypoints } from "lucide-react";
 
 interface TunnelStatus {
@@ -41,15 +41,17 @@ export default function TunnelPanel() {
   const [tsMode, setTsMode] = useState<"serve" | "funnel">("serve");
   const [message, setMessage] = useState("");
   const [loginUrl, setLoginUrl] = useState("");
+  const portDirty = useRef(false);
+  const modeDirty = useRef(false);
 
   async function refresh() {
     const response = await fetch("/api/tunnel/status").catch(() => null);
     if (response?.ok) {
       const data = await response.json();
       setStatus(data);
-      if (data.cloudflare?.localPort) setPort(String(data.cloudflare.localPort));
-      else if (data.tailscale?.localPort) setPort(String(data.tailscale.localPort));
-      if (data.tailscale?.mode === "serve" || data.tailscale?.mode === "funnel") {
+      if (!portDirty.current && data.cloudflare?.localPort) setPort(String(data.cloudflare.localPort));
+      else if (!portDirty.current && data.tailscale?.localPort) setPort(String(data.tailscale.localPort));
+      if (!modeDirty.current && (data.tailscale?.mode === "serve" || data.tailscale?.mode === "funnel")) {
         setTsMode(data.tailscale.mode);
       }
     }
@@ -77,7 +79,7 @@ export default function TunnelPanel() {
       body: JSON.stringify({ port: parsed })
     });
     const result = await response.json().catch(() => ({}));
-    if (response.ok) setMessage(`Tunnel active: ${result.tunnelUrl}`);
+    if (response.ok) { setMessage(`Tunnel active: ${result.tunnelUrl}`); portDirty.current = false; }
     else setMessage(result.error ?? "Failed to enable tunnel.");
     setBusy("");
     refresh();
@@ -85,10 +87,13 @@ export default function TunnelPanel() {
 
   async function disable() {
     setBusy("cf-disable");
-    await fetch("/api/tunnel/disable", { method: "POST" });
-    setMessage("Tunnel disabled.");
-    setBusy("");
-    refresh();
+    try {
+      const response = await fetch("/api/tunnel/disable", { method: "POST" });
+      const result = await response.json().catch(() => ({}));
+      setMessage(response.ok ? "Tunnel disabled." : result.error ?? "Failed to disable tunnel.");
+      await refresh();
+    } catch { setMessage("Failed to reach the server."); }
+    finally { setBusy(""); }
   }
 
   async function enableTailscale() {
@@ -107,7 +112,7 @@ export default function TunnelPanel() {
       body: JSON.stringify({ port: parsed, mode: tsMode })
     });
     const result = await response.json().catch(() => ({}));
-    if (response.ok) setMessage(`Tailscale ${tsMode} active${result.url ? `: ${result.url}` : ""}`);
+    if (response.ok) { setMessage(`Tailscale ${tsMode} active${result.url ? `: ${result.url}` : ""}`); portDirty.current = false; modeDirty.current = false; }
     else {
       setMessage(result.error ?? "Failed to enable Tailscale.");
       if (result.enableUrl) {
@@ -121,10 +126,13 @@ export default function TunnelPanel() {
 
   async function disableTailscale() {
     setBusy("ts-disable");
-    await fetch("/api/tunnel/tailscale", { method: "DELETE" });
-    setMessage("Tailscale disabled.");
-    setBusy("");
-    refresh();
+    try {
+      const response = await fetch("/api/tunnel/tailscale", { method: "DELETE" });
+      const result = await response.json().catch(() => ({}));
+      setMessage(response.ok ? "Tailscale disabled." : result.error ?? "Failed to disable Tailscale.");
+      await refresh();
+    } catch { setMessage("Failed to reach the server."); }
+    finally { setBusy(""); }
   }
 
   async function loginTailscale() {
@@ -172,7 +180,7 @@ export default function TunnelPanel() {
         <div className="settings-grid">
           <label>
             Local port
-            <input value={port} onChange={(event) => setPort(event.target.value || "20129")} />
+            <input value={port} onChange={(event) => { portDirty.current = true; setPort(event.target.value || "20129"); }} />
           </label>
         </div>
         {cf?.download.downloading ? (
@@ -238,7 +246,7 @@ export default function TunnelPanel() {
             <div className="settings-grid">
               <label>
                 Mode
-                <select value={tsMode} onChange={(event) => setTsMode(event.target.value as "serve" | "funnel")}>
+                <select value={tsMode} onChange={(event) => { modeDirty.current = true; setTsMode(event.target.value as "serve" | "funnel"); }}>
                   <option value="serve">serve (private tailnet)</option>
                   <option value="funnel">funnel (public)</option>
                 </select>

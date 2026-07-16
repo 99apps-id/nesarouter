@@ -48,7 +48,11 @@ export default function KeysManager({ initialKeys }: { initialKeys: KeyRow[] }) 
       }, 600);
       return;
     }
-    if (!response.ok) return;
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      setError(result.error ?? "Failed to revoke key.");
+      return;
+    }
     setKeys((items) => items.filter((item) => item.id !== id));
     if (newKey?.id === id) setNewKey(null);
   }
