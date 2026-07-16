@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   encodeMcpFrame,
   extractMcpMessages,
@@ -51,8 +51,7 @@ describe("mcpBridge framing", () => {
 
     try {
       sendToChild(server, { jsonrpc: "2.0", id: 7, method: "ping" }, firstId);
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      expect(firstFrames.join("\n")).toContain('"id":7');
+      await vi.waitFor(() => expect(firstFrames.join("\n")).toContain('"id":7'), { timeout: 1500 });
       expect(secondFrames).toEqual([]);
     } finally {
       unregisterSession(server.id, firstId);

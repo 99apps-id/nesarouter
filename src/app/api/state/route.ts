@@ -5,6 +5,7 @@ import { keyRows } from "@/lib/keyIdentity";
 import { redactCacheEntryForClient, redactProviderForClient } from "@/lib/providerRedact";
 import { getTodaySpend, getTodayRequestCount, readStore, writeStore } from "@/lib/store";
 import { Combo } from "@/core/types";
+import { validateStatePatch } from "@/lib/statePatch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,7 +36,10 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
-  const patch = await request.json();
+  const rawPatch = await request.json().catch(() => null);
+  const validationError = validateStatePatch(rawPatch);
+  if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
+  const patch = rawPatch as Record<string, any>;
   const store = await readStore();
 
   // Never accept a full providers rewrite from the client — secrets arrive redacted.

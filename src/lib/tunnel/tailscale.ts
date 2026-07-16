@@ -129,10 +129,7 @@ function liveServeStatus(mode: "serve" | "funnel"): { url: string; active: boole
   const bin = findTailscaleBin();
   if (!bin) return { url: "", active: false };
   const primary = runJson(bin, [mode, "status", "--json"]);
-  const parsed = parseTailscaleServeStatus(primary);
-  if (parsed.active || parsed.url) return parsed;
-  const alt = runJson(bin, [mode === "funnel" ? "serve" : "funnel", "status", "--json"]);
-  return parseTailscaleServeStatus(alt);
+  return parseTailscaleServeStatus(primary);
 }
 
 function discoverUrl(mode: "serve" | "funnel" = "serve"): string {
@@ -272,6 +269,11 @@ export async function disableTailscale() {
       execFileSync(bin, ["funnel", "reset"], { stdio: "ignore", windowsHide: true, timeout: 10_000 });
     } catch {
       /* ignore */
+    }
+    const serve = liveServeStatus("serve");
+    const funnel = liveServeStatus("funnel");
+    if (serve.active || funnel.active) {
+      throw new TailscaleSetupError("Tailscale Serve/Funnel is still active after reset.", "failed");
     }
   }
   await writeTunnelSettings({ tailscaleEnabled: false, tailscaleUrl: "" });

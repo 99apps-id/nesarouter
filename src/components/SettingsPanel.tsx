@@ -39,9 +39,11 @@ export default function SettingsPanel({
     }
   });
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
 
   async function save() {
     setSaved(false);
+    setError("");
     const publicBaseUrl = routerDraft.publicBaseUrl?.trim() || undefined;
     const response = await adminFetch("/api/state", {
       method: "PUT",
@@ -54,7 +56,7 @@ export default function SettingsPanel({
     if (response.ok) {
       setSaved(true);
       setTimeout(() => window.location.reload(), 450);
-    }
+    } else setError((await response.json().catch(() => ({}))).error ?? "Failed to save routing settings.");
   }
 
   return (
@@ -443,6 +445,7 @@ export default function SettingsPanel({
         <Save size={16} />
         {saved ? t.common.saved : t.common.save}
       </button>
+      {error ? <p className="test-message error">{error}</p> : null}
     </section>
   );
 }

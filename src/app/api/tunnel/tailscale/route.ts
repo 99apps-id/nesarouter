@@ -39,6 +39,10 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
-  await disableTailscale();
-  return NextResponse.json({ ok: true });
+  try {
+    await disableTailscale();
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to disable Tailscale." }, { status: 502 });
+  }
 }
