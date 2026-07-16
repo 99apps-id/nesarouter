@@ -2,6 +2,27 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.35 - 2026-07-17
+
+### Security
+
+- **Web fetch SSRF**: pin outbound connections to the DNS address that passed validation and block hexadecimal IPv4-mapped IPv6 forms, closing DNS-rebinding and address-encoding bypasses.
+- **Public/private boundary**: CI rejects private SaaS source paths, environment markers, migrations, tests, and PostgreSQL dependencies from the OSS repository.
+
+### Fixed
+
+- **Headroom process**: start through the installed Python module when the CLI launcher is outside `PATH`; include pip user-script locations and report spawn/stop failures correctly.
+- **Cloudflare Tunnel**: Restart now applies changed ports; startup timeout kills the child; old-process exit events no longer clear a newer PID/process; intentional kills are scoped per child.
+- **Tailscale**: never report a public Funnel as private Serve; verify reset before reporting Disable success.
+- **Concurrency queue**: cancel queued upstream work when the client disconnects instead of calling a provider later.
+- **Settings API**: reject malformed JSON, unknown fields, invalid URLs/enums, negative limits, and malformed combo/alias/tool settings.
+- **Dashboard actions**: preserve unsaved Headroom/Tunnel drafts during polling and show backend/network failures for Stop, Disable, Delete, Revoke, alias, and routing actions.
+- **Test isolation**: use a temporary SQLite database per Vitest worker and replace the MCP fixed sleep with a bounded readiness assertion.
+
+### Validation
+
+- 263 unit tests, TypeScript validation, the OSS boundary check, production build, and browser navigation smoke pass.
+
 ## 0.1.34 - 2026-07-16
 
 ### Fixed
