@@ -166,7 +166,7 @@ Common endpoints:
 - `POST /v1/images/generations`
 - `POST /v1/audio/speech`
 - `POST /v1/audio/transcriptions`
-- `POST /v1/web/fetch` (SSRF-guarded)
+- `POST /v1/web/fetch` (SSRF-guarded; DNS is validated and the connection is pinned to that approved address)
 
 All `/v1` endpoints require a NesaRouter client key created in **Keys**. The dashboard has separate admin authentication (cookie session), not the client Bearer key.
 
@@ -189,7 +189,7 @@ Response headers may include routing and saver metadata such as `x-nesa-cache` a
 - **Health**: `GET /api/health` returns liveness (`ok: true`) plus readiness (`ready`, `checks.db`, app `version` from `package.json`). HTTP **503** when the database check fails (usable as a readiness probe). Docker liveness can keep checking for process up / TCP.
 - **Metrics**: `GET /api/metrics` exposes Prometheus text (`nesa_requests_total`, queue gauges, budget spend, …). **Deny-by-default** — set `NESA_METRICS_TOKEN` and scrape with `Authorization: Bearer …` or `?token=`. Without the env var, the endpoint returns 401.
 - **Aliases import**: paste 9router `GET /api/models/alias` JSON on the Aliases page (or `POST /api/aliases/import`) to migrate shorthand model maps.
-- **Concurrency queue**: under Routing settings, set global / per-provider max concurrent upstream calls (`0` = unlimited). Queue wait timeouts return HTTP 503 with `code: queue_timeout`.
+- **Concurrency queue**: under Routing settings, set global / per-provider max concurrent upstream calls (`0` = unlimited). Queue wait timeouts return HTTP 503 with `code: queue_timeout`; disconnected clients are removed from the queue.
 - **Routing**: mode, strategy, fallback, cache, budget, token savers (Caveman / RTK), and admin password.
 - **Combos**: named fallback or round-robin chains; aliases map friendly model names to targets.
 - **Usage**: live provider-flow map (NesaRouter hub with spaced provider ring). It polls real request logs and animates the provider used by a recent request; idle links do not animate. The Usage page also shows daily **provider + per-key token quota** bars.
