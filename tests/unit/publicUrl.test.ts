@@ -12,12 +12,15 @@ import {
 describe("publicUrl", () => {
   const prevPublic = process.env.NESA_PUBLIC_URL;
   const prevCookie = process.env.NESA_COOKIE_SECURE;
+  const prevTrustProxy = process.env.NESA_TRUST_PROXY;
 
   afterEach(() => {
     if (prevPublic === undefined) delete process.env.NESA_PUBLIC_URL;
     else process.env.NESA_PUBLIC_URL = prevPublic;
     if (prevCookie === undefined) delete process.env.NESA_COOKIE_SECURE;
     else process.env.NESA_COOKIE_SECURE = prevCookie;
+    if (prevTrustProxy === undefined) delete process.env.NESA_TRUST_PROXY;
+    else process.env.NESA_TRUST_PROXY = prevTrustProxy;
   });
 
   it("prefers NESA_PUBLIC_URL over request.url", () => {
@@ -29,6 +32,7 @@ describe("publicUrl", () => {
 
   it("uses X-Forwarded-Host and Proto when env unset", () => {
     delete process.env.NESA_PUBLIC_URL;
+    process.env.NESA_TRUST_PROXY = "true";
     const request = new Request("http://127.0.0.1:20129/", {
       headers: {
         "x-forwarded-host": "gateway.example.com",
@@ -38,15 +42,16 @@ describe("publicUrl", () => {
     expect(publicOrigin(request)).toBe("https://gateway.example.com");
   });
 
-  it("uses non-loopback Host over localhost request.url", () => {
+  it("ignores a spoofed Host header when proxy trust is disabled", () => {
     delete process.env.NESA_PUBLIC_URL;
+    delete process.env.NESA_TRUST_PROXY;
     const request = new Request("http://localhost:20129/api/providers/x/oauth/start", {
       headers: {
         host: "nesa.example.com",
         "x-forwarded-proto": "https"
       }
     });
-    expect(publicOrigin(request)).toBe("https://nesa.example.com");
+    expect(publicOrigin(request)).toBe("http://localhost:20129");
   });
 
   it("middleware login redirect uses public origin not localhost", () => {
@@ -62,6 +67,7 @@ describe("publicUrl", () => {
 
   it("middleware login redirect falls back to forwarded host", () => {
     delete process.env.NESA_PUBLIC_URL;
+    process.env.NESA_TRUST_PROXY = "true";
     const request = new Request("http://127.0.0.1:20129/keys", {
       headers: {
         host: "127.0.0.1:20129",
@@ -91,6 +97,7 @@ describe("publicUrl", () => {
   it("cookieSecurePreferred respects x-forwarded-proto http", () => {
     delete process.env.NESA_PUBLIC_URL;
     delete process.env.NESA_COOKIE_SECURE;
+    process.env.NESA_TRUST_PROXY = "true";
     const request = new Request("http://127.0.0.1:20129/api/auth/login", {
       headers: {
         host: "nesa.example.com:20129",
@@ -103,6 +110,7 @@ describe("publicUrl", () => {
   it("cookieSecurePreferred respects x-forwarded-proto https", () => {
     delete process.env.NESA_PUBLIC_URL;
     delete process.env.NESA_COOKIE_SECURE;
+    process.env.NESA_TRUST_PROXY = "true";
     const request = new Request("http://127.0.0.1:20129/api/auth/login", {
       headers: {
         host: "nesa.example.com",

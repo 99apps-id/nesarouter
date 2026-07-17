@@ -98,6 +98,12 @@ export async function POST(request: Request, context: { params: Promise<{ tool: 
       });
     }
 
+    const publicConfig = created
+      ? config
+      : JSON.parse(JSON.stringify(config).split(apiKey).join("********"));
+    const publicInstallScript = created
+      ? buildCliInstallScripts(config)
+      : Object.fromEntries(Object.entries(buildCliInstallScripts(config)).map(([key, value]) => [key, value.split(apiKey).join("********")]));
     return NextResponse.json({
       ok: true,
       tool: toolId,
@@ -111,8 +117,8 @@ export async function POST(request: Request, context: { params: Promise<{ tool: 
       modelTargets: listCliModelTargets(store),
       local,
       status,
-      installScript: buildCliInstallScripts(config),
-      ...config,
+      installScript: publicInstallScript,
+      ...publicConfig,
       summary: local.skipped
         ? `${config.summary} — this tool has no local file (see instructions).`
         : `Patched on this machine — ${status.configStatus}.`

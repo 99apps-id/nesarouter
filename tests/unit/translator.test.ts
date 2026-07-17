@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { claudeToOpenAi, openAiToClaude, responsesToOpenAi, openAiToResponses } from "@/core/translator";
+import { claudeStreamFromOpenAiSse, claudeToOpenAi, openAiToClaude, responsesToOpenAi, openAiToResponses } from "@/core/translator";
 
 describe("translator claude", () => {
   it("converts a simple Claude request to OpenAI chat", () => {
@@ -90,6 +90,34 @@ describe("translator claude", () => {
 });
 
 describe("translator responses", () => {
+  it("preserves Responses function calls and outputs", () => {
+    const openAi = responsesToOpenAi({
+      input: [
+        { type: "function_call", call_id: "c1", name: "lookup", arguments: '{"q":"x"}' },
+        { type: "function_call_output", call_id: "c1", output: "done" }
+      ],
+      tools: [{ type: "function", name: "lookup", parameters: { type: "object" } }]
+    });
+    expect(openAi.messages[0].tool_calls[0].id).toBe("c1");
+    expect(openAi.messages[1]).toMatchObject({ role: "tool", tool_call_id: "c1", content: "done" });
+    expect(openAi.tools[0].function.name).toBe("lookup");
+  });
+
+  it("emits every parallel tool call in Claude SSE and accepts CRLF", async () => {
+    const payload = { choices: [{ delta: { tool_calls: [
+      { index: 0, id: "a", function: { name: "one", arguments: "{}" } },
+      { index: 1, id: "b", function: { name: "two", arguments: "{}" } }
+    ] }, finish_reason: "tool_calls" }] };
+    const input = new ReadableStream<Uint8Array>({ start(controller) {
+      controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(payload)}\r\n\r\n`));
+      controller.close();
+    } });
+    const text = await new Response(claudeStreamFromOpenAiSse(input, "m")).text();
+    expect(text).toContain('"id":"a"');
+    expect(text).toContain('"id":"b"');
+    expect(text).toContain('"index":1');
+    expect(text).toContain('"index":2');
+  });
   it("converts a Responses request with string input", () => {
     const openAi = responsesToOpenAi({ model: "m", input: "hi", instructions: "be brief", max_output_tokens: 50 });
     expect(openAi.messages).toEqual([{ role: "system", content: "be brief" }, { role: "user", content: "hi" }]);

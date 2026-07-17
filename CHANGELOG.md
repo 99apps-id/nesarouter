@@ -2,6 +2,28 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.36 - 2026-07-17
+
+### Security
+
+- Require client authentication before parsing OpenAI-compatible request bodies and reject oversized JSON/audio payloads.
+- Trust forwarded host, protocol, and client-IP headers only when `NESA_TRUST_PROXY=true`; cap admin session lifetime and strengthen login throttling defaults.
+- Verify downloaded cloudflared assets with the SHA-256 digest published by GitHub Releases, validate managed process identity before signalling a PID, and harden local data permissions on POSIX.
+- Add browser security headers, isolate external tunnel links, redact local credential paths, and avoid redisclosing existing CLI API keys.
+- Bound MCP sessions and RPC payloads, close failed child-process streams, and emit valid multiline SSE framing.
+
+### Fixed
+
+- Preserve concurrently-created API keys and usage records when saving router settings instead of rewriting unrelated SQLite tables from a stale snapshot.
+- Start and stop Headroom/cloudflared safely across Windows, Linux, and macOS without treating a reused PID as a managed process.
+- Stream SOCKS responses, encode multipart uploads correctly, apply upstream timeouts, and propagate client cancellation to provider requests.
+- Coalesce concurrent OAuth token refreshes per account and correct cache keys, output-token estimates, quota accounting, and failed/cancelled stream spend accounting.
+- Handle CRLF and bounded SSE buffers, parallel Claude tool calls, and Responses API function-call input/output translation.
+
+### Validation
+
+- 269 unit tests across 53 files, TypeScript validation, OSS public-boundary check, production build, and cloudflared release-digest availability check pass.
+
 ## 0.1.35 - 2026-07-17
 
 ### Security

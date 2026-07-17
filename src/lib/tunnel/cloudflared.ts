@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import https from "node:https";
 import os from "node:os";
-import { execSync, spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import crypto from "node:crypto";
 import { getDataDir } from "@/lib/store";
 
 const BIN_DIR = path.join(getDataDir(), "bin");
@@ -10,8 +11,7 @@ const IS_WINDOWS = os.platform() === "win32";
 const BINARY_NAME = "cloudflared";
 const BIN_NAME = IS_WINDOWS ? `${BINARY_NAME}.exe` : BINARY_NAME;
 const BIN_PATH = path.join(BIN_DIR, BIN_NAME);
-
-const GITHUB_BASE_URL = "https://github.com/cloudflare/cloudflared/releases/latest/download";
+const BIN_DIGEST_PATH = `${BIN_PATH}.sha256`;
 
 const PLATFORM_MAPPINGS: Record<string, Record<string, string>> = {
   darwin: { x64: "cloudflared-darwin-amd64.tgz", arm64: "cloudflared-darwin-arm64.tgz" },
@@ -25,13 +25,28 @@ const PLATFORM_FALLBACK: Record<string, string> = {
   linux: "cloudflared-linux-amd64"
 };
 
-function getDownloadUrl() {
+function getAssetName() {
   const platform = os.platform();
   const arch = os.arch();
   const mapping = PLATFORM_MAPPINGS[platform];
   if (!mapping) throw new Error(`Unsupported platform: ${platform}`);
   const name = mapping[arch] ?? PLATFORM_FALLBACK[platform];
-  return `${GITHUB_BASE_URL}/${name}`;
+  return name;
+}
+
+async function getDownloadAsset() {
+  const name = getAssetName();
+  const response = await fetch("https://api.github.com/repos/cloudflare/cloudflared/releases/latest", {
+    headers: { accept: "application/vnd.github+json", "user-agent": "NesaRouter" },
+    signal: AbortSignal.timeout(10_000)
+  });
+  if (!response.ok) throw new Error(`Could not verify cloudflared release (${response.status}).`);
+  const release = await response.json() as { assets?: Array<{ name?: string; browser_download_url?: string; digest?: string }> };
+  const asset = release.assets?.find((item) => item.name === name);
+  if (!asset?.browser_download_url || !asset.digest?.startsWith("sha256:")) {
+    throw new Error("Cloudflared release does not provide a SHA-256 digest for this platform.");
+  }
+  return { url: asset.browser_download_url, digest: asset.digest.slice(7).toLowerCase() };
 }
 
 const dlState = { downloading: false, progress: 0 };
@@ -87,6 +102,10 @@ function downloadFile(url: string, dest: string): Promise<string> {
 
 const MIN_BINARY_SIZE = 1024 * 1024;
 
+function sha256(filePath: string) {
+  return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
 function isValidBinary(filePath: string) {
   try {
     const stat = fs.statSync(filePath);
@@ -96,9 +115,13 @@ function isValidBinary(filePath: string) {
     fs.readSync(fd, buf, 0, 4, 0);
     fs.closeSync(fd);
     const magic = buf.toString("hex");
-    if (IS_WINDOWS) return magic.startsWith("4d5a");
-    if (os.platform() === "darwin") return magic.startsWith("cffaedfe") || magic.startsWith("cefaedfe");
-    return magic.startsWith("7f454c46");
+    const magicOk = IS_WINDOWS
+      ? magic.startsWith("4d5a")
+      : os.platform() === "darwin"
+        ? magic.startsWith("cffaedfe") || magic.startsWith("cefaedfe")
+        : magic.startsWith("7f454c46");
+    if (!magicOk || !fs.existsSync(BIN_DIGEST_PATH)) return false;
+    return fs.readFileSync(BIN_DIGEST_PATH, "utf8").trim().toLowerCase() === sha256(filePath);
   } catch {
     return false;
   }
@@ -120,12 +143,17 @@ export async function ensureCloudflared(): Promise<string> {
         return BIN_PATH;
       }
     }
-    const url = getDownloadUrl();
+    const asset = await getDownloadAsset();
+    const url = asset.url;
     const isArchive = url.endsWith(".tgz");
     const downloadDest = isArchive ? path.join(BIN_DIR, "cloudflared.tgz.tmp") : tmpPath;
     await downloadFile(url, downloadDest);
+    if (sha256(downloadDest) !== asset.digest) {
+      try { fs.unlinkSync(downloadDest); } catch {}
+      throw new Error("Cloudflared SHA-256 verification failed.");
+    }
     if (isArchive) {
-      execSync(`tar -xzf "${downloadDest}" -C "${BIN_DIR}"`, { stdio: "pipe", windowsHide: true });
+      execFileSync("tar", ["-xzf", downloadDest, "-C", BIN_DIR], { stdio: "pipe", windowsHide: true });
       try { fs.unlinkSync(downloadDest); } catch {}
       // the extracted binary may be named "cloudflared" without .exe
       const extracted = path.join(BIN_DIR, "cloudflared");
@@ -134,6 +162,7 @@ export async function ensureCloudflared(): Promise<string> {
       fs.renameSync(downloadDest, BIN_PATH);
     }
     if (!IS_WINDOWS) fs.chmodSync(BIN_PATH, "755");
+    fs.writeFileSync(BIN_DIGEST_PATH, sha256(BIN_PATH), { encoding: "utf8", mode: 0o600 });
     return BIN_PATH;
   })().finally(() => { downloadPromise = null; });
   return downloadPromise;
@@ -150,6 +179,20 @@ function loadPid(): number | null {
   try { if (fs.existsSync(pidFile)) return parseInt(fs.readFileSync(pidFile, "utf8"), 10); } catch {}
   return null;
 }
+
+function isCloudflaredPid(pid: number) {
+  try {
+    process.kill(pid, 0);
+    const commandLine = process.platform === "win32"
+      ? execFileSync("powershell", ["-NoProfile", "-Command", `(Get-CimInstance Win32_Process -Filter \"ProcessId = ${pid}\").CommandLine`], { encoding: "utf8", timeout: 3000, windowsHide: true })
+      : process.platform === "linux"
+        ? fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, " ")
+        : execFileSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8", timeout: 3000 });
+    return /(?:^|[\\/\s])cloudflared(?:\.exe)?(?:\s|$)/i.test(commandLine);
+  } catch {
+    return false;
+  }
+}
 function clearPid() {
   try { if (fs.existsSync(pidFile)) fs.unlinkSync(pidFile); } catch {}
 }
@@ -157,7 +200,7 @@ function clearPid() {
 export function isCloudflaredRunning() {
   const pid = loadPid();
   if (!pid) return false;
-  try { process.kill(pid, 0); return true; } catch { return false; }
+  return isCloudflaredPid(pid);
 }
 
 let unexpectedExitHandler: (() => void) | null = null;
@@ -277,8 +320,8 @@ export function killCloudflared() {
   try { managed?.kill(); } catch {}
   cloudflaredProcess = null;
   const pid = loadPid();
-  if (pid) {
+  if (pid && isCloudflaredPid(pid)) {
     try { process.kill(pid); } catch {}
-    clearPid();
   }
+  clearPid();
 }

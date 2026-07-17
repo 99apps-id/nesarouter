@@ -12,6 +12,18 @@ const nextConfig = {
   output: "standalone",
   serverExternalPackages: ["better-sqlite3"],
   allowedDevOrigins: ["localhost", "127.0.0.1"],
+  async headers() {
+    return [{
+      source: "/:path*",
+      headers: [
+        { key: "Content-Security-Policy", value: "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: http: ws: wss:" },
+        { key: "X-Content-Type-Options", value: "nosniff" },
+        { key: "X-Frame-Options", value: "DENY" },
+        { key: "Referrer-Policy", value: "no-referrer" },
+        { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" }
+      ]
+    }];
+  },
   // Bake version into the server/client bundle so standalone/Docker do not show v0.0.0.
   env: {
     NESA_APP_VERSION: packageJson.version

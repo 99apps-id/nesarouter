@@ -117,7 +117,7 @@ export default function TunnelPanel() {
       setMessage(result.error ?? "Failed to enable Tailscale.");
       if (result.enableUrl) {
         setLoginUrl(result.enableUrl);
-        window.open(result.enableUrl, "_blank");
+        window.open(result.enableUrl, "_blank", "noopener,noreferrer");
       }
     }
     setBusy("");
@@ -141,7 +141,7 @@ export default function TunnelPanel() {
     const result = await response.json().catch(() => ({}));
     if (response.ok && result.loginUrl) {
       setLoginUrl(result.loginUrl);
-      window.open(result.loginUrl, "_blank");
+      window.open(result.loginUrl, "_blank", "noopener,noreferrer");
     } else {
       setMessage(result.error ?? "Tailscale login failed.");
     }

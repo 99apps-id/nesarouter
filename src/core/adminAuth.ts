@@ -27,14 +27,19 @@ export { adminCookieName, peekAdminCookie, timingSafeEqualString } from "@/core/
 export const defaultAdminPassword = "nesa123456";
 export const MAX_LOGIN_ATTEMPTS = 5;
 
+function trustProxyHeaders() {
+  const value = process.env.NESA_TRUST_PROXY?.trim().toLowerCase();
+  return value === "1" || value === "true";
+}
+
 export function loginRateLimitKey(request: Request) {
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const address =
-    request.headers.get("cf-connecting-ip")?.trim() ||
-    request.headers.get("x-real-ip")?.trim() ||
-    forwarded;
-  const userAgent = request.headers.get("user-agent")?.slice(0, 256) || "unknown";
-  const identity = address ? `ip:${address.toLowerCase()}` : `local:${userAgent}`;
+  const forwarded = trustProxyHeaders()
+    ? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    : undefined;
+  const address = trustProxyHeaders()
+    ? request.headers.get("cf-connecting-ip")?.trim() || request.headers.get("x-real-ip")?.trim() || forwarded
+    : undefined;
+  const identity = address ? `ip:${address.toLowerCase()}` : "direct";
   return crypto.createHash("sha256").update(identity).digest("hex").slice(0, 32);
 }
 

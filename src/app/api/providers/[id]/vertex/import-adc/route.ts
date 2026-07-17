@@ -58,11 +58,11 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     NextResponse.json({
       ok: true,
       imported: true,
-      path: local.path,
+      source: "local Google credential profile",
       kind,
       projectId: projectId || null,
       needsProjectId: !projectId && (Boolean(parseVertexAdcJson(local.json)) || Boolean(parseVertexSaJson(local.json))),
-      message: `Imported ${label} from ${local.path}${projectId ? ` · project ${projectId}` : " · set GCP Project ID if missing"}`
+      message: `Imported ${label} from the local Google credential profile${projectId ? ` · project ${projectId}` : " · set GCP Project ID if missing"}`
     }),
     request
   );

@@ -1,7 +1,7 @@
 import { BudgetSettings, Combo, NesaStore, ProviderConfig, ProviderTier, RouteDecision, TaskType } from "@/core/types";
 import { resolveModelAlias } from "@/core/aliases";
 import { getBudgetStatus } from "@/core/budget";
-import { detectTaskType, estimateCost, estimateOutputTokens, estimateTokens, extractRequestText } from "@/core/estimation";
+import { detectTaskType, estimateCost, estimateOutputTokens, estimateTokens, extractRequestText, requestedOutputTokens } from "@/core/estimation";
 import { parsePrefixedModel } from "@/core/providerPrefixes";
 import { hasRoutableOAuthConnection } from "@/core/oauthAccounts";
 import { providerHasCredential } from "@/core/providerCredentials";
@@ -155,7 +155,7 @@ export function chooseProvider(
   const text = extractRequestText(body);
   const taskType = store.router.evaluatorEnabled === false ? "chat" : detectTaskType(text);
   const estimatedInputTokens = estimateTokens(text || JSON.stringify(body).slice(0, 4000));
-  const estimatedOutputTokens = estimateOutputTokens(estimatedInputTokens, taskType);
+  const estimatedOutputTokens = requestedOutputTokens(body, estimateOutputTokens(estimatedInputTokens, taskType));
   const skippedProviders: RouteDecision["skippedProviders"] = [];
 
   const activeProviders = store.providers.filter((provider) => {
