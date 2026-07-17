@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { applyCliToolConfigLocal, deepMergeJson } from "@/lib/cliLocalApply";
+import { applyCliConfigFile, applyCliToolConfigLocal, deepMergeJson, mergeHermesModelYaml, mergeTomlConfig, resetCliToolConfigLocal } from "@/lib/cliLocalApply";
 import { buildCliInstallScripts, buildCliToolConfig, resolveCliModel } from "@/lib/cliToolConfig";
 import { defaultStore } from "@/lib/defaults";
 
@@ -34,6 +34,16 @@ describe("cli tool config", () => {
     expect(scripts.powershell).toContain("USERPROFILE");
     expect(scripts.powershell).toContain("NESA_PATCH");
     expect(scripts.bash).toContain("nesa_test");
+    expect(scripts.bash).toContain(".config/nesarouter/cli.env");
+    expect(scripts.bash).toContain("$HOME/.profile");
+  });
+
+  it("uses Qwen's OpenAI provider schema", () => {
+    const config = buildCliToolConfig("qwen-code", "http://localhost:20129", "nesa_test", "auto");
+    const json = JSON.parse(config.files[0]!.content);
+    expect(json.modelProviders.openai[0]).toMatchObject({ id: "auto", baseUrl: "http://localhost:20129/v1", envKey: "NESA_ROUTER_API_KEY" });
+    expect(json.security.auth.selectedType).toBe("openai");
+    expect(json.env.NESA_ROUTER_API_KEY).toBe("nesa_test");
   });
 });
 
@@ -50,6 +60,30 @@ describe("cli local apply merge", () => {
       keep: true,
       env: { OTHER: "1", ANTHROPIC_BASE_URL: "x" }
     });
+  });
+
+  it("merges Codex provider without deleting unrelated TOML settings", () => {
+    const existing = `model = "old"\napproval_policy = "on-request"\n\n[model_providers.other]\nname = "Other"\n`;
+    const patch = buildCliToolConfig("codex", "http://127.0.0.1:20129", "nesa_secret", "auto").files[0]!.content;
+    const merged = mergeTomlConfig(existing, patch);
+    expect(merged).toContain('approval_policy = "on-request"');
+    expect(merged).toContain("[model_providers.other]");
+    expect(merged).toContain('model_provider = "nesa"');
+    expect(merged).toContain('experimental_bearer_token = "nesa_secret"');
+    expect(merged.match(/^model\s*=/gm)).toHaveLength(1);
+  });
+
+  it("applies Codex TOML merge locally and preserves existing settings", () => {
+    const codexPath = path.join(tmpDir, "config.toml");
+    fs.mkdirSync(tmpDir, { recursive: true });
+    fs.writeFileSync(codexPath, 'approval_policy = "never"\n\n[other]\nx = 1\n');
+    const config = buildCliToolConfig("codex", "http://127.0.0.1:20129", "nesa_local", "auto");
+    config.files[0]!.path = codexPath;
+    applyCliToolConfigLocal(config);
+    const saved = fs.readFileSync(codexPath, "utf8");
+    expect(saved).toContain('approval_policy = "never"');
+    expect(saved).toContain("[other]");
+    expect(saved).toContain('model_provider = "nesa"');
   });
 
   it("applies Claude override into an existing settings file", () => {
@@ -70,6 +104,40 @@ describe("cli local apply merge", () => {
     expect(saved.env.OTHER).toBe("keep");
     expect(saved.env.ANTHROPIC_AUTH_TOKEN).toBe("nesa_local");
     expect(saved.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:20129/v1");
+  });
+
+  it("refuses to overwrite malformed JSON", () => {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    fs.writeFileSync(settingsPath, "{ broken", "utf8");
+    expect(() => applyCliConfigFile({ path: settingsPath, content: '{"env":{"X":"1"}}', writeMode: "merge-json" })).toThrow(/existing JSON is invalid/i);
+    expect(fs.readFileSync(settingsPath, "utf8")).toBe("{ broken");
+  });
+
+  it("merges Hermes and TOML targets without wiping unrelated config", () => {
+    const yaml = mergeHermesModelYaml("ui:\n  theme: dark\nmodel:\n  temperature: 0.2\n  default: old\n", "model:\n  default: auto\n  provider: openai\n  base_url: http://127.0.0.1:20129/v1\n");
+    expect(yaml).toContain("theme: dark");
+    expect(yaml).toContain("temperature: 0.2");
+    expect(yaml).not.toContain("default: old");
+    const toml = mergeTomlConfig("[other]\nx=1\n\n[provider]\nbase_url='old'\n", "[provider]\nbase_url='new'\n", "provider");
+    expect(toml).toContain("[other]");
+    expect(toml).not.toContain("base_url='old'");
+  });
+
+  it("fully resets Qwen and OpenClaw Nesa references", () => {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    fs.writeFileSync(settingsPath, JSON.stringify({ modelProviders: { openai: [{ id: "auto", baseUrl: "http://127.0.0.1:20129/v1", envKey: "NESA_ROUTER_API_KEY" }, { id: "other" }] }, env: { NESA_ROUTER_API_KEY: "x", KEEP: "y" }, model: { name: "auto" }, security: { auth: { selectedType: "openai" } } }));
+    resetCliToolConfigLocal("qwen-code", { settingsPath });
+    const qwen = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    expect(qwen.modelProviders.openai).toEqual([{ id: "other" }]);
+    expect(qwen.env).toEqual({ KEEP: "y" });
+    expect(qwen.model).toBeUndefined();
+
+    fs.writeFileSync(settingsPath, JSON.stringify({ models: { providers: { nesa: { apiKey: "x" }, other: {} } }, agents: { defaults: { model: { primary: "nesa/auto", fallback: "other/x" }, models: { "nesa/auto": {}, "other/x": {} } } } }));
+    resetCliToolConfigLocal("openclaw", { settingsPath });
+    const openclaw = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    expect(openclaw.models.providers.nesa).toBeUndefined();
+    expect(openclaw.agents.defaults.model).toEqual({ fallback: "other/x" });
+    expect(openclaw.agents.defaults.models).toEqual({ "other/x": {} });
   });
 
   it("resets Claude NesaRouter env keys while keeping other settings", async () => {

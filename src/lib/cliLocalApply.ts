@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { CliConfigFile, CliToolConfig, CliToolId } from "@/lib/cliToolConfig";
 
 /** Deep-merge objects; arrays and scalars from the patch win. */
@@ -25,21 +26,26 @@ export function expandCliHomePath(filePath: string) {
   return filePath;
 }
 
-function readJsonFile(filePath: string): Record<string, unknown> {
+function readJsonFile(filePath: string, strict = false): Record<string, unknown> {
   if (!fs.existsSync(filePath)) return {};
   try {
     const raw = fs.readFileSync(filePath, "utf8");
     const stripped = raw.replace(/,(\s*[}\]])/g, "$1");
     const parsed = JSON.parse(stripped);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch {
+  } catch (error) {
+    if (strict) throw new Error(`Cannot safely patch ${filePath}: existing JSON is invalid. Fix or back up the file first.`, { cause: error });
     return {};
   }
 }
 
 export function applyCliConfigFile(file: CliConfigFile) {
   const target = expandCliHomePath(file.path);
-  fs.mkdirSync(path.dirname(target), { recursive: true });
+  try {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+  } catch (error) {
+    throw cliWriteError(target, error);
+  }
 
   const mode = file.writeMode ?? (file.path.endsWith(".json") ? "merge-json" : "replace");
   if (mode === "merge-json") {
@@ -49,26 +55,87 @@ export function applyCliConfigFile(file: CliConfigFile) {
     } catch {
       throw new Error(`Invalid JSON patch for ${file.path}`);
     }
-    const merged = deepMergeJson(readJsonFile(target), patch);
-    fs.writeFileSync(target, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+    const merged = deepMergeJson(readJsonFile(target, true), patch);
+    try { fs.writeFileSync(target, `${JSON.stringify(merged, null, 2)}\n`, "utf8"); } catch (error) { throw cliWriteError(target, error); }
     return { path: target, mode: "merge-json" as const };
+  }
+
+  if (mode === "merge-toml") {
+    const existing = fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
+    try {
+      fs.writeFileSync(target, mergeTomlConfig(existing, file.content, file.tomlTable), { encoding: "utf8", mode: 0o600 });
+      if (process.platform !== "win32") fs.chmodSync(target, 0o600);
+    } catch (error) { throw cliWriteError(target, error); }
+    return { path: target, mode: "merge-toml" as const };
+  }
+
+  if (mode === "merge-yaml-model") {
+    const existing = fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
+    try { fs.writeFileSync(target, mergeHermesModelYaml(existing, file.content), "utf8"); } catch (error) { throw cliWriteError(target, error); }
+    return { path: target, mode: "merge-yaml-model" as const };
   }
 
   // Env files: upsert Nesa keys instead of wiping unrelated vars.
   if (target.endsWith(".env") || path.basename(target) === ".env") {
     const next = upsertEnvFile(fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "", file.content);
-    fs.writeFileSync(target, next.endsWith("\n") ? next : `${next}\n`, "utf8");
+    try { fs.writeFileSync(target, next.endsWith("\n") ? next : `${next}\n`, "utf8"); } catch (error) { throw cliWriteError(target, error); }
     return { path: target, mode: "replace" as const };
   }
 
-  fs.writeFileSync(target, file.content.endsWith("\n") ? file.content : `${file.content}\n`, "utf8");
+  try { fs.writeFileSync(target, file.content.endsWith("\n") ? file.content : `${file.content}\n`, "utf8"); } catch (error) { throw cliWriteError(target, error); }
   return { path: target, mode: "replace" as const };
+}
+
+function cliWriteError(target: string, error: unknown) {
+  const cause = error as NodeJS.ErrnoException;
+  if (cause?.code === "EACCES" || cause?.code === "EPERM") {
+    return new Error(`Cannot write ${target}: permission denied. Ensure the NesaRouter service user owns the file and its parent directory (for example: sudo chown -R $(systemctl show nesarouter -p User --value) ${path.dirname(target)}).`);
+  }
+  return error instanceof Error ? error : new Error(`Cannot write ${target}.`);
+}
+
+export function mergeTomlConfig(existing: string, patch: string, tableName?: string) {
+  const scalarKeys = [...patch.split(/^\s*\[/m)[0].matchAll(/^([A-Za-z0-9_-]+)\s*=/gm)].map((match) => match[1]);
+  let insideTable = false;
+  const kept = existing.split(/\r?\n/).filter((line) => {
+    if (/^\s*\[/.test(line)) insideTable = true;
+    if (!insideTable && scalarKeys.some((key) => new RegExp(`^\\s*${key}\\s*=`).test(line))) return false;
+    return true;
+  }).join("\n");
+  const inferred = patch.match(/^\s*\[([^\]]+)\]/m)?.[1];
+  const withoutNesa = stripTomlTable(kept, tableName ?? inferred ?? "model_providers.nesa").trim();
+  return `${withoutNesa ? `${withoutNesa}\n\n` : ""}${patch.trim()}\n`;
+}
+
+export function mergeHermesModelYaml(existing: string, patch: string) {
+  const kept: string[] = [];
+  let inModel = false;
+  for (const line of existing.split(/\r?\n/)) {
+    if (/^model:\s*$/.test(line)) { inModel = true; kept.push(line); continue; }
+    if (inModel && /^\S/.test(line)) inModel = false;
+    if (inModel && /^\s{2}(default|provider|base_url):/.test(line)) continue;
+    kept.push(line);
+  }
+  const patchLines = patch.trim().split(/\r?\n/).slice(1);
+  const modelIndex = kept.findIndex((line) => /^model:\s*$/.test(line));
+  if (modelIndex < 0) kept.push("model:", ...patchLines);
+  else kept.splice(modelIndex + 1, 0, ...patchLines);
+  return `${kept.join("\n").replace(/\n{3,}/g, "\n\n").trim()}\n`;
+}
+
+function stripHermesModelRouting(existing: string) {
+  let inModel = false;
+  return existing.split(/\r?\n/).filter((line) => {
+    if (/^model:\s*$/.test(line)) { inModel = true; return true; }
+    if (inModel && /^\S/.test(line)) inModel = false;
+    return !(inModel && /^\s{2}(default|provider|base_url):/.test(line));
+  }).join("\n");
 }
 
 export function applyCliToolConfigLocal(config: CliToolConfig) {
   if (!config.files.length) {
     return {
-      applied: [] as Array<{ path: string; mode: "merge-json" | "replace" }>,
+      applied: [] as Array<{ path: string; mode: "merge-json" | "merge-toml" | "merge-yaml-model" | "replace" }>,
       skipped: true as const,
       reason: "This tool does not write a local file — use the dashboard instructions / env instead."
     };
@@ -79,12 +146,31 @@ export function applyCliToolConfigLocal(config: CliToolConfig) {
 
 type ToolStatus = {
   installed: boolean;
+  configPresent?: boolean;
+  credentialReady?: boolean;
   settingsPath?: string;
   currentBaseUrl?: string;
   /** nesa = points at NesaRouter; other = some custom URL; none = not patched */
   configStatus: "connected" | "other" | "not_configured" | "unsupported";
   settings?: Record<string, unknown> | null;
 };
+
+const TOOL_COMMANDS: Partial<Record<CliToolId, string[]>> = {
+  "claude-code": ["claude"], codex: ["codex"], "gemini-cli": ["gemini"], "qwen-code": ["qwen"],
+  hermes: ["hermes"], openclaw: ["openclaw"], opencode: ["opencode"], amp: ["amp"], droid: ["droid"],
+  "deepseek-tui": ["deepseek"], jcode: ["jcode"]
+};
+
+function commandInstalled(tool: CliToolId) {
+  const commands = TOOL_COMMANDS[tool];
+  if (!commands?.length) return false;
+  return commands.some((command) => {
+    try {
+      execFileSync(process.platform === "win32" ? "where.exe" : "which", [command], { stdio: "ignore", timeout: 2000, windowsHide: true });
+      return true;
+    } catch { return false; }
+  });
+}
 
 type StatusMeta = {
   path: string;
@@ -104,7 +190,7 @@ const TOOL_STATUS_FILES: Partial<Record<CliToolId, StatusMeta>> = {
   },
   "qwen-code": {
     path: "~/.qwen/settings.json",
-    baseUrlKeys: ["security.auth.baseUrl"]
+    baseUrlKeys: []
   },
   openclaw: {
     path: "~/.openclaw/openclaw.json",
@@ -242,42 +328,55 @@ function continueNesaBaseUrl(settings: Record<string, unknown>): string | undefi
 
 export function readCliToolStatus(tool: CliToolId, nesaBaseUrl?: string): ToolStatus {
   const meta = TOOL_STATUS_FILES[tool];
+  const binaryInstalled = commandInstalled(tool);
+  if (tool === "gemini-cli" || tool === "continue") {
+    return { installed: binaryInstalled, configPresent: false, credentialReady: false, configStatus: "unsupported" };
+  }
   if (!meta) {
-    return { installed: false, configStatus: "unsupported" };
+    return { installed: binaryInstalled, configPresent: false, credentialReady: false, configStatus: "unsupported" };
   }
 
   const settingsPath = expandCliHomePath(meta.path);
   const scanTargets = (meta.scanPaths ?? [meta.path]).map(expandCliHomePath);
-  const installed =
-    fs.existsSync(settingsPath) ||
-    fs.existsSync(path.dirname(settingsPath)) ||
-    scanTargets.some((target) => fs.existsSync(target));
+  const configPresent = fs.existsSync(settingsPath) || scanTargets.some((target) => fs.existsSync(target));
+  const installed = binaryInstalled;
 
   if (!fs.existsSync(settingsPath) && !scanTargets.some((target) => fs.existsSync(target))) {
-    return { installed, settingsPath, configStatus: "not_configured", settings: null };
+    return { installed, configPresent: false, credentialReady: false, settingsPath, configStatus: "not_configured", settings: null };
   }
 
   if (!settingsPath.endsWith(".json")) {
     let currentBaseUrl: string | undefined;
+    let combined = "";
     for (const target of scanTargets) {
       if (!fs.existsSync(target)) continue;
-      currentBaseUrl = extractBaseUrlFromText(fs.readFileSync(target, "utf8"));
-      if (currentBaseUrl) break;
+      const raw = fs.readFileSync(target, "utf8");
+      combined += `\n${raw}`;
+      currentBaseUrl ??= extractBaseUrlFromText(raw);
     }
     if (!currentBaseUrl) {
-      return { installed: true, settingsPath, configStatus: "not_configured", settings: null };
+      return { installed, configPresent, credentialReady: false, settingsPath, configStatus: "not_configured", settings: null };
     }
+    const credentialReady = tool === "hermes"
+      ? /^\s*OPENAI_API_KEY\s*=\s*\S+/im.test(combined)
+      : tool === "codex"
+        ? /^\s*experimental_bearer_token\s*=\s*["'][^"']+["']/im.test(combined) || (
+            /^\s*env_key\s*=\s*["']([^"']+)["']/im.test(combined) && Boolean(process.env[combined.match(/^\s*env_key\s*=\s*["']([^"']+)["']/im)?.[1] ?? ""])
+          )
+        : true;
     return {
-      installed: true,
+      installed,
+      configPresent,
+      credentialReady,
       settingsPath,
       currentBaseUrl,
-      configStatus: looksLikeNesa(currentBaseUrl, nesaBaseUrl) ? "connected" : "other",
+      configStatus: looksLikeNesa(currentBaseUrl, nesaBaseUrl) && credentialReady ? "connected" : "other",
       settings: null
     };
   }
 
   if (!fs.existsSync(settingsPath)) {
-    return { installed, settingsPath, configStatus: "not_configured", settings: null };
+    return { installed, configPresent: false, credentialReady: false, settingsPath, configStatus: "not_configured", settings: null };
   }
 
   const settings = readJsonFile(settingsPath);
@@ -295,19 +394,36 @@ export function readCliToolStatus(tool: CliToolId, nesaBaseUrl?: string): ToolSt
     currentBaseUrl = typeof env.ANTHROPIC_BASE_URL === "string" ? env.ANTHROPIC_BASE_URL : undefined;
   }
 
-  if (tool === "continue" && !currentBaseUrl) {
-    currentBaseUrl = continueNesaBaseUrl(settings);
+  if (tool === "qwen-code") {
+    const providers = getByPath(settings, "modelProviders.openai");
+    if (Array.isArray(providers)) {
+      const nesa = providers.find((entry) => entry && typeof entry === "object" && (
+        (entry as Record<string, unknown>).envKey === "NESA_ROUTER_API_KEY" ||
+        (typeof (entry as Record<string, unknown>).baseUrl === "string" && looksLikeNesa(String((entry as Record<string, unknown>).baseUrl), nesaBaseUrl))
+      )) as Record<string, unknown> | undefined;
+      if (typeof nesa?.baseUrl === "string") currentBaseUrl = nesa.baseUrl;
+    }
   }
 
   if (!currentBaseUrl) {
-    return { installed: true, settingsPath, configStatus: "not_configured", settings, currentBaseUrl };
+    return { installed, configPresent, credentialReady: false, settingsPath, configStatus: "not_configured", settings, currentBaseUrl };
   }
 
+  const credentialReady = tool === "openclaw"
+    ? typeof getByPath(settings, "models.providers.nesa.apiKey") === "string" && Boolean(String(getByPath(settings, "models.providers.nesa.apiKey")).trim())
+    : tool === "claude-code"
+      ? typeof getByPath(settings, "env.ANTHROPIC_AUTH_TOKEN") === "string" && Boolean(String(getByPath(settings, "env.ANTHROPIC_AUTH_TOKEN")).trim())
+    : tool === "qwen-code"
+      ? typeof getByPath(settings, "env.NESA_ROUTER_API_KEY") === "string" && Boolean(String(getByPath(settings, "env.NESA_ROUTER_API_KEY")).trim())
+    : true;
+
   return {
-    installed: true,
+    installed,
+    configPresent,
+    credentialReady,
     settingsPath,
     currentBaseUrl,
-    configStatus: looksLikeNesa(currentBaseUrl, nesaBaseUrl) ? "connected" : "other",
+    configStatus: looksLikeNesa(currentBaseUrl, nesaBaseUrl) && credentialReady ? "connected" : "other",
     settings
   };
 }
@@ -322,13 +438,13 @@ function writeOrRemove(filePath: string, content: string) {
   fs.writeFileSync(filePath, content.endsWith("\n") ? content : `${content}\n`, "utf8");
 }
 
-export function resetCliToolConfigLocal(tool: CliToolId, options?: { settingsPath?: string }) {
+export function resetCliToolConfigLocal(tool: CliToolId, options?: { settingsPath?: string; envPath?: string }) {
   if (tool === "claude-code") {
     const settingsPath = options?.settingsPath ?? expandCliHomePath("~/.claude/settings.json");
     if (!fs.existsSync(settingsPath)) {
       return { ok: true, message: "No Claude settings file to reset." };
     }
-    const settings = readJsonFile(settingsPath);
+    const settings = readJsonFile(settingsPath, true);
     const env = { ...((settings.env as Record<string, unknown> | undefined) ?? {}) };
     for (const key of CLAUDE_RESET_ENV) delete env[key];
     if (Object.keys(env).length === 0) delete settings.env;
@@ -342,7 +458,8 @@ export function resetCliToolConfigLocal(tool: CliToolId, options?: { settingsPat
       options?.settingsPath ??
       expandCliHomePath(tool === "gemini-cli" ? "~/.gemini/settings.json" : "~/.qwen/settings.json");
     if (!fs.existsSync(filePath)) return { ok: true, message: "No settings file to reset." };
-    const settings = readJsonFile(filePath);
+    const settings = readJsonFile(filePath, true);
+    const previousBaseUrl = getByPath(settings, "security.auth.baseUrl");
     const security = (settings.security as Record<string, unknown> | undefined) ?? {};
     const auth = (security.auth as Record<string, unknown> | undefined) ?? {};
     delete auth.apiKey;
@@ -350,6 +467,26 @@ export function resetCliToolConfigLocal(tool: CliToolId, options?: { settingsPat
     delete auth.selectedType;
     security.auth = auth;
     settings.security = security;
+    if (tool === "qwen-code") {
+      const providers = (settings.modelProviders as Record<string, unknown> | undefined) ?? {};
+      const openai = Array.isArray(providers.openai) ? providers.openai : [];
+      const isNesaProvider = (entry: unknown) => entry && typeof entry === "object" && (
+        (entry as Record<string, unknown>).envKey === "NESA_ROUTER_API_KEY" ||
+        (typeof (entry as Record<string, unknown>).baseUrl === "string" && looksLikeNesa(String((entry as Record<string, unknown>).baseUrl)))
+      );
+      const hadNesaProvider = openai.some(isNesaProvider);
+      providers.openai = openai.filter((entry) => !isNesaProvider(entry));
+      if ((providers.openai as unknown[]).length === 0) delete providers.openai;
+      if (Object.keys(providers).length === 0) delete settings.modelProviders;
+      else settings.modelProviders = providers;
+      const env = (settings.env as Record<string, unknown> | undefined) ?? {};
+      delete env.NESA_ROUTER_API_KEY;
+      if (Object.keys(env).length === 0) delete settings.env;
+      else settings.env = env;
+      if (hadNesaProvider) delete settings.model;
+    } else if (typeof previousBaseUrl === "string" && looksLikeNesa(previousBaseUrl)) {
+      delete settings.model;
+    }
     fs.writeFileSync(filePath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
     return { ok: true, message: "Settings unpatched.", path: filePath };
   }
@@ -357,12 +494,22 @@ export function resetCliToolConfigLocal(tool: CliToolId, options?: { settingsPat
   if (tool === "openclaw") {
     const filePath = options?.settingsPath ?? expandCliHomePath("~/.openclaw/openclaw.json");
     if (!fs.existsSync(filePath)) return { ok: true, message: "No openclaw.json to reset." };
-    const settings = readJsonFile(filePath);
+    const settings = readJsonFile(filePath, true);
     const models = (settings.models as Record<string, unknown> | undefined) ?? {};
     const providers = (models.providers as Record<string, unknown> | undefined) ?? {};
     delete providers.nesa;
     models.providers = providers;
     settings.models = models;
+    const agents = (settings.agents as Record<string, unknown> | undefined) ?? {};
+    const defaults = (agents.defaults as Record<string, unknown> | undefined) ?? {};
+    const model = (defaults.model as Record<string, unknown> | undefined) ?? {};
+    if (typeof model.primary === "string" && model.primary.startsWith("nesa/")) delete model.primary;
+    if (Object.keys(model).length) defaults.model = model; else delete defaults.model;
+    const aliases = (defaults.models as Record<string, unknown> | undefined) ?? {};
+    for (const key of Object.keys(aliases)) if (key.startsWith("nesa/")) delete aliases[key];
+    if (Object.keys(aliases).length) defaults.models = aliases; else delete defaults.models;
+    if (Object.keys(defaults).length) agents.defaults = defaults; else delete agents.defaults;
+    if (Object.keys(agents).length) settings.agents = agents; else delete settings.agents;
     fs.writeFileSync(filePath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
     return { ok: true, message: "Removed NesaRouter provider from OpenClaw.", path: filePath };
   }
@@ -370,7 +517,7 @@ export function resetCliToolConfigLocal(tool: CliToolId, options?: { settingsPat
   if (tool === "continue") {
     const filePath = options?.settingsPath ?? expandCliHomePath("~/.continue/config.json");
     if (!fs.existsSync(filePath)) return { ok: true, message: "No Continue config to reset." };
-    const settings = readJsonFile(filePath);
+    const settings = readJsonFile(filePath, true);
     const models = Array.isArray(settings.models) ? settings.models : [];
     settings.models = models.filter((entry) => {
       if (!entry || typeof entry !== "object") return true;
@@ -387,16 +534,13 @@ export function resetCliToolConfigLocal(tool: CliToolId, options?: { settingsPat
 
   if (tool === "hermes") {
     const yamlPath = options?.settingsPath ?? expandCliHomePath("~/.hermes/config.yaml");
-    const envPath = expandCliHomePath("~/.hermes/.env");
+    const envPath = options?.envPath ?? expandCliHomePath("~/.hermes/.env");
     if (fs.existsSync(envPath)) {
       writeOrRemove(envPath, stripEnvKeys(fs.readFileSync(envPath, "utf8"), OPENAI_ENV_KEYS));
     }
     if (fs.existsSync(yamlPath)) {
       const raw = fs.readFileSync(yamlPath, "utf8");
-      const next = raw
-        .split(/\r?\n/)
-        .filter((line) => !/^\s*base_url\s*:/i.test(line))
-        .join("\n");
+      const next = stripHermesModelRouting(raw);
       writeOrRemove(yamlPath, next);
     }
     return { ok: true, message: "Hermes NesaRouter base URL / OpenAI env removed.", path: yamlPath };
@@ -405,19 +549,19 @@ export function resetCliToolConfigLocal(tool: CliToolId, options?: { settingsPat
   if (tool === "codex") {
     const filePath = options?.settingsPath ?? expandCliHomePath("~/.codex/config.toml");
     if (!fs.existsSync(filePath)) return { ok: true, message: "No Codex config to reset." };
-    writeOrRemove(filePath, stripTomlTable(fs.readFileSync(filePath, "utf8"), "model_providers.nesa"));
+    const withoutProvider = stripTomlTable(fs.readFileSync(filePath, "utf8"), "model_providers.nesa");
+    const next = withoutProvider
+      .split(/\r?\n/)
+      .filter((line) => !/^\s*model_provider\s*=\s*["']nesa["']\s*$/i.test(line))
+      .join("\n");
+    writeOrRemove(filePath, next);
     return { ok: true, message: "Removed NesaRouter provider from Codex config.", path: filePath };
   }
 
   if (tool === "deepseek-tui") {
     const filePath = options?.settingsPath ?? expandCliHomePath("~/.deepseek/config.toml");
     if (!fs.existsSync(filePath)) return { ok: true, message: "No DeepSeek TUI config to reset." };
-    const raw = fs.readFileSync(filePath, "utf8");
-    const next = raw
-      .split(/\r?\n/)
-      .filter((line) => !/^\s*(base_url|api_key)\s*=/i.test(line))
-      .join("\n");
-    writeOrRemove(filePath, next);
+    writeOrRemove(filePath, stripTomlTable(fs.readFileSync(filePath, "utf8"), "provider"));
     return { ok: true, message: "DeepSeek TUI NesaRouter base URL / key removed.", path: filePath };
   }
 

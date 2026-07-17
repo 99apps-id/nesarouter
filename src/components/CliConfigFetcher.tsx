@@ -92,6 +92,8 @@ export default function CliConfigFetcher({
     currentBaseUrl?: string;
     settingsPath?: string;
     installed?: boolean;
+    configPresent?: boolean;
+    credentialReady?: boolean;
   } | null>(null);
   const [checking, setChecking] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -113,7 +115,9 @@ export default function CliConfigFetcher({
         configStatus: payload.configStatus,
         currentBaseUrl: payload.currentBaseUrl,
         settingsPath: payload.settingsPath,
-        installed: payload.installed
+        installed: payload.installed,
+        configPresent: payload.configPresent,
+        credentialReady: payload.credentialReady
       });
       if (payload.modelTarget) setModelTarget(payload.modelTarget);
     } else {
@@ -278,6 +282,14 @@ export default function CliConfigFetcher({
           <strong className="subtle" style={{ fontWeight: 600 }}>
             {status?.currentBaseUrl ?? "—"}
           </strong>
+        </div>
+        <div>
+          <span>Executable</span>
+          <strong>{status?.installed ? "Detected" : "Not detected"}</strong>
+        </div>
+        <div>
+          <span>Config / credential</span>
+          <strong>{status?.configPresent ? (status.credentialReady ? "Ready" : "Credential missing") : "Not configured"}</strong>
         </div>
       </div>
 
