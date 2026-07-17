@@ -36,6 +36,10 @@ describe("CLI config URLs", () => {
     const cfg = buildCliToolConfig("codex", "http://localhost:20129", "nesa-key", "auto");
     expect(cfg.env.OPENAI_BASE_URL).toBe("http://localhost:20129/v1");
     expect(cfg.files[0].content).toContain('base_url = "http://localhost:20129/v1"');
+    expect(cfg.files[0].content).toContain('model_provider = "nesa"');
+    expect(cfg.files[0].content).toContain('wire_api = "responses"');
+    expect(cfg.files[0].content).toContain('experimental_bearer_token = "nesa-key"');
+    expect(cfg.files[0].writeMode).toBe("merge-toml");
   });
 
   it("does not append /v1 twice", () => {

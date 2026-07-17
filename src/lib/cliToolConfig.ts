@@ -28,11 +28,9 @@ export type CliToolId = (typeof CLI_TOOL_IDS)[number];
 export const CLI_FILE_PATCHABLE_IDS = [
   "claude-code",
   "codex",
-  "gemini-cli",
   "qwen-code",
   "hermes",
   "openclaw",
-  "continue",
   "deepseek-tui",
   "jcode"
 ] as const satisfies readonly CliToolId[];
@@ -45,7 +43,8 @@ export interface CliConfigFile {
   path: string;
   content: string;
   /** Default: merge-json for *.json, replace otherwise. */
-  writeMode?: "merge-json" | "replace";
+  writeMode?: "merge-json" | "merge-toml" | "merge-yaml-model" | "replace";
+  tomlTable?: string;
 }
 
 export interface CliToolConfig {
@@ -148,29 +147,18 @@ export function buildCliToolConfig(tool: CliToolId, baseUrl: string, apiKey: str
         files: [
           {
             path: "~/.codex/config.toml",
-            content: `model = "${model}"\n\n[model_providers.nesa]\nname = "NesaRouter"\nbase_url = "${v1}"\nenv_key = "OPENAI_API_KEY"`
+            writeMode: "merge-toml",
+            content: `model = "${model}"\nmodel_provider = "nesa"\n\n[model_providers.nesa]\nname = "NesaRouter"\nbase_url = "${v1}"\nwire_api = "responses"\nexperimental_bearer_token = "${apiKey}"`
           }
         ],
         env: { OPENAI_BASE_URL: v1, OPENAI_API_KEY: apiKey, OPENAI_MODEL: model }
       };
     case "gemini-cli":
       return {
-        summary: "Gemini CLI — OpenAI-compatible provider block (merge)",
-        files: [
-          {
-            path: "~/.gemini/settings.json",
-            writeMode: "merge-json",
-            content: JSON.stringify(
-              {
-                security: { auth: { selectedType: "openai", apiKey, baseUrl: v1 } },
-                model: { name: model }
-              },
-              null,
-              2
-            )
-          }
-        ],
-        env: { OPENAI_BASE_URL: v1, OPENAI_API_KEY: apiKey, GEMINI_MODEL: model }
+        summary: "Gemini CLI — generic OpenAI-compatible override unsupported",
+        files: [],
+        env: {},
+        instructions: "Gemini CLI resmi tidak menyediakan provider OpenAI-compatible generik. Gunakan Qwen Code, Codex, Claude Code, OpenClaw, atau konfigurasi Generic untuk NesaRouter."
       };
     case "qwen-code":
       return {
@@ -181,7 +169,11 @@ export function buildCliToolConfig(tool: CliToolId, baseUrl: string, apiKey: str
             writeMode: "merge-json",
             content: JSON.stringify(
               {
-                security: { auth: { selectedType: "openai", apiKey, baseUrl: v1 } },
+                modelProviders: {
+                  openai: [{ id: model, name: `NesaRouter (${model})`, baseUrl: v1, envKey: "NESA_ROUTER_API_KEY" }]
+                },
+                env: { NESA_ROUTER_API_KEY: apiKey },
+                security: { auth: { selectedType: "openai" } },
                 model: { name: model }
               },
               null,
@@ -197,9 +189,10 @@ export function buildCliToolConfig(tool: CliToolId, baseUrl: string, apiKey: str
         files: [
           {
             path: "~/.hermes/config.yaml",
+            writeMode: "merge-yaml-model",
             content: `model:\n  default: "${model}"\n  provider: "custom"\n  base_url: "${v1}"\n`
           },
-          { path: "~/.hermes/.env", content: `OPENAI_API_KEY=${apiKey}\nOPENAI_BASE_URL=${v1}\n` }
+          { path: "~/.hermes/.env", content: `OPENAI_API_KEY=${apiKey}\nOPENAI_BASE_URL=${v1}\nOPENAI_MODEL=${model}\n` }
         ],
         env: { OPENAI_BASE_URL: v1, OPENAI_API_KEY: apiKey }
       };
@@ -238,36 +231,17 @@ export function buildCliToolConfig(tool: CliToolId, baseUrl: string, apiKey: str
       };
     case "continue":
       return {
-        summary: "Continue — config.json model entry (merge)",
-        files: [
-          {
-            path: "~/.continue/config.json",
-            writeMode: "merge-json",
-            content: JSON.stringify(
-              {
-                models: [
-                  {
-                    title: `NesaRouter (${model})`,
-                    provider: "openai",
-                    model,
-                    apiBase: v1,
-                    apiKey
-                  }
-                ]
-              },
-              null,
-              2
-            )
-          }
-        ],
-        env: { OPENAI_BASE_URL: v1, OPENAI_API_KEY: apiKey, OPENAI_MODEL: model }
+        summary: "Continue — config.yaml manual additive setup",
+        files: [],
+        env: {},
+        instructions: `Tambahkan entry berikut ke config.yaml melalui Continue Config tanpa mengganti model lain:\n\nmodels:\n  - name: NesaRouter (${model})\n    provider: openai\n    model: ${model}\n    apiBase: ${v1}\n    apiKey: ${apiKey}`
       };
     case "roo":
       return {
         summary: "Roo Code — OpenAI-compatible base",
         files: [],
         env: { OPENAI_BASE_URL: v1, OPENAI_API_KEY: apiKey, OPENAI_MODEL: model },
-        instructions: `Buka Roo Settings → API Provider → Ollama, lalu isi:\nBase URL: ${v1}\nAPI Key: ${apiKey}\nModel: ${model}`
+        instructions: `Buka Roo Settings → API Provider → OpenAI Compatible, lalu isi:\nBase URL: ${v1}\nAPI Key: ${apiKey}\nModel: ${model}`
       };
     case "kilo":
       return {
@@ -302,6 +276,8 @@ export function buildCliToolConfig(tool: CliToolId, baseUrl: string, apiKey: str
         files: [
           {
             path: "~/.deepseek/config.toml",
+            writeMode: "merge-toml",
+            tomlTable: "provider",
             content: `[provider]\nname = "openai"\nbase_url = "${v1}"\napi_key = "${apiKey}"\nmodel = "${model}"\n`
           }
         ],
@@ -313,6 +289,8 @@ export function buildCliToolConfig(tool: CliToolId, baseUrl: string, apiKey: str
         files: [
           {
             path: "~/.jcode/config.toml",
+            writeMode: "merge-toml",
+            tomlTable: "providers.nesa",
             content: `[providers.nesa]\ntype = "openai"\nbase_url = "${v1}"\napi_key = "${apiKey}"\nmodel = "${model}"\n`
           }
         ],
@@ -387,6 +365,30 @@ export function buildCliInstallScripts(config: CliToolConfig) {
       continue;
     }
 
+    if (mode === "merge-toml") {
+      bashLines.push(`TARGET=${dirBash}`);
+      bashLines.push(`PATCH=${JSON.stringify(file.content)}`);
+      bashLines.push("export TARGET PATCH");
+      bashLines.push(`node -e ${JSON.stringify(nodeMergeTomlSnippet("TARGET", "PATCH", file.tomlTable))}`);
+      psLines.push(`$target = ${dirPs}`);
+      psLines.push(`$env:NESA_TARGET = $target`);
+      psLines.push(`$env:NESA_PATCH = ${JSON.stringify(file.content)}`);
+      psLines.push(`node -e ${JSON.stringify(nodeMergeTomlSnippet("NESA_TARGET", "NESA_PATCH", file.tomlTable))}`);
+      continue;
+    }
+
+    if (mode === "merge-yaml-model") {
+      bashLines.push(`TARGET=${dirBash}`);
+      bashLines.push(`PATCH=${JSON.stringify(file.content)}`);
+      bashLines.push("export TARGET PATCH");
+      bashLines.push(`node -e ${JSON.stringify(nodeMergeYamlModelSnippet())}`);
+      psLines.push(`$target = ${dirPs}`);
+      psLines.push(`$env:NESA_TARGET = $target`);
+      psLines.push(`$env:NESA_PATCH = ${JSON.stringify(file.content)}`);
+      psLines.push(`node -e ${JSON.stringify(nodeMergeYamlModelSnippet("NESA_TARGET", "NESA_PATCH"))}`);
+      continue;
+    }
+
     bashLines.push(`mkdir -p "$(dirname ${dirBash})"`);
     bashLines.push(`cat > ${dirBash} <<'NESA_EOF'`);
     bashLines.push(file.content);
@@ -402,8 +404,16 @@ export function buildCliInstallScripts(config: CliToolConfig) {
 
   if (Object.keys(config.env).length) {
     const exports = Object.entries(config.env).map(([key, value]) => `export ${key}=${JSON.stringify(value)}`);
+    bashLines.push('NESA_ENV_FILE="$HOME/.config/nesarouter/cli.env"');
+    bashLines.push('mkdir -p "$(dirname "$NESA_ENV_FILE")"');
+    bashLines.push('cat > "$NESA_ENV_FILE" <<\'NESA_ENV_EOF\'');
     bashLines.push(...exports);
-    bashLines.push('echo "Export env vars above in your shell profile if you want them permanent."');
+    bashLines.push("NESA_ENV_EOF");
+    bashLines.push('chmod 600 "$NESA_ENV_FILE"');
+    bashLines.push('touch "$HOME/.profile"');
+    bashLines.push('grep -Fq \'. "$HOME/.config/nesarouter/cli.env"\' "$HOME/.profile" || printf \'\\n. "$HOME/.config/nesarouter/cli.env"\\n\' >> "$HOME/.profile"');
+    bashLines.push('source "$NESA_ENV_FILE"');
+    bashLines.push('echo "Environment saved for future shells via ~/.profile."');
     const psEnv = Object.entries(config.env)
       .map(([key, value]) => `[Environment]::SetEnvironmentVariable('${key}', ${JSON.stringify(value)}, 'User')`)
       .join("\n");
@@ -420,6 +430,36 @@ export function buildCliInstallScripts(config: CliToolConfig) {
   };
 }
 
+function nodeMergeTomlSnippet(targetEnv = "TARGET", patchEnv = "PATCH", tableName?: string) {
+  return [
+    "const fs=require('fs'),path=require('path');",
+    `const target=process.env.${targetEnv},patch=process.env.${patchEnv};`,
+    "fs.mkdirSync(path.dirname(target),{recursive:true});",
+    "let base='';try{base=fs.readFileSync(target,'utf8')}catch{}",
+    "const keys=[...patch.split(/^\\s*\\[/m)[0].matchAll(/^([A-Za-z0-9_-]+)\\s*=/gm)].map(m=>m[1]);",
+    "let insideTable=false;const kept=base.split(/\\r?\\n/).filter(line=>{if(/^\\s*\\[/.test(line))insideTable=true;if(!insideTable&&keys.some(k=>new RegExp('^\\\\s*'+k+'\\\\s*=').test(line)))return false;return true}).join('\\n');",
+    `const table=${JSON.stringify(tableName ?? "model_providers.nesa")};`,
+    "const esc=table.replaceAll('.','\\\\\\\\.');",
+    "const stripped=kept.replace(new RegExp('(^|\\\\n)\\\\['+esc+'\\\\][\\\\s\\\\S]*?(?=\\\\n\\\\s*\\\\[[^\\\\]]+\\\\]|$)','g'),'\\n').trim();",
+    "fs.writeFileSync(target,(stripped?stripped+'\\n\\n':'')+patch.trim()+'\\n',{mode:0o600});",
+    "try{fs.chmodSync(target,0o600)}catch{}",
+    "console.log('Merged',target);"
+  ].join("");
+}
+
+function nodeMergeYamlModelSnippet(targetEnv = "TARGET", patchEnv = "PATCH") {
+  return [
+    "const fs=require('fs'),path=require('path');",
+    `const target=process.env.${targetEnv},patch=process.env.${patchEnv};`,
+    "fs.mkdirSync(path.dirname(target),{recursive:true});",
+    "let base='';try{base=fs.readFileSync(target,'utf8')}catch{}",
+    "const lines=base.split(/\\r?\\n/);let inModel=false;const kept=lines.filter(line=>{if(/^model:\\s*$/.test(line)){inModel=true;return true}if(inModel&&/^\\S/.test(line)){inModel=false}return !(inModel&&/^\\s{2}(default|provider|base_url):/.test(line))});",
+    "const patchLines=patch.trim().split(/\\r?\\n/).slice(1);let idx=kept.findIndex(l=>/^model:\\s*$/.test(l));if(idx<0){kept.push('model:',...patchLines)}else{kept.splice(idx+1,0,...patchLines)}",
+    "fs.writeFileSync(target,kept.join('\\n').replace(/\\n{3,}/g,'\\n\\n').trim()+'\\n');",
+    "console.log('Merged',target);"
+  ].join("");
+}
+
 /** Inline Node merge (bash): uses env TARGET + PATCH (raw JSON text). */
 function nodeMergeSnippetBash() {
   return [
@@ -428,7 +468,7 @@ function nodeMergeSnippetBash() {
     "const patch=JSON.parse(process.env.PATCH);",
     "fs.mkdirSync(path.dirname(target),{recursive:true});",
     "let base={};",
-    "try{base=JSON.parse(fs.readFileSync(target,'utf8').replace(/,(\\s*[}\\]])/g,'$1'));}catch{}",
+    "try{base=JSON.parse(fs.readFileSync(target,'utf8').replace(/,(\\s*[}\\]])/g,'$1'));}catch(e){if(e.code!=='ENOENT')throw new Error('Existing JSON is invalid: '+target)}",
     "const merge=(a,b)=>Array.isArray(b)?b:(b&&typeof b==='object'&&!Array.isArray(b)?Object.fromEntries(Object.keys({...a,...b}).map(k=>[k,merge(a?.[k],b[k])])):b);",
     "const out=(!base||typeof base!=='object'||Array.isArray(base))?patch:merge(base,patch);",
     "fs.writeFileSync(target,JSON.stringify(out,null,2)+'\\n');",
@@ -445,7 +485,7 @@ function nodeMergeSnippetPs() {
     "const patch=JSON.parse(process.env.NESA_PATCH);",
     "fs.mkdirSync(path.dirname(target),{recursive:true});",
     "let base={};",
-    "try{base=JSON.parse(fs.readFileSync(target,'utf8').replace(/,(\\s*[}\\]])/g,'$1'));}catch{}",
+    "try{base=JSON.parse(fs.readFileSync(target,'utf8').replace(/,(\\s*[}\\]])/g,'$1'));}catch(e){if(e.code!=='ENOENT')throw new Error('Existing JSON is invalid: '+target)}",
     "const merge=(a,b)=>Array.isArray(b)?b:(b&&typeof b==='object'&&!Array.isArray(b)?Object.fromEntries(Object.keys({...a,...b}).map(k=>[k,merge(a?.[k],b[k])])):b);",
     "const out=(!base||typeof base!=='object'||Array.isArray(base))?patch:merge(base,patch);",
     "fs.writeFileSync(target,JSON.stringify(out,null,2)+'\\n');",

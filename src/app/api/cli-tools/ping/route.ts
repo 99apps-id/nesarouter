@@ -40,7 +40,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid client key." }, { status: 401 });
   }
 
-  const origin = new URL(request.url).origin;
+  // This is a server-side routing probe, so never hairpin through the public
+  // tunnel/reverse proxy. Public DNS may not resolve back into the same VPS.
+  const port = Number(process.env.PORT) > 0 ? Number(process.env.PORT) : 20129;
+  const origin = process.env.NESA_INTERNAL_URL?.trim().replace(/\/$/, "") || `http://127.0.0.1:${port}`;
   try {
     const modelsResponse = await fetch(`${origin}/v1/models`, {
       method: "GET",

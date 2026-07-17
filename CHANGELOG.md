@@ -2,6 +2,20 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.37 - 2026-07-17
+
+### Fixed
+
+- Route CLI connection tests through NesaRouter's internal loopback endpoint so public-tunnel hairpin failures no longer produce false negatives.
+- Generate current Qwen Code provider settings, make unsupported Gemini CLI and Continue integrations explicitly manual, and correct Roo's OpenAI-compatible setup guidance.
+- Merge Codex, Hermes, DeepSeek TUI, and jcode configuration safely without erasing unrelated user settings; persist Bash environment variables for future shells.
+- Reject malformed existing JSON instead of overwriting it, return actionable permission errors, and fully remove NesaRouter references during CLI reset.
+- Report executable detection, configuration presence, and credential readiness separately so a config directory alone is not shown as a connected CLI.
+
+### Validation
+
+- 275 unit tests across 53 files, TypeScript validation, OSS public-boundary check, and production build pass.
+
 ## 0.1.36 - 2026-07-17
 
 ### Security
