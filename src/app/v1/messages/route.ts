@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { handleChat } from "@/core/chatHandler";
 import { claudeStreamFromOpenAiSse, claudeToOpenAi, openAiToClaude } from "@/core/translator";
+import { authorizeClientRequest, isRequestBodyTooLarge } from "@/core/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  if (!(await authorizeClientRequest(request))) return NextResponse.json({ type: "error", error: { type: "authentication_error", message: "Invalid NesaRouter API key." } }, { status: 401 });
+  if (isRequestBodyTooLarge(request)) return NextResponse.json({ type: "error", error: { type: "invalid_request_error", message: "Request body exceeds 16 MB." } }, { status: 413 });
   let body: any;
   try {
     body = await request.json();

@@ -8,11 +8,14 @@ interface BridgeEntry {
   proc: ChildProcess;
   send: (frame: string) => void;
   buffer: Buffer;
+  close: () => void;
 }
 
 const BRIDGES_KEY = "__nesaMcpSessionBridgesV2";
 const MAX_MCP_MESSAGE_BYTES = 8 * 1024 * 1024;
 const MAX_MCP_BUFFER_BYTES = 16 * 1024 * 1024;
+const MAX_MCP_SESSIONS = 8;
+const MAX_MCP_SESSIONS_PER_SERVER = 2;
 
 function bridgesStore(): Map<string, BridgeEntry> {
   const globalStore = globalThis as typeof globalThis & { [BRIDGES_KEY]?: Map<string, BridgeEntry> };
@@ -99,14 +102,18 @@ function sendFrame(entry: BridgeEntry, frame: string) {
   }
 }
 
-function spawnForSession(server: McpServer, sid: string, send: (frame: string) => void): BridgeEntry {
+function sseData(event: string, raw: string) {
+  return `event: ${event}\n${raw.split(/\r?\n/).map((line) => `data: ${line}`).join("\n")}\n\n`;
+}
+
+function spawnForSession(server: McpServer, sid: string, send: (frame: string) => void, close: () => void): BridgeEntry {
   const env = { ...process.env, ...server.env };
   const proc = spawn(server.command, server.args ?? [], {
     stdio: ["pipe", "pipe", "pipe"],
     env,
     windowsHide: true
   });
-  const entry: BridgeEntry = { serverId: server.id, sid, proc, send, buffer: Buffer.alloc(0) };
+  const entry: BridgeEntry = { serverId: server.id, sid, proc, send, buffer: Buffer.alloc(0), close };
   bridges.set(sid, entry);
 
   proc.stdout?.on("data", (chunk: Buffer) => {
@@ -118,7 +125,7 @@ function spawnForSession(server: McpServer, sid: string, send: (frame: string) =
     }
     const extracted = extractMcpBufferMessages(entry.buffer);
     entry.buffer = extracted.rest;
-    for (const raw of extracted.messages) sendFrame(entry, `event: message\ndata: ${raw}\n\n`);
+    for (const raw of extracted.messages) sendFrame(entry, sseData("message", raw));
   });
 
   proc.stderr?.on("data", (chunk: Buffer) => {
@@ -129,18 +136,25 @@ function spawnForSession(server: McpServer, sid: string, send: (frame: string) =
   proc.on("error", (error) => {
     sendFrame(entry, `event: error\ndata: ${JSON.stringify(error.message)}\n\n`);
     bridges.delete(sid);
+    entry.close();
   });
   proc.on("exit", (code) => {
     sendFrame(entry, `event: exit\ndata: ${JSON.stringify({ code })}\n\n`);
     bridges.delete(sid);
+    entry.close();
   });
 
   return entry;
 }
 
-export function registerSession(server: McpServer, send: (frame: string) => void): string {
+export function registerSession(server: McpServer, send: (frame: string) => void, close: () => void = () => {}): string {
+  const active = [...bridges.values()].filter((entry) => entry.proc.exitCode === null && !entry.proc.killed);
+  if (active.length >= MAX_MCP_SESSIONS) throw new Error("MCP session limit reached.");
+  if (active.filter((entry) => entry.serverId === server.id).length >= MAX_MCP_SESSIONS_PER_SERVER) {
+    throw new Error(`MCP session limit reached for ${server.name}.`);
+  }
   const sid = randomUUID();
-  spawnForSession(server, sid, send);
+  spawnForSession(server, sid, send, close);
   return sid;
 }
 
@@ -174,7 +188,9 @@ export function sendToChild(server: McpServer, jsonRpc: unknown, sid?: string) {
   const entry = bridgeForRpc(server.id, sid);
   if (!entry) throw new Error(`Open the MCP SSE endpoint for ${server.id} before sending RPC.`);
   if (!entry.proc.stdin?.writable) throw new Error(`MCP bridge stdin closed for ${server.id}`);
-  entry.proc.stdin.write(encodeMcpFrame(jsonRpc));
+  const frame = encodeMcpFrame(jsonRpc);
+  if (Buffer.byteLength(frame, "utf8") > MAX_MCP_MESSAGE_BYTES) throw new Error("MCP RPC message exceeds 8 MB.");
+  entry.proc.stdin.write(frame);
 }
 
 export function isBridgeRunning(serverId: string): boolean {

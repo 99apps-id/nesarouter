@@ -1,8 +1,15 @@
 import http from "node:http";
 import https from "node:https";
+import { Readable } from "node:stream";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { ProviderConfig } from "@/core/types";
 
 const proxyAgents = new Map<string, any>();
+const requestSignalStorage = new AsyncLocalStorage<AbortSignal>();
+
+export function withProviderRequestSignal<T>(signal: AbortSignal | undefined, run: () => Promise<T>) {
+  return signal ? requestSignalStorage.run(signal, run) : run();
+}
 
 function isSocksProxy(proxyUrl: string) {
   return /^socks(4a?|5h?):\/\//i.test(proxyUrl);
@@ -76,27 +83,36 @@ async function socksFetch(proxyUrl: string, url: string, init: RequestInit = {})
   const lib = parsed.protocol === "http:" ? http : https;
   const method = init.method ?? "GET";
   const headers = headersToRecord(init.headers);
-  const bodyBuffer = ["GET", "HEAD"].includes(method.toUpperCase()) ? undefined : await bodyToBuffer(init.body ?? null);
+  let bodyBuffer: Buffer | undefined;
+  if (!["GET", "HEAD"].includes(method.toUpperCase())) {
+    if (init.body instanceof FormData) {
+      const encoded = new Request("http://localhost", { method: "POST", body: init.body });
+      bodyBuffer = Buffer.from(await encoded.arrayBuffer());
+      const contentType = encoded.headers.get("content-type");
+      if (contentType) headers["content-type"] = contentType;
+    } else {
+      bodyBuffer = await bodyToBuffer(init.body ?? null);
+    }
+  }
 
   return new Promise((resolve, reject) => {
     const req = lib.request(
       url,
       { method, headers, agent },
       (res) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
-        res.on("end", () => {
-          const outHeaders = new Headers();
-          for (const [key, value] of Object.entries(res.headers)) {
-            if (value == null) continue;
-            if (Array.isArray(value)) value.forEach((v) => outHeaders.append(key, v));
-            else outHeaders.set(key, value);
-          }
-          resolve(new Response(Buffer.concat(chunks), { status: res.statusCode ?? 502, headers: outHeaders }));
-        });
+        const outHeaders = new Headers();
+        for (const [key, value] of Object.entries(res.headers)) {
+          if (value == null) continue;
+          if (Array.isArray(value)) value.forEach((v) => outHeaders.append(key, v));
+          else outHeaders.set(key, value);
+        }
+        resolve(new Response(Readable.toWeb(res) as ReadableStream<Uint8Array>, { status: res.statusCode ?? 502, headers: outHeaders }));
       }
     );
     req.on("error", reject);
+    const abort = () => req.destroy(new DOMException("The operation was aborted", "AbortError"));
+    if (init.signal?.aborted) abort();
+    else init.signal?.addEventListener("abort", abort, { once: true });
     if (bodyBuffer) req.write(bodyBuffer);
     req.end();
   });
@@ -107,13 +123,18 @@ async function socksFetch(proxyUrl: string, url: string, init: RequestInit = {})
  * Supports http(s) via undici ProxyAgent and socks4/5 via socks-proxy-agent.
  */
 export async function proxyFetch(provider: ProviderConfig, url: string, init: RequestInit = {}): Promise<Response> {
-  if (!provider.proxyUrl) return fetch(url, init);
+  const timeout = AbortSignal.timeout(120_000);
+  const requestSignal = requestSignalStorage.getStore();
+  const signals = [init.signal, requestSignal, timeout].filter(Boolean) as AbortSignal[];
+  const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
+  const bounded = { ...init, signal };
+  if (!provider.proxyUrl) return fetch(url, bounded);
   if (isSocksProxy(provider.proxyUrl)) {
-    return socksFetch(provider.proxyUrl, url, init);
+    return socksFetch(provider.proxyUrl, url, bounded);
   }
   const dispatcher = await getHttpProxyDispatcher(provider.proxyUrl);
-  if (dispatcher) return fetch(url, { ...init, dispatcher } as any);
-  return fetch(url, init);
+  if (dispatcher) return fetch(url, { ...bounded, dispatcher } as any);
+  return fetch(url, bounded);
 }
 
 export class UpstreamProviderError extends Error {

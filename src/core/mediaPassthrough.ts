@@ -105,7 +105,7 @@ export async function handleMediaPassthrough(
           authorization: `Bearer ${cleanApiKey(bearer)}`,
           ...openRouterHeaders(provider)
         };
-        const init = buildMediaInit(kind, options, provider, headers);
+        const init = { ...buildMediaInit(kind, options, provider, headers), signal: request.signal };
         const response = await proxyFetch(provider, url, init);
         if (!response.ok) throw await upstreamError(provider, response);
         rememberOAuthAccountUse(provider.id, account.index);
@@ -143,7 +143,7 @@ export async function handleMediaPassthrough(
         authorization: `Bearer ${cleanApiKey(picked.key)}`,
         ...openRouterHeaders(provider)
       };
-      const init = buildMediaInit(kind, options, provider, headers);
+      const init = { ...buildMediaInit(kind, options, provider, headers), signal: request.signal };
       const response = await proxyFetch(provider, url, init);
       if (!response.ok) throw await upstreamError(provider, response);
 

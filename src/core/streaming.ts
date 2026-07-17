@@ -52,6 +52,8 @@ export function trackOpenAiStreamUsage(
       transform(chunk, controller) {
         controller.enqueue(chunk);
         buffer += textDecoder.decode(chunk, { stream: true });
+        buffer = buffer.replace(/\r\n/g, "\n");
+        if (buffer.length > 16 * 1024 * 1024) throw new Error("Upstream SSE event exceeded 16 MB.");
         const { events, rest } = splitSseEvents(buffer);
         buffer = rest;
         for (const event of events) {
@@ -100,6 +102,8 @@ export function geminiStreamToOpenAiSse(
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
         buffer += textDecoder.decode(chunk, { stream: true });
+        buffer = buffer.replace(/\r\n/g, "\n");
+        if (buffer.length > 16 * 1024 * 1024) throw new Error("Upstream SSE event exceeded 16 MB.");
         const { events, rest } = splitSseEvents(buffer);
         buffer = rest;
         for (const event of events) {

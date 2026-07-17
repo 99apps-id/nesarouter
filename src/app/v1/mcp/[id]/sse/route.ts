@@ -18,16 +18,28 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      let sid = "";
+      let closed = false;
       const send = (frame: string) => {
         try { controller.enqueue(encoder.encode(frame)); } catch {}
       };
-      const sid = registerSession(server, send);
+      const closeStream = () => {
+        if (closed) return;
+        closed = true;
+        try { controller.close(); } catch {}
+      };
+      try {
+        sid = registerSession(server, send, closeStream);
+      } catch (error) {
+        controller.error(error);
+        return;
+      }
       send(`event: ready\ndata: ${JSON.stringify({ server: server.name, sessionId: sid })}\n\n`);
       send(`event: endpoint\ndata: /v1/mcp/${encodeURIComponent(server.id)}/rpc?sessionId=${encodeURIComponent(sid)}\n\n`);
 
       const close = () => {
         unregisterSession(server.id, sid);
-        try { controller.close(); } catch {}
+        closeStream();
       };
       request.signal.addEventListener("abort", close);
     }

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { getDataDir } from "@/lib/store";
 import { buildHeadroomLaunchSpec, findHeadroomBinary, findPython310, HEADROOM_COMPRESSION_EXTRAS, HEADROOM_PROCESS_ENV, HeadroomExtra, EXTRA_MARKERS } from "./detect";
 
@@ -21,16 +22,40 @@ function isPidAlive(pid: number) {
 }
 
 function readPid(): number | null {
-  try { if (fs.existsSync(PID_FILE)) return parseInt(fs.readFileSync(PID_FILE, "utf8"), 10); } catch {}
+  try {
+    if (!fs.existsSync(PID_FILE)) return null;
+    const raw = fs.readFileSync(PID_FILE, "utf8");
+    if (raw.trim().startsWith("{")) return Number(JSON.parse(raw).pid) || null;
+    return parseInt(raw, 10);
+  } catch {}
   return null;
 }
 
-function writePid(pid: number) { ensureDir(); fs.writeFileSync(PID_FILE, String(pid)); }
+function writePid(pid: number, command: string, args: string[]) {
+  ensureDir();
+  fs.writeFileSync(PID_FILE, JSON.stringify({ pid, command, args, startedAt: new Date().toISOString() }));
+}
 function clearPid() { try { if (fs.existsSync(PID_FILE)) fs.unlinkSync(PID_FILE); } catch {} }
 
 export function getManagedPid() {
   const pid = readPid();
-  return pid && isPidAlive(pid) ? pid : null;
+  return pid && isPidAlive(pid) && isHeadroomProcess(pid) ? pid : null;
+}
+
+function isHeadroomProcess(pid: number) {
+  try {
+    let commandLine = "";
+    if (process.platform === "win32") {
+      commandLine = execFileSync("powershell", ["-NoProfile", "-Command", `(Get-CimInstance Win32_Process -Filter \"ProcessId = ${pid}\").CommandLine`], { encoding: "utf8", timeout: 3000, windowsHide: true });
+    } else if (process.platform === "linux") {
+      commandLine = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").replace(/\0/g, " ");
+    } else {
+      commandLine = execFileSync("ps", ["-p", String(pid), "-o", "command="], { encoding: "utf8", timeout: 3000 });
+    }
+    return /(?:^|[\\/\s])headroom(?:\.exe)?(?:\s|$)|headroom\.cli/i.test(commandLine);
+  } catch {
+    return false;
+  }
 }
 
 function extrasProxyArgs(opts: { codeAware: boolean; kompress: boolean }) {
@@ -77,7 +102,7 @@ export async function startHeadroomProxy(opts: StartOptions = {}): Promise<{ pid
   }
 
   child.unref();
-  writePid(child.pid);
+  writePid(child.pid, launch.command, args);
 
   await new Promise<void>((resolve, reject) => {
     let settled = false;

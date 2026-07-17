@@ -1,5 +1,5 @@
 import Database from "better-sqlite3";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { CacheEntry, Combo, McpServer, NesaStore, OAuthAccount, ProviderConfig, ProviderConnectionStatus, UsageLog } from "@/core/types";
 import { createOAuthAccountId, defaultOAuthAccountName } from "@/core/oauthAccounts";
@@ -32,9 +32,11 @@ function getDb() {
     db = undefined;
     activeDbPath = undefined;
   }
-  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
+  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  if (process.platform !== "win32") try { chmodSync(dataDir, 0o700); } catch {}
   if (!db) {
     db = new Database(dbPath);
+    if (process.platform !== "win32") try { chmodSync(dbPath, 0o600); } catch {}
     activeDbPath = dbPath;
     db.pragma("busy_timeout = 5000");
     db.pragma("journal_mode = WAL");
@@ -60,9 +62,11 @@ export function seedMissingProviders(): string[] {
     db = undefined;
     activeDbPath = undefined;
   }
-  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
+  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  if (process.platform !== "win32") try { chmodSync(dataDir, 0o700); } catch {}
   if (!db) {
     db = new Database(dbPath);
+    if (process.platform !== "win32") try { chmodSync(dbPath, 0o600); } catch {}
     activeDbPath = dbPath;
     db.pragma("busy_timeout = 5000");
     db.pragma("journal_mode = WAL");
@@ -935,27 +939,6 @@ function writeStoreToDb(database: Database.Database, store: NesaStore) {
     writeSetting(database, "router", store.router);
     writeSetting(database, "aliases", store.aliases ?? []);
 
-    database.prepare("DELETE FROM providers").run();
-    for (const provider of store.providers) writeProviderToDb(database, provider);
-
-    // Catalog presets (OAuth + new API-key seeds) must survive full store rewrites.
-    for (const provider of defaultStore.providers) {
-      const exists = database.prepare("SELECT id FROM providers WHERE id = ?").get(provider.id);
-      if (!exists) writeProviderToDb(database, provider);
-    }
-
-    database.prepare("DELETE FROM local_api_keys").run();
-    for (const token of store.localApiKeys) {
-      const stored = token.startsWith("nesa:v1:") ? token : encryptSecret(token);
-      database.prepare("INSERT OR IGNORE INTO local_api_keys (token) VALUES (?)").run(stored);
-    }
-
-    database.prepare("DELETE FROM usage_logs").run();
-    for (const log of store.usage) writeUsageToDb(database, log);
-
-    database.prepare("DELETE FROM cache_entries").run();
-    for (const entry of store.cache) writeCacheToDb(database, entry);
-
     database.prepare("DELETE FROM combos").run();
     for (const combo of store.combos) writeComboToDb(database, combo);
   });
@@ -1466,7 +1449,7 @@ export function usageDayKey(iso: string) {
 export function getTodaySpend(store: NesaStore) {
   const today = todayKey();
   return store.usage
-    .filter((item) => usageDayKey(item.createdAt) === today && item.status === "success")
+    .filter((item) => usageDayKey(item.createdAt) === today && (item.status === "success" || /Client cancelled stream|Upstream stream failed/i.test(item.error ?? "")))
     .reduce((sum, item) => sum + item.totalCostUsd, 0);
 }
 

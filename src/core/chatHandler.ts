@@ -19,6 +19,7 @@ import { recordCacheHit, recordError, recordQueueTimeout, recordRequest } from "
 import { peekStickyProvider, rememberStickyProvider, stickySessionKey } from "@/core/stickyRouting";
 import { appendUsage, clearProviderCooldown, markProviderFailure, markOAuthAccountConnection, readStore, saveCacheEntry } from "@/lib/store";
 import { Combo, NesaStore, ProviderConfig, RouteDecision, UsageLog } from "@/core/types";
+import { withProviderRequestSignal } from "@/core/providers/shared";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -265,7 +266,7 @@ async function runFallbackLoop(
           throw error;
         }
         try {
-          const upstream = await callProvider(oauthProvider, body);
+          const upstream = await withProviderRequestSignal(request?.signal, () => callProvider(oauthProvider, body));
           rememberOAuthAccountUse(decision.provider.id, account.index);
           clearOAuthAccountCooldown(decision.provider.id, account.index);
           await markOAuthAccountConnection(decision.provider.id, account.id, true);
@@ -321,7 +322,7 @@ async function runFallbackLoop(
           throw error;
         }
         try {
-          const upstream = await callProvider(decision.provider, body, picked.key);
+          const upstream = await withProviderRequestSignal(request?.signal, () => callProvider(decision.provider, body, picked.key));
           rememberKeyUse(decision.provider.id, picked.index);
           clearKeyCooldown(decision.provider.id, picked.index);
           await clearProviderCooldown(decision.provider.id);

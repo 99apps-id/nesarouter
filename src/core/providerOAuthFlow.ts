@@ -51,7 +51,9 @@ function copilotTokenNeedsRefresh(provider: ProviderConfig, preset: OAuthPreset)
  * if needed, then exchanging it for a new Copilot token). Returns null when the
  * provider has no OAuth material at all.
  */
-export async function ensureFreshAccessToken(provider: ProviderConfig, accountId?: string): Promise<string | null> {
+const refreshFlights = new Map<string, Promise<string | null>>();
+
+async function ensureFreshAccessTokenImpl(provider: ProviderConfig, accountId?: string): Promise<string | null> {
   if (!provider.oauthProfile) return provider.oauthAccessToken ?? null;
   const account = accountId
     ? configuredOAuthAccounts(provider).find((item) => item.id === accountId)
@@ -145,6 +147,18 @@ export async function ensureFreshAccessToken(provider: ProviderConfig, accountId
     }
     return snapshot.oauthAccessToken;
   }
+}
+
+/** Serialize refresh-token rotation per provider account. */
+export function ensureFreshAccessToken(provider: ProviderConfig, accountId?: string): Promise<string | null> {
+  const key = `${provider.id}:${accountId ?? "primary"}`;
+  const existing = refreshFlights.get(key);
+  if (existing) return existing;
+  const flight = ensureFreshAccessTokenImpl(provider, accountId).finally(() => {
+    if (refreshFlights.get(key) === flight) refreshFlights.delete(key);
+  });
+  refreshFlights.set(key, flight);
+  return flight;
 }
 
 export async function loadProviderWithFreshToken(providerId: string): Promise<ProviderConfig | null> {

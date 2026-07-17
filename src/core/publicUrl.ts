@@ -20,6 +20,11 @@ function readEnv(name: string) {
   return process.env[name]?.trim() || undefined;
 }
 
+function trustProxyHeaders() {
+  const value = readEnv("NESA_TRUST_PROXY")?.toLowerCase();
+  return value === "1" || value === "true";
+}
+
 export function originFromEnv(value: string | undefined | null) {
   const trimmed = value?.trim();
   if (!trimmed) return undefined;
@@ -37,9 +42,9 @@ export function originFromEnv(value: string | undefined | null) {
 /** Resolve origin from proxy / Host headers (Edge-safe). */
 export function publicOriginFromHeaders(request: Request): string {
   const url = new URL(request.url);
+  if (!trustProxyHeaders()) return url.origin;
   const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-  const hostHeader = request.headers.get("host")?.split(",")[0]?.trim();
-  const candidate = forwardedHost || hostHeader || url.host;
+  const candidate = forwardedHost || url.host;
   const forwardedProto = request.headers
     .get("x-forwarded-proto")
     ?.split(",")[0]
@@ -52,11 +57,6 @@ export function publicOriginFromHeaders(request: Request): string {
       (url.protocol === "https:" ? "https" : undefined) ||
       (!candidate.includes(":") ? "https" : "http");
     return `${proto}://${candidate}`;
-  }
-
-  if (forwardedHost) {
-    const proto = forwardedProto || url.protocol.replace(":", "") || "http";
-    return `${proto}://${forwardedHost}`;
   }
 
   return url.origin;
@@ -106,16 +106,16 @@ export function cookieSecurePreferred(request?: Request): boolean {
   if (override === "false" || override === "0") return false;
 
   if (request) {
-    const forwardedProto = request.headers
+    const forwardedProto = trustProxyHeaders() ? request.headers
       .get("x-forwarded-proto")
       ?.split(",")[0]
       ?.trim()
       ?.replace(/:$/, "")
-      .toLowerCase();
+      .toLowerCase() : undefined;
     if (forwardedProto === "https") return true;
     if (forwardedProto === "http") return false;
 
-    const forwarded = request.headers.get("forwarded");
+    const forwarded = trustProxyHeaders() ? request.headers.get("forwarded") : null;
     const forwardedMatch = forwarded?.match(/proto=(https?)/i);
     if (forwardedMatch?.[1]) return forwardedMatch[1].toLowerCase() === "https";
 
@@ -123,9 +123,9 @@ export function cookieSecurePreferred(request?: Request): boolean {
       const proto = new URL(request.url).protocol;
       if (proto === "https:") return true;
       if (proto === "http:") {
-        const host = (request.headers.get("x-forwarded-host") || request.headers.get("host") || "")
-          .split(",")[0]
-          ?.trim();
+        const host = trustProxyHeaders()
+          ? (request.headers.get("x-forwarded-host") || "").split(",")[0]?.trim()
+          : new URL(request.url).host;
         if (host && !isLoopbackHost(host) && !host.includes(":")) return true;
         if (host && !isLoopbackHost(host)) return false;
       }

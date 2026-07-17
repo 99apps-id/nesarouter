@@ -49,7 +49,7 @@ export function getProviderQuotaUsedToday(provider: ProviderConfig, store: Usage
       (item) =>
         usageDayKey(item.createdAt) === today &&
         item.providerId === provider.id &&
-        item.status === "success"
+        (item.status === "success" || /Client cancelled stream|Upstream stream failed/i.test(item.error ?? ""))
     )
     .reduce((sum, item) => sum + item.inputTokens + item.outputTokens, 0);
 }
@@ -59,7 +59,7 @@ export function getKeyQuotaUsedToday(provider: ProviderConfig, store: UsageQuota
   const today = todayKey();
   return store.usage
     .filter((item) => {
-      if (usageDayKey(item.createdAt) !== today || item.providerId !== provider.id || item.status !== "success") {
+      if (usageDayKey(item.createdAt) !== today || item.providerId !== provider.id || (item.status !== "success" && !/Client cancelled stream|Upstream stream failed/i.test(item.error ?? ""))) {
         return false;
       }
       if (typeof item.keyIndex === "number") return item.keyIndex === keyIndex;

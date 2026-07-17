@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { finalizeAdminResponse, requireAdmin } from "@/lib/adminApi";
 import {
   cursorAccessTokenExpiresAt,
-  cursorAutoImportNotFoundMessage,
   cursorAutoImportPartialMessage,
   findReadableCursorDbPath,
   readCursorTokensFromDb
@@ -32,13 +31,13 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const accountId = url.searchParams.get("accountId")?.trim() || undefined;
 
   try {
-    const { dbPath, candidates } = await findReadableCursorDbPath();
+    const { dbPath } = await findReadableCursorDbPath();
     if (!dbPath) {
       return finalizeAdminResponse(
         NextResponse.json({
           found: false,
           imported: false,
-          error: cursorAutoImportNotFoundMessage(process.platform, candidates)
+          error: "Cursor credentials were not found in the standard local profile."
         }),
         request
       );
@@ -64,7 +63,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
           imported: true,
           expiresAt: expiresAt ?? null,
           hasRefreshToken: Boolean(tokens.refreshToken),
-          dbPath,
+          source: "local Cursor profile",
           createNew,
           accountId: accountId ?? null
         }),
@@ -72,13 +71,13 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       );
     }
 
-    const detail = cursorAutoImportPartialMessage(dbPath, Boolean(tokens.accessToken), Boolean(tokens.machineId));
-    const sqliteHint = errors.length ? ` (${errors[errors.length - 1]})` : "";
+    const detail = cursorAutoImportPartialMessage("local Cursor profile", Boolean(tokens.accessToken), Boolean(tokens.machineId));
+    const sqliteHint = errors.length ? " (the local credential database could not be read completely)" : "";
     return finalizeAdminResponse(
       NextResponse.json({
         found: true,
         imported: false,
-        dbPath,
+        source: "local Cursor profile",
         error: `${detail}${sqliteHint}`
       }),
       request

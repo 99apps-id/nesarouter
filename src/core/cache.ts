@@ -2,18 +2,19 @@ import crypto from "node:crypto";
 import { CacheEntry, NesaStore } from "@/core/types";
 
 export function cacheKeyForBody(body: any) {
-  const stable = JSON.stringify({
-    model: body?.model ?? null,
-    messages: body?.messages ?? null,
-    input: body?.input ?? null,
-    temperature: body?.temperature ?? null,
-    top_p: body?.top_p ?? null,
-    max_tokens: body?.max_tokens ?? null,
-    response_format: body?.response_format ?? null,
-    tools: body?.tools ?? null,
-    tool_choice: body?.tool_choice ?? null
-  });
+  // Exclude transport-only fields; all generation-affecting options belong in
+  // the key so provider-specific knobs cannot collide with another response.
+  const { stream: _stream, stream_options: _streamOptions, ...semantic } = body ?? {};
+  const stable = stableStringify(semantic);
   return crypto.createHash("sha256").update(stable).digest("hex");
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value as Record<string, unknown>).sort().map((key) => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
 }
 
 export function findCache(store: NesaStore, key: string) {

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { NesaStore } from "@/core/types";
+import { readStore } from "@/lib/store";
 
 function constantTimeEquals(a: string, b: string) {
   const left = Buffer.from(a);
@@ -19,4 +20,15 @@ export function authorizeRequest(store: NesaStore, request: Request) {
   if (!store.localApiKeys.length) return false;
   if (!token) return false;
   return store.localApiKeys.some((candidate) => constantTimeEquals(token, candidate));
+}
+
+export async function authorizeClientRequest(request: Request) {
+  return authorizeRequest(await readStore(), request);
+}
+
+export function isRequestBodyTooLarge(request: Request, maxBytes = 16 * 1024 * 1024) {
+  const raw = request.headers.get("content-length");
+  if (!raw) return false;
+  const length = Number(raw);
+  return Number.isFinite(length) && length > maxBytes;
 }

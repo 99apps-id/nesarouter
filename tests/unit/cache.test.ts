@@ -4,6 +4,16 @@ import { defaultStore } from "@/lib/defaults";
 import { CacheEntry, NesaStore } from "@/core/types";
 
 describe("cache", () => {
+  it("separates generation-affecting provider options", () => {
+    const base = { model: "m", messages: [{ role: "user", content: "hi" }] };
+    expect(cacheKeyForBody({ ...base, seed: 1 })).not.toBe(cacheKeyForBody({ ...base, seed: 2 }));
+    expect(cacheKeyForBody({ ...base, stop: ["END"] })).not.toBe(cacheKeyForBody({ ...base, stop: ["STOP"] }));
+  });
+
+  it("ignores transport-only streaming fields", () => {
+    const base = { model: "m", messages: [{ role: "user", content: "hi" }] };
+    expect(cacheKeyForBody(base)).toBe(cacheKeyForBody({ ...base, stream: true, stream_options: { include_usage: true } }));
+  });
   it("hashes request body deterministically", () => {
     const a = cacheKeyForBody({ model: "auto", messages: [{ role: "user", content: "hi" }] });
     const b = cacheKeyForBody({ model: "auto", messages: [{ role: "user", content: "hi" }] });

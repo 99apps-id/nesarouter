@@ -188,6 +188,8 @@ export function claudeSseToOpenAiSse(claudeSse: ReadableStream<Uint8Array>, mode
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
         buffer += textDecoder.decode(chunk, { stream: true });
+        buffer = buffer.replace(/\r\n/g, "\n");
+        if (buffer.length > 16 * 1024 * 1024) throw new Error("Upstream SSE event exceeded 16 MB.");
         let idx = buffer.indexOf("\n\n");
         while (idx >= 0) {
           const raw = buffer.slice(0, idx);
@@ -477,6 +479,8 @@ export function responsesSseToOpenAiSse(responsesSse: ReadableStream<Uint8Array>
     new TransformStream<Uint8Array, Uint8Array>({
       transform(chunk, controller) {
         buffer += textDecoder.decode(chunk, { stream: true });
+        buffer = buffer.replace(/\r\n/g, "\n");
+        if (buffer.length > 16 * 1024 * 1024) throw new Error("Upstream SSE event exceeded 16 MB.");
         let idx = buffer.indexOf("\n\n");
         while (idx >= 0) {
           const raw = buffer.slice(0, idx);

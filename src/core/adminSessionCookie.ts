@@ -5,12 +5,15 @@
 
 export const adminCookieName = "nesa_admin_session";
 const DEFAULT_SESSION_TTL_HOURS = 24 * 7;
+const MAX_SESSION_TTL_HOURS = 24 * 365;
 
 function readSessionTtlHours() {
   const raw = process.env.NESA_SESSION_TTL_HOURS?.trim();
   if (!raw) return DEFAULT_SESSION_TTL_HOURS;
   const hours = Number(raw);
-  return Number.isFinite(hours) && hours > 0 ? hours : DEFAULT_SESSION_TTL_HOURS;
+  return Number.isFinite(hours) && hours > 0 && hours <= MAX_SESSION_TTL_HOURS
+    ? hours
+    : DEFAULT_SESSION_TTL_HOURS;
 }
 
 /** Sliding admin session lifetime (default 7 days). Override with NESA_SESSION_TTL_HOURS. */
