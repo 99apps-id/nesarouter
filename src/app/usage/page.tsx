@@ -1,7 +1,5 @@
 import AppShell from "@/components/AppShell";
 import ProviderQuotaPanel from "@/components/ProviderQuotaPanel";
-import RecentRequestsPanel from "@/components/RecentRequestsPanel";
-import RequestInspector from "@/components/RequestInspector";
 import UsageByProviderTable from "@/components/UsageByProviderTable";
 import UsageChart from "@/components/UsageChart";
 import UsageFlow from "@/components/UsageFlow";
@@ -27,11 +25,7 @@ export default async function UsagePage() {
       <UsageLivePanel />
       <UsageChart />
       <ProviderQuotaPanel providers={store.providers} usage={store.usage} />
-      <section className="usage-map-grid">
-        <UsageFlow providers={store.providers} usage={store.usage} />
-        <RecentRequestsPanel usage={store.usage} />
-      </section>
-      <RequestInspector usage={store.usage} />
+      <UsageFlow providers={store.providers} usage={store.usage} />
       <section className="usage-agg-grid">
         <UsageByProviderTable rows={stats.byProvider} />
         <UsageByModelTable rows={modelRows} />

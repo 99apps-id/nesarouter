@@ -1,205 +1,115 @@
 "use client";
 
-import type { CSSProperties, PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LocateFixed, ZoomIn, ZoomOut } from "lucide-react";
+import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Activity, AlertTriangle, Check, Clock3, LocateFixed, Pause, Play, RefreshCw, Server, ZoomIn, ZoomOut } from "lucide-react";
 import type { ProviderConfig, UsageLog } from "@/core/types";
 import ProviderIcon from "@/components/ProviderIcon";
+import { money } from "@/lib/format";
+import { providerActivity, routeEventsForProviders, type RouteEvent } from "@/lib/usageFlow";
 
-const maxVisibleNodes = 24;
-const outerRingLimit = 14;
-const MAP_COORD_DECIMALS = 2;
-// Keep the last real upstream route visible long enough to inspect it. Cache
-// hits are excluded below because they never establish a provider connection.
-const LIVE_WINDOW_MS = 10 * 60_000;
 const LIVE_REFRESH_MS = 4_000;
 
-/** Stable coords for SSR + client (avoids hydration drift from float math). */
-function mapCoord(value: number) {
-  const factor = 10 ** MAP_COORD_DECIMALS;
-  return Math.round(value * factor) / factor;
+function relativeTime(ageMs: number) {
+  if (!Number.isFinite(ageMs)) return "unknown";
+  if (ageMs < 10_000) return "now";
+  if (ageMs < 60_000) return `${Math.floor(ageMs / 1000)}s ago`;
+  if (ageMs < 3_600_000) return `${Math.floor(ageMs / 60_000)}m ago`;
+  return `${Math.floor(ageMs / 3_600_000)}h ago`;
 }
 
-function mapCoordText(value: number) {
-  return mapCoord(value).toFixed(MAP_COORD_DECIMALS);
+type RouteMapNode = {
+  id: string;
+  label: string;
+  title: string;
+  detail: string;
+  x: number;
+  y: number;
+  state: "neutral" | "success" | "error" | "cache";
+  provider?: { id?: string; name?: string; providerName?: string; model?: string };
+};
+
+function isVisibleProvider(provider?: Pick<ProviderConfig, "status" | "connectionStatus">) {
+  if (!provider || provider.status === "disabled") return false;
+  return provider.status === "active" || provider.connectionStatus === "connected";
 }
 
-type MapNode =
-  | (ProviderConfig & { kind: "provider" })
-  | { id: string; name: string; status: "disabled"; kind: "overflow"; hiddenCount: number };
-
-type Transform = { x: number; y: number; scale: number };
-type Point = { x: number; y: number };
-
-function curvePath(from: Point, to: Point, index: number) {
-  const midX = (from.x + to.x) / 2;
-  const midY = (from.y + to.y) / 2;
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const length = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
-  const bend = (index % 2 === 0 ? 1 : -1) * Math.min(48, length * 0.18);
-  const cx = mapCoord(midX + (-dy / length) * bend);
-  const cy = mapCoord(midY + (dx / length) * bend);
-  return `M ${mapCoordText(from.x)} ${mapCoordText(from.y)} Q ${mapCoordText(cx)} ${mapCoordText(cy)} ${mapCoordText(to.x)} ${mapCoordText(to.y)}`;
+function clampZoom(value: number) {
+  return Math.min(1.8, Math.max(0.1, Number(value.toFixed(2))));
 }
 
-function recentRouteProviderIds(usage: UsageLog[], nowMs = Date.now()) {
-  const ids: string[] = [];
-  for (const row of usage) {
-    if (row.status !== "success" || row.cacheStatus === "hit") continue;
-    const createdAt = new Date(row.createdAt).getTime();
-    if (!Number.isFinite(createdAt) || nowMs - createdAt > LIVE_WINDOW_MS) continue;
-    if (!ids.includes(row.providerId)) ids.push(row.providerId);
-  }
-  return ids;
-}
-
-function mapNodes(providers: ProviderConfig[], usage: UsageLog[]): MapNode[] {
-  // The map represents selectable upstream routes, not the entire provider
-  // catalog. Keep providers that recently handled real upstream traffic visible
-  // even if their status changed after the request.
-  const recentIds = recentRouteProviderIds(usage);
-  const activeProviders = providers.filter((provider) => provider.status === "active" || recentIds.includes(provider.id));
-  if (activeProviders.length <= maxVisibleNodes) {
-    return activeProviders.map((provider) => ({ ...provider, kind: "provider" as const }));
-  }
-  const traffic = providerUsageMap(usage);
-  const ranked = [...activeProviders].sort((a, b) => {
-    const aReq = traffic.get(a.id)?.requests ?? 0;
-    const bReq = traffic.get(b.id)?.requests ?? 0;
-    if (bReq !== aReq) return bReq - aReq;
-    return a.priority - b.priority;
-  });
-  const visibleProviderCount = maxVisibleNodes - 1;
-  const hiddenCount = ranked.length - visibleProviderCount;
-  return [
-    ...ranked.slice(0, visibleProviderCount).map((provider) => ({ ...provider, kind: "provider" as const })),
-    { id: "overflow", name: `+${hiddenCount} providers`, status: "disabled", kind: "overflow", hiddenCount }
-  ];
-}
-
-/**
- * Pixel ellipse layout like 9router: radius grows with node count so pills
- * stay spaced on the ring instead of overlapping.
- */
-function buildRingPoints(count: number, rx: number, ry: number, angleOffset = -Math.PI / 2): Point[] {
-  if (count <= 0) return [];
-  return Array.from({ length: count }, (_, index) => {
-    const angle = angleOffset + (2 * Math.PI * index) / count;
+function providerMapNodes(providers: ProviderConfig[], selected?: RouteEvent) {
+  let ring = 0;
+  let ringStart = 0;
+  return providers.map((provider, index): RouteMapNode => {
+    let capacity = 6 + ring * 4;
+    while (index >= ringStart + capacity) {
+      ringStart += capacity;
+      ring += 1;
+      capacity = 6 + ring * 4;
+    }
+    const position = index - ringStart;
+    const count = Math.min(capacity, providers.length - ringStart);
+    const angle = -Math.PI / 2 + (Math.PI * 2 * position) / Math.max(count, 1);
+    // Ring spacing is based on the rendered 176x58px provider card. The
+    // increasing capacity keeps tangential spacing above the card width while
+    // the radial gap prevents neighboring rings from colliding.
+    const radiusX = 260 + ring * 210;
+    const radiusY = 130 + ring * 110;
+    const isSelected = provider.id === selected?.providerId || provider.name === selected?.providerName;
     return {
-      x: mapCoord(rx * Math.cos(angle)),
-      y: mapCoord(ry * Math.sin(angle))
+      id: provider.id,
+      label: provider.connectionStatus === "connected" ? "Connected" : "Active",
+      title: provider.name,
+      detail: provider.model || "Default model",
+      x: Math.round(Math.cos(angle) * radiusX),
+      y: Math.round(Math.sin(angle) * radiusY),
+      state: isSelected ? (selected?.cacheStatus === "hit" ? "cache" : selected?.status === "error" ? "error" : "success") : "neutral",
+      provider
     };
   });
 }
 
-/** Minimum ellipse radii so consecutive chord ≈ node width + gap. */
-function ringRadii(count: number, nodeW: number, nodeGap: number, width: number, height: number, fill: number) {
-  const safeCount = Math.max(count, 1);
-  const minChord = nodeW + nodeGap;
-  // Extra headroom because the ring is slightly elliptical (not a perfect circle).
-  const minR = (minChord * 1.2) / (2 * Math.sin(Math.PI / safeCount));
-  const rx = Math.max(Math.min(width, height) * fill, minR);
-  const ry = Math.max(height * (fill * 0.92), rx * 0.86);
-  return { rx, ry };
+function flowPath(node: RouteMapNode, index: number) {
+  const distance = Math.max(Math.hypot(node.x, node.y), 1);
+  const unitX = node.x / distance;
+  const unitY = node.y / distance;
+  const startX = Math.round(unitX * 72);
+  const startY = Math.round(unitY * 72);
+  const endX = Math.round(node.x - unitX * 102);
+  const endY = Math.round(node.y - unitY * 38);
+  const bend = (index % 2 === 0 ? 1 : -1) * (20 + (index % 3) * 7);
+  const middleX = Math.round((startX + endX) / 2 - unitY * bend);
+  const middleY = Math.round((startY + endY) / 2 + unitX * bend);
+  return `M ${startX} ${startY} Q ${middleX} ${middleY} ${endX} ${endY}`;
 }
 
-function layoutPoints(total: number, width: number, height: number): Point[] {
-  const safeW = Math.max(width, 320);
-  const safeH = Math.max(height, 240);
-  const nodeW = total > 14 ? 108 : total > 8 ? 122 : 140;
-  const nodeGap = total > 14 ? 18 : 24;
-
-  if (total <= 8) {
-    const { rx, ry } = ringRadii(total, nodeW, nodeGap, safeW, safeH, 0.34);
-    return buildRingPoints(total, rx, ry);
-  }
-
-  const outerCount = Math.min(total, outerRingLimit);
-  const innerCount = Math.max(total - outerCount, 0);
-  const outer = ringRadii(outerCount, nodeW, nodeGap, safeW, safeH, 0.4);
-  const outerPoints = buildRingPoints(outerCount, outer.rx, outer.ry);
-
-  if (innerCount === 0) return outerPoints;
-
-  const inner = ringRadii(innerCount, nodeW * 0.92, nodeGap, safeW, safeH, 0.24);
-  const innerRx = Math.min(inner.rx, outer.rx * 0.58);
-  const innerRy = Math.min(inner.ry, outer.ry * 0.58);
-  const innerPoints = buildRingPoints(innerCount, innerRx, innerRy, -Math.PI / 2 + Math.PI / Math.max(innerCount, 1));
-  return [...outerPoints, ...innerPoints];
-}
-
-function fitZoom(nodeCount: number, span: number, viewport: number) {
-  if (viewport <= 0 || span <= 0) {
-    if (nodeCount > 16) return 0.72;
-    if (nodeCount > 12) return 0.8;
-    if (nodeCount > 8) return 0.88;
-    return 0.96;
-  }
-  // Leave margin so outer pills don't clip.
-  const fitted = (viewport * 0.86) / span;
-  return clampZoom(Math.min(fitted, 1));
-}
-
-function clampZoom(value: number) {
-  return Math.min(2.4, Math.max(0.35, Number(value.toFixed(3))));
-}
-
-function providerUsageMap(usage: UsageLog[]) {
-  const map = new Map<string, { requests: number; tokens: number }>();
-  for (const row of usage) {
-    // A cache hit is real dashboard usage, but it never opens an upstream
-    // provider connection and must not make a provider look active on the map.
-    if (row.status !== "success" || row.cacheStatus === "hit") continue;
-    const existing = map.get(row.providerId) ?? { requests: 0, tokens: 0 };
-    existing.requests += 1;
-    existing.tokens += row.inputTokens + row.outputTokens;
-    map.set(row.providerId, existing);
-  }
-  return map;
-}
-
-export default function UsageFlow({
-  providers,
-  usage
-}: {
-  providers: ProviderConfig[];
-  usage: UsageLog[];
-}) {
-  const [liveUsage, setLiveUsage] = useState<UsageLog[]>(usage);
-  const usageMap = useMemo(() => providerUsageMap(liveUsage), [liveUsage]);
-  const visibleNodes = useMemo(() => mapNodes(providers, liveUsage), [providers, liveUsage]);
-  const nodeCount = visibleNodes.length;
-  const [mapSize, setMapSize] = useState({ width: 900, height: 430 });
-  const points = useMemo(() => layoutPoints(nodeCount, mapSize.width, mapSize.height), [nodeCount, mapSize.height, mapSize.width]);
-  const layout = useMemo(
-    () => visibleNodes.map((node, index) => ({ node, index, point: points[index] ?? { x: 0, y: 0 } })),
-    [visibleNodes, points]
+function RouteMapNodeCard({ node }: { node: RouteMapNode }) {
+  return (
+    <div className={`route-map-node ${node.state}`} style={{ left: `calc(50% + ${node.x}px)`, top: `calc(50% + ${node.y}px)` }}>
+      {node.provider ? <ProviderIcon provider={node.provider} size="sm" active={node.state === "success" || node.state === "cache"} /> : null}
+      <span>
+        <small>{node.label}</small>
+        <strong title={node.title}>{node.title}</strong>
+        <em title={node.detail}>{node.detail}</em>
+      </span>
+    </div>
   );
-  const span = useMemo(() => {
-    if (points.length === 0) return Math.min(mapSize.width, mapSize.height);
-    const maxR = Math.max(...points.map((point) => Math.hypot(point.x, point.y)));
-    return maxR * 2 + 180;
-  }, [mapSize.height, mapSize.width, points]);
-  const nodeScale = nodeCount > 14 ? 0.72 : nodeCount > 10 ? 0.82 : nodeCount > 8 ? 0.9 : 1;
-  const defaultZoom = fitZoom(nodeCount, span, Math.min(mapSize.width, mapSize.height));
-  const [transform, setTransform] = useState<Transform>({ x: 0, y: 0, scale: defaultZoom });
-  const [mounted, setMounted] = useState(false);
-  const [reduceMotion, setReduceMotion] = useState(false);
+}
+
+function RouteMap({ selected, providers }: { selected?: RouteEvent; providers: ProviderConfig[] }) {
+  const nodes = useMemo(() => providerMapNodes(providers, selected), [providers, selected]);
+  const [mapSize, setMapSize] = useState({ width: 820, height: 430 });
+  const maxNodeX = Math.max(1, ...nodes.map((node) => Math.abs(node.x) + 94));
+  const maxNodeY = Math.max(1, ...nodes.map((node) => Math.abs(node.y) + 38));
+  const fittedScale = clampZoom(Math.min(1, (mapSize.width / 2 - 24) / maxNodeX, (mapSize.height / 2 - 24) / maxNodeY));
+  const [transform, setTransform] = useState({ x: 0, y: 0, scale: fittedScale });
   const [dragging, setDragging] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, tx: 0, ty: 0 });
-  const pinchStart = useRef<{ distance: number; scale: number } | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
-  const liveProviderIds = useMemo(() => new Set(recentRouteProviderIds(liveUsage)), [liveUsage]);
-  const center: Point = { x: 0, y: 0 };
-  const viewBox = useMemo(() => {
-    const w = Math.max(mapSize.width, 1);
-    const h = Math.max(mapSize.height, 1);
-    return `${mapCoordText(-w / 2)} ${mapCoordText(-h / 2)} ${mapCoordText(w)} ${mapCoordText(h)}`;
-  }, [mapSize.height, mapSize.width]);
 
   useEffect(() => {
-    setMounted(true);
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
     const sync = () => setReduceMotion(media.matches);
     sync();
@@ -208,212 +118,288 @@ export default function UsageFlow({
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    const refreshUsage = async () => {
-      const response = await fetch("/api/usage", { credentials: "include", cache: "no-store" }).catch(() => null);
-      if (!response?.ok || cancelled) return;
-      const rows = (await response.json().catch(() => null)) as UsageLog[] | null;
-      if (Array.isArray(rows) && !cancelled) setLiveUsage(rows);
-    };
-
-    void refreshUsage();
-    const timer = window.setInterval(() => void refreshUsage(), LIVE_REFRESH_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, []);
-
-  useEffect(() => {
-    const mapEl = viewportRef.current;
-    if (!mapEl) return;
+    const viewport = viewportRef.current;
+    if (!viewport) return;
     const syncSize = () => {
-      const { width, height } = mapEl.getBoundingClientRect();
-      if (width > 0 && height > 0) {
-        setMapSize({ width, height });
-      }
+      const rect = viewport.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) setMapSize({ width: rect.width, height: rect.height });
     };
     syncSize();
     const observer = new ResizeObserver(syncSize);
-    observer.observe(mapEl);
+    observer.observe(viewport);
     return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
-    setTransform({ x: 0, y: 0, scale: defaultZoom });
-  }, [defaultZoom, nodeCount]);
+    setTransform({ x: 0, y: 0, scale: fittedScale });
+  }, [fittedScale]);
 
-  const onWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const delta = event.deltaY < 0 ? 0.08 : -0.08;
+  function zoom(delta: number) {
     setTransform((current) => ({ ...current, scale: clampZoom(current.scale + delta) }));
-  }, []);
+  }
 
-  const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+  function resetView() {
+    setTransform({ x: 0, y: 0, scale: fittedScale });
+  }
+
+  function onWheel(event: ReactWheelEvent<HTMLDivElement>) {
+    event.preventDefault();
+    zoom(event.deltaY < 0 ? 0.08 : -0.08);
+  }
+
+  function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
+    if ((event.target as HTMLElement).closest(".route-map-controls")) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     setDragging(true);
     dragStart.current = { x: event.clientX, y: event.clientY, tx: transform.x, ty: transform.y };
-  };
+  }
 
-  const onPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+  function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
     if (!dragging) return;
     setTransform((current) => ({
       ...current,
-      x: dragStart.current.tx + (event.clientX - dragStart.current.x),
-      y: dragStart.current.ty + (event.clientY - dragStart.current.y)
+      x: dragStart.current.tx + event.clientX - dragStart.current.x,
+      y: dragStart.current.ty + event.clientY - dragStart.current.y
     }));
-  };
+  }
 
-  const onPointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
+  function onPointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     setDragging(false);
-  };
-
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-
-    const onTouchMove = (event: TouchEvent) => {
-      if (event.touches.length !== 2) return;
-      event.preventDefault();
-      const [a, b] = [event.touches[0], event.touches[1]];
-      const distance = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-      if (!pinchStart.current) {
-        pinchStart.current = { distance, scale: transform.scale };
-        return;
-      }
-      const nextScale = clampZoom(pinchStart.current.scale * (distance / pinchStart.current.distance));
-      setTransform((current) => ({ ...current, scale: nextScale }));
-    };
-
-    const onTouchEnd = () => {
-      pinchStart.current = null;
-    };
-
-    viewport.addEventListener("touchmove", onTouchMove, { passive: false });
-    viewport.addEventListener("touchend", onTouchEnd);
-    viewport.addEventListener("touchcancel", onTouchEnd);
-    return () => {
-      viewport.removeEventListener("touchmove", onTouchMove);
-      viewport.removeEventListener("touchend", onTouchEnd);
-      viewport.removeEventListener("touchcancel", onTouchEnd);
-    };
-  }, [transform.scale]);
+  }
 
   return (
-    <section className="panel usage-flow-panel">
-      <div className="panel-heading">
-        <div>
-          <h2>Live routing</h2>
-        </div>
-        <div className="map-controls" aria-label="Map zoom controls">
-          <button className="icon-button" type="button" onClick={() => setTransform((v) => ({ ...v, scale: clampZoom(v.scale - 0.1) }))} aria-label="Zoom out">
-            <ZoomOut size={15} />
-          </button>
-          <button
-            className="icon-button"
-            type="button"
-            onClick={() => setTransform({ x: 0, y: 0, scale: defaultZoom })}
-            aria-label="Reset map view"
-          >
-            <LocateFixed size={15} />
-          </button>
-          <button className="icon-button" type="button" onClick={() => setTransform((v) => ({ ...v, scale: clampZoom(v.scale + 0.1) }))} aria-label="Zoom in">
-            <ZoomIn size={15} />
-          </button>
-          <span>{Math.round(transform.scale * 100)}%</span>
-        </div>
-      </div>
-
+    <div
+      ref={viewportRef}
+      className={`route-map ${selected?.isRecent ? "recent" : ""} ${selected?.status ?? "idle"} ${dragging ? "dragging" : ""}`}
+      aria-label="Selected route live map"
+      onWheel={onWheel}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+    >
       <div
-        ref={viewportRef}
-        className={`router-map router-map-interactive ${dragging ? "dragging" : ""} ${nodeCount > 8 ? "dense" : ""} ${nodeCount > outerRingLimit ? "multi-ring" : ""} ${reduceMotion ? "reduce-motion" : ""}`}
-        style={{ "--node-scale": String(nodeScale) } as CSSProperties}
-        aria-label="NesaRouter provider flow map"
-        onWheel={onWheel}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        className="route-map-controls"
+        aria-label="Live map controls"
+        onPointerDown={(event) => event.stopPropagation()}
+        onWheel={(event) => event.stopPropagation()}
       >
-        <div
-          className="router-map-stage"
-          style={{
-            transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`
-          }}
-        >
-          <div className="router-map-orbit" aria-hidden="true" style={{ width: span * 0.72, height: span * 0.72 }} />
-          {mounted ? (
-            <svg className="router-map-lines" viewBox={viewBox} preserveAspectRatio="none" aria-hidden="true">
-              {layout.map(({ node, index, point }) => {
-                const active = node.kind === "provider" && liveProviderIds.has(node.id);
-                const path = curvePath(center, point, index);
-                return (
-                  <g key={`line-${node.id}`}>
-                    <path d={path} className={`map-line ${active ? "active" : ""} ${node.kind === "overflow" ? "overflow" : ""}`} pathLength="1">
-                      {active && !reduceMotion ? (
-                        <animate
-                          attributeName="stroke-dashoffset"
-                          dur="1.1s"
-                          from="0"
-                          repeatCount="indefinite"
-                          to="-0.26"
-                        />
-                      ) : null}
-                    </path>
-                    {active && !reduceMotion ? (
-                      <circle r="4" className="map-pulse-dot">
-                        <animateMotion dur="1.6s" repeatCount="indefinite" path={path} />
-                      </circle>
-                    ) : null}
-                  </g>
-                );
-              })}
-            </svg>
-          ) : null}
-
-          <div className="router-center pulse-hub" style={{ left: "50%", top: "50%" }}>
-            <span className="brand-icon router-center-logo" aria-hidden="true">
-              <span className="brand-letter">N</span>
-            </span>
-            <strong>NesaRouter</strong>
-          </div>
-
-          {layout.map(({ node, index, point }) => {
-            const active = node.kind === "provider" && liveProviderIds.has(node.id);
-            const connected = node.kind === "provider" && node.connectionStatus === "connected";
-            const stats = node.kind === "provider" ? usageMap.get(node.id) : undefined;
+        <button className="icon-button" type="button" onClick={() => zoom(-0.1)} aria-label="Zoom out selected route map"><ZoomOut size={14} /></button>
+        <button className="icon-button" type="button" onClick={resetView} aria-label="Reset selected route map"><LocateFixed size={14} /></button>
+        <button className="icon-button" type="button" onClick={() => zoom(0.1)} aria-label="Zoom in selected route map"><ZoomIn size={14} /></button>
+        <span>{Math.round(transform.scale * 100)}%</span>
+      </div>
+      <div
+        className="route-map-stage"
+        style={{ transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})` }}
+      >
+        <svg className="route-map-lines" viewBox="-410 -215 820 430" aria-hidden="true">
+          <defs>
+            <marker id="route-arrow-idle" markerHeight="6" markerWidth="7" orient="auto" refX="6" refY="3">
+              <path d="M 0 0 L 7 3 L 0 6 Z" className="route-flow-arrow idle" />
+            </marker>
+            <marker id="route-arrow-active" markerHeight="7" markerWidth="8" orient="auto" refX="7" refY="3.5">
+              <path d="M 0 0 L 8 3.5 L 0 7 Z" className="route-flow-arrow active" />
+            </marker>
+          </defs>
+          {nodes.map((node, index) => {
+            const selectedProvider = node.state !== "neutral";
+            const path = flowPath(node, index);
             return (
-              <div
-                className={`map-provider ${node.status} ${node.kind === "overflow" ? "overflow" : ""} ${connected ? "connected" : ""} ${active ? "live" : ""} ${stats ? "has-traffic" : ""}`}
-                style={{
-                  left: `calc(50% + ${mapCoordText(point.x)}px)`,
-                  top: `calc(50% + ${mapCoordText(point.y)}px)`
-                }}
-                title={
-                  node.kind === "overflow"
-                    ? `${node.hiddenCount} providers hidden from this map view.`
-                    : `${node.name}${stats ? ` · ${stats.requests} req · ${stats.tokens.toLocaleString()} tok` : ""}`
-                }
-                key={node.id}
-              >
-                {node.kind === "overflow" ? (
-                  <span className="provider-badge">{`+${node.hiddenCount}`}</span>
-                ) : (
-                  <ProviderIcon provider={node} size="sm" active={active} />
-                )}
-                <div className="map-provider-copy">
-                  <strong>{node.name}</strong>
-                  {stats ? <small>{stats.requests} req</small> : null}
-                </div>
-              </div>
+              <g key={node.id}>
+                <path className={`route-flow-path ${selectedProvider ? "active" : "idle"}`} d={path} markerEnd={`url(#route-arrow-${selectedProvider ? "active" : "idle"})`} />
+                {selectedProvider && !reduceMotion ? (
+                  <circle className="route-flow-pulse" r="4">
+                    <animateMotion dur="1.35s" path={path} repeatCount="indefinite" />
+                  </circle>
+                ) : null}
+              </g>
             );
           })}
+        </svg>
+        <div className="route-hub" aria-label="NesaRouter decision hub">
+          <span className="brand-icon router-center-logo" aria-hidden="true">
+            <span className="brand-letter">N</span>
+          </span>
+          <span>Router</span>
+          <strong title={selected?.routingReason || "Waiting for route"}>NesaRouter</strong>
+          <em title={selected?.routingReason || "Waiting for route"}>{selected?.cacheStatus === "hit" ? "Cache hit" : selected?.routingReason || "Waiting for route"}</em>
+        </div>
+        {nodes.map((node) => <RouteMapNodeCard node={node} key={node.id} />)}
+      </div>
+    </div>
+  );
+}
+
+export default function UsageFlow({ providers, usage }: { providers: ProviderConfig[]; usage: UsageLog[] }) {
+  const [liveUsage, setLiveUsage] = useState(usage);
+  const [selectedId, setSelectedId] = useState(usage[0]?.id ?? "");
+  const [paused, setPaused] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [refreshError, setRefreshError] = useState("");
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const visibleProviders = useMemo(() => providers.filter(isVisibleProvider), [providers]);
+  const visibleProviderIds = useMemo(() => new Set(visibleProviders.map((provider) => provider.id)), [visibleProviders]);
+  const events = useMemo(
+    () => routeEventsForProviders(liveUsage, visibleProviders, nowMs),
+    [liveUsage, nowMs, visibleProviders]
+  );
+  const selected = events.find((row) => row.id === selectedId) ?? events[0];
+  const fleet = useMemo(() => providerActivity(visibleProviders, events), [events, visibleProviders]);
+  const recentUpstream = events.filter((row) => row.isRecent && row.isUpstream);
+  const recentErrors = recentUpstream.filter((row) => row.status === "error").length;
+  const liveProviderCount = new Set(recentUpstream.map((row) => row.providerId)).size;
+  const selectedVisibleSkipped = selected?.skippedProviders?.filter((item) => visibleProviderIds.has(item.providerId)) ?? [];
+
+  async function refresh() {
+    setRefreshing(true);
+    setRefreshError("");
+    try {
+      const response = await fetch("/api/usage", { credentials: "include", cache: "no-store" });
+      if (!response.ok) throw new Error(`Usage refresh failed (${response.status})`);
+      const rows = (await response.json()) as UsageLog[];
+      if (!Array.isArray(rows)) throw new Error("Usage response is invalid");
+      setLiveUsage(rows);
+      setNowMs(Date.now());
+      setLastUpdated(new Date());
+      setSelectedId((current) => current || rows[0]?.id || "");
+    } catch (error) {
+      setRefreshError(error instanceof Error ? error.message : "Usage refresh failed");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  useEffect(() => {
+    if (paused) return;
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), LIVE_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [paused]);
+
+  return (
+    <section className="panel usage-flow-panel" aria-labelledby="live-routing-title">
+      <div className="live-map-header">
+        <div>
+          <div className="live-map-title-row">
+            <span className={`live-indicator ${paused ? "paused" : ""}`} aria-hidden="true" />
+            <h2 id="live-routing-title">Live routing</h2>
+          </div>
+          <p>Inspect the selected route, skipped providers, cost, and provider health.</p>
+        </div>
+        <div className="live-map-actions">
+          <span className="live-map-updated" role="status">
+            {refreshError || (paused ? "Updates paused" : lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : "Connecting…")}
+          </span>
+          <button className="button secondary compact-button" type="button" onClick={() => setPaused((value) => !value)} aria-pressed={paused}>
+            {paused ? <Play size={14} /> : <Pause size={14} />}
+            {paused ? "Resume" : "Pause"}
+          </button>
+          <button className="icon-button" type="button" onClick={() => void refresh()} disabled={refreshing} aria-label="Refresh live routing">
+            <RefreshCw size={15} className={refreshing ? "spin" : ""} />
+          </button>
         </div>
       </div>
+
+      <div className="live-map-summary" aria-label="Recent routing summary">
+        <div><Activity size={15} /><span>Recent routes</span><strong>{recentUpstream.length}</strong></div>
+        <div><Server size={15} /><span>Providers used</span><strong>{liveProviderCount}</strong></div>
+        <div className={recentErrors ? "has-error" : ""}><AlertTriangle size={15} /><span>Errors</span><strong>{recentErrors}</strong></div>
+        <div><Clock3 size={15} /><span>Window</span><strong>10 min</strong></div>
+      </div>
+
+      {events.length === 0 && visibleProviders.length === 0 ? (
+        <div className="live-map-empty">
+          <Activity size={22} />
+          <strong>No routing events yet</strong>
+          <p>Send a request through the NesaRouter endpoint. Its route and decision trail will appear here.</p>
+        </div>
+      ) : (
+        <div className="routing-workbench">
+          <article className="route-inspector" aria-live="polite">
+            <div className="workbench-heading">
+              <span>{selected ? "Selected route" : "Provider topology"}</span>
+              {selected ? (
+                <strong className={`route-result ${selected.status}`}>{selected.status === "success" ? <Check size={13} /> : <AlertTriangle size={13} />}{selected.status}</strong>
+              ) : <strong>Idle</strong>}
+            </div>
+            <RouteMap selected={selected} providers={visibleProviders} />
+          </article>
+
+          <div className="route-side-rail route-detail-collage">
+          <section className="route-audit-panel" aria-labelledby="request-inspector-title">
+            <div className="workbench-heading"><span id="request-inspector-title">Request inspector</span><strong>{selected?.status ?? "Idle"}</strong></div>
+            {selected ? (
+              <>
+                <dl className="route-facts">
+                  <div><dt>Tokens</dt><dd>{(selected.inputTokens + selected.outputTokens).toLocaleString()}</dd></div>
+                  <div><dt>Cost</dt><dd>{money(selected.totalCostUsd)}</dd></div>
+                  <div><dt>Budget</dt><dd>{selected.budgetStatus}</dd></div>
+                  <div><dt>Cache</dt><dd>{selected.cacheStatus}</dd></div>
+                  <div><dt>Tier</dt><dd>{selected.tier}</dd></div>
+                  <div><dt>Task</dt><dd>{selected.taskType}</dd></div>
+                </dl>
+                <div className="route-decision">
+                  <span>Decision</span>
+                  <p>{selected.routingReason || "No routing reason was recorded."}</p>
+                </div>
+                {selectedVisibleSkipped.length ? (
+                  <div className="route-skips">
+                    <span>{selectedVisibleSkipped.length} skipped</span>
+                    <p title={selectedVisibleSkipped.map((item) => `${item.providerId}: ${item.reason}`).join("\n")}>
+                      {selectedVisibleSkipped.slice(0, 2).map((item) => item.providerId).join(", ")}
+                      {selectedVisibleSkipped.length > 2 ? ` +${selectedVisibleSkipped.length - 2}` : ""}
+                    </p>
+                  </div>
+                ) : null}
+                {selected.error ? <p className="route-error">{selected.error}</p> : null}
+              </>
+            ) : (
+              <div className="request-inspector-empty">
+                <strong>No request selected</strong>
+                <p>Active providers remain visible above. Send a request to inspect its routing decision.</p>
+              </div>
+            )}
+          </section>
+          <div className="provider-fleet-column">
+              <div className="workbench-heading"><span>Provider fleet</span><strong>{visibleProviders.length}</strong></div>
+            <div className="provider-fleet-list">
+              {fleet.map(({ provider, activity }) => (
+                <div className="fleet-row" key={provider.id}>
+                  <ProviderIcon provider={provider} size="sm" active={Boolean(activity?.requests)} className="fleet-provider-icon" />
+                  <span><strong>{provider.name}</strong><small>{provider.model || "Default model"}</small></span>
+                  <span className="fleet-metrics"><strong>{activity?.requests ?? 0} req</strong><small>{provider.status}{activity?.errors ? ` / ${activity.errors} error` : ""}</small></span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="route-rail-bottom">
+          <div className="route-event-column">
+            <div className="workbench-heading"><span>Event stream</span><strong>{events.length}</strong></div>
+            <div className="route-event-list" aria-label="Routing events">
+              {events.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  aria-pressed={selected?.id === row.id}
+                  className={`route-event ${selected?.id === row.id ? "selected" : ""}`}
+                  onClick={() => setSelectedId(row.id)}
+                >
+                  <span className={`event-state ${row.status} ${row.cacheStatus === "hit" ? "cache" : ""}`} aria-hidden="true" />
+                  <span className="event-main"><strong>{row.model}</strong><small>{row.cacheStatus === "hit" ? "Cache" : row.providerName}</small></span>
+                  <span className="event-meta"><strong>{money(row.totalCostUsd)}</strong><small>{relativeTime(row.ageMs)}</small></span>
+                </button>
+              ))}
+              {events.length === 0 ? <p className="route-events-empty">No routing events yet.</p> : null}
+            </div>
+          </div>
+          </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

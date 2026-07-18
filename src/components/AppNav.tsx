@@ -12,6 +12,7 @@ import {
   Terminal,
   Waypoints
 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { useI18n } from "@/components/I18nProvider";
 
 const items = [
@@ -35,15 +36,25 @@ export default function AppNav({
   routingOnly?: boolean;
 }) {
   const { t } = useI18n();
+  const activeRef = useRef<HTMLAnchorElement | null>(null);
   const labels = t.nav;
   const visible = routingOnly ? items.filter((item) => item.id === "routing") : items;
+
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [active]);
 
   return (
     <nav className="nav-list" aria-label={labels.mainNav}>
       {visible.map((item) => {
         const Icon = item.icon;
         return (
-          <a className={`nav-item ${active === item.id ? "active" : ""}`} href={item.href} key={item.href}>
+          <a
+            className={`nav-item ${active === item.id ? "active" : ""}`}
+            href={item.href}
+            key={item.href}
+            ref={active === item.id ? activeRef : undefined}
+          >
             <Icon size={17} /> {labels[item.id]}
           </a>
         );

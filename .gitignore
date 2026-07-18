@@ -1,5 +1,7 @@
 node_modules/
 .next/
+.next-new/
+.next-incomplete-*/
 out/
 data/
 test-results/
@@ -15,6 +17,9 @@ tmp-*.png
 tmp-*.py
 scripts/tmp-*
 .tmp/
+.hallmark/
+artifacts/
+skills-lock.json
 credentials*
 **/credentials*
 npm-debug.log*
