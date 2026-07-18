@@ -2,6 +2,21 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.38 - 2026-07-18
+
+### Fixed
+
+- Redesign Live Routing as a responsive, pannable, auto-fitting provider topology with curved directional flow, bounded provider logos, and reliable zoom controls.
+- Show only routable providers, keep active provider topology visible before the first request, prevent dense provider nodes and dashboard tables from overlapping, and consolidate the request inspector, provider fleet, and event stream into a responsive operator workspace.
+- Filter live events before applying the event limit and reconcile provider activity by stable ID or provider name so fleet counters remain accurate after imports or provider renames.
+- Anchor standalone `DATA_DIR` to the project root, support atomic `.next-new` builds, and copy runtime assets into the dist directory embedded by Next.js.
+- Never redisplay bootstrap-password guidance after an admin password hash exists, and strip private `_nesa*` request metadata before forwarding requests to strict OpenAI-compatible upstreams.
+- Keep the active navigation item visible on compact layouts and prevent local visual-audit/build artifacts from entering public releases.
+
+### Validation
+
+- 285 unit tests across 55 files, TypeScript validation, OSS public-boundary check, production build, isolated end-to-end smoke test, and runtime health/auth-boundary checks pass.
+
 ## 0.1.37 - 2026-07-17
 
 ### Fixed
