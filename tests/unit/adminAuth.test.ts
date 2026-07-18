@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { adminCookieName, buildAdminSessionCookie } from "@/core/adminSessionCookie";
-import { adminTokenFromRequest, loginRateLimitKey, readAdminSessionTokenCandidates } from "@/core/adminAuth";
-import { createAdminSessionRecord } from "@/lib/store";
+import { adminLoginPasswordHint, adminTokenFromRequest, loginRateLimitKey, readAdminSessionTokenCandidates } from "@/core/adminAuth";
+import { createAdminSessionRecord, writeAdminPasswordHash } from "@/lib/store";
 
 describe("admin session token resolution", () => {
   const previousTrustProxy = process.env.NESA_TRUST_PROXY;
-  afterEach(() => {
+  afterEach(async () => {
     if (previousTrustProxy === undefined) delete process.env.NESA_TRUST_PROXY;
     else process.env.NESA_TRUST_PROXY = previousTrustProxy;
+    await writeAdminPasswordHash("");
   });
 
   it("isolates login throttling between clients", () => {
@@ -69,5 +70,10 @@ describe("admin session token resolution", () => {
       headers: { cookie: `${adminCookieName}=${cookie}` }
     });
     await expect(resolveVerifiedAdminSessionToken(request)).resolves.toBe(cookie);
+  });
+
+  it("never exposes a bootstrap hint after a password hash is stored", async () => {
+    await writeAdminPasswordHash("scrypt$stored-password-hash");
+    await expect(adminLoginPasswordHint()).resolves.toBeNull();
   });
 });

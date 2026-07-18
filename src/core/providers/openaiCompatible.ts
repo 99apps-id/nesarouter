@@ -70,12 +70,20 @@ function isMimoFree(provider: ProviderConfig) {
   return provider.id === "mimo-code-free" || /xiaomimimo\.com\/api\/free-ai/i.test(provider.baseUrl);
 }
 
+/** Drop SaaS/router private keys — strict upstreams (e.g. Mistral) reject unknown fields with 422. */
+export function stripPrivateRouterFields(body: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  if (!body || typeof body !== "object") return {};
+  const out: Record<string, unknown> = { ...body };
+  for (const key of Object.keys(out)) if (key.startsWith("_nesa")) delete out[key];
+  return out;
+}
+
 export class OpenAiCompatibleExecutor implements ProviderExecutor {
   async call(provider: ProviderConfig, body: any, apiKey?: string) {
     if (isMimoFree(provider)) {
       const jwt = await bootstrapMimoFreeJwt();
       const upstreamBody: Record<string, unknown> = {
-        ...body,
+        ...stripPrivateRouterFields(body),
         model: "mimo-auto",
         messages: ensureMimoSystemPrompt(body?.messages)
       };
@@ -113,7 +121,7 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
     const authHeaders: Record<string, string> =
       token && !isAzureOpenAiHost(provider.baseUrl) ? { authorization: `Bearer ${token}` } : {};
     const upstreamBody: Record<string, unknown> = {
-      ...body,
+      ...stripPrivateRouterFields(body),
       model: provider.model
     };
 

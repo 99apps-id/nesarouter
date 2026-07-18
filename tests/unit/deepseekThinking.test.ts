@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatCompletionsUrl, shouldDisableDeepSeekThinking } from "@/core/providers/openaiCompatible";
+import { chatCompletionsUrl, shouldDisableDeepSeekThinking, stripPrivateRouterFields } from "@/core/providers/openaiCompatible";
 import { ProviderConfig } from "@/core/types";
 
 function deepseek(model = "deepseek-v4-flash"): ProviderConfig {
@@ -72,5 +72,13 @@ describe("chat completions URL", () => {
 
   it("appends /chat/completions for standard v1 bases", () => {
     expect(chatCompletionsUrl(deepseek())).toBe("https://api.deepseek.com/chat/completions");
+  });
+});
+
+describe("private router request fields", () => {
+  it("removes Nesa-only metadata without changing standard request fields", () => {
+    const body = { model: "client-model", messages: [{ role: "user", content: "hi" }], _nesaTenant: "private", _nesaRoute: { id: 1 }, stream: true };
+    expect(stripPrivateRouterFields(body)).toEqual({ model: "client-model", messages: body.messages, stream: true });
+    expect(body).toHaveProperty("_nesaTenant", "private");
   });
 });
