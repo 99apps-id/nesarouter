@@ -113,7 +113,7 @@ export function mergeHermesModelYaml(existing: string, patch: string) {
   for (const line of existing.split(/\r?\n/)) {
     if (/^model:\s*$/.test(line)) { inModel = true; kept.push(line); continue; }
     if (inModel && /^\S/.test(line)) inModel = false;
-    if (inModel && /^\s{2}(default|provider|base_url):/.test(line)) continue;
+    if (inModel && /^\s{2}(default|provider|base_url|context_length):/.test(line)) continue;
     kept.push(line);
   }
   const patchLines = patch.trim().split(/\r?\n/).slice(1);
@@ -128,7 +128,7 @@ function stripHermesModelRouting(existing: string) {
   return existing.split(/\r?\n/).filter((line) => {
     if (/^model:\s*$/.test(line)) { inModel = true; return true; }
     if (inModel && /^\S/.test(line)) inModel = false;
-    return !(inModel && /^\s{2}(default|provider|base_url):/.test(line));
+    return !(inModel && /^\s{2}(default|provider|base_url|context_length):/.test(line));
   }).join("\n");
 }
 

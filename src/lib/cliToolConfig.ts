@@ -190,7 +190,7 @@ export function buildCliToolConfig(tool: CliToolId, baseUrl: string, apiKey: str
           {
             path: "~/.hermes/config.yaml",
             writeMode: "merge-yaml-model",
-            content: `model:\n  default: "${model}"\n  provider: "custom"\n  base_url: "${v1}"\n`
+            content: `model:\n  default: "${model}"\n  provider: "custom"\n  base_url: "${v1}"\n  context_length: 262144\n`
           },
           { path: "~/.hermes/.env", content: `OPENAI_API_KEY=${apiKey}\nOPENAI_BASE_URL=${v1}\nOPENAI_MODEL=${model}\n` }
         ],
@@ -217,7 +217,15 @@ export function buildCliToolConfig(tool: CliToolId, baseUrl: string, apiKey: str
                       baseUrl: v1Base(loopback),
                       apiKey,
                       api: "openai-completions",
-                      models: [{ id: model, name: "NesaRouter" }]
+                      models: [{
+                        id: model,
+                        name: "NesaRouter",
+                        contextWindow: 262144,
+                        maxTokens: 32768,
+                        input: ["text"],
+                        reasoning: false,
+                        compat: { supportsTools: true }
+                      }]
                     }
                   }
                 }

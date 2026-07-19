@@ -34,6 +34,36 @@ describe("router", () => {
     expect(decision.provider.id).toBe("free");
   });
 
+  it("skips chat-only providers for tool calling requests", () => {
+    const store = storeWith([
+      provider({ id: "chat-only", type: "grok_web", model: "web", priority: 1 }),
+      provider({ id: "tools", type: "openai_compatible", model: "agent", priority: 2 })
+    ]);
+    const decision = chooseProvider(store, {
+      model: "auto",
+      messages: [{ role: "user", content: "read a file" }],
+      tools: [{ type: "function", function: { name: "read_file", parameters: { type: "object" } } }]
+    });
+    expect(decision.provider.id).toBe("tools");
+    expect(decision.skippedProviders).toContainEqual({
+      providerId: "chat-only",
+      reason: "Provider does not support tool calling."
+    });
+  });
+
+  it("honors an explicit supportsTools override", () => {
+    const store = storeWith([
+      provider({ id: "disabled-tools", supportsTools: false, model: "same" }),
+      provider({ id: "enabled-tools", supportsTools: true, model: "same", priority: 2 })
+    ]);
+    const decision = chooseProvider(store, {
+      model: "same",
+      messages: [],
+      tools: [{ type: "function", function: { name: "exec", parameters: {} } }]
+    });
+    expect(decision.provider.id).toBe("enabled-tools");
+  });
+
   it("matches an explicit model to its provider", () => {
     const store = storeWith([
       provider({ id: "paid", name: "Paid", tier: "premium", model: "gpt-4", priority: 1 }),
