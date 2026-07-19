@@ -50,6 +50,8 @@ export interface ProviderConfig {
   model: string;
   /** All models this provider can serve (model is the primary/first entry). */
   models?: string[];
+  /** Whether this upstream can preserve function/tool calling payloads. */
+  supportsTools?: boolean;
   priority: number;
   inputCostPerMTok: number;
   outputCostPerMTok: number;

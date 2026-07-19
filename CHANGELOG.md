@@ -2,6 +2,18 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.39 - 2026-07-20
+
+### Fixed
+
+- Route requests carrying `tools` or `tool_choice` only through upstream adapters that support function calling, while allowing an explicit per-provider capability override.
+- Generate Hermes and OpenClaw configuration with agent context and tool-capability metadata so patched clients can expose file and execution tools reliably.
+- Make the Hermes/OpenClaw connection test require a real, harmless function-call response instead of reporting success after an ordinary chat response.
+
+### Validation
+
+- 287 unit tests across 55 files, TypeScript validation, OSS public-boundary check, production build, VPS health check, and internal/public function-call probes pass.
+
 ## 0.1.38 - 2026-07-18
 
 ### Fixed

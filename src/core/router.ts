@@ -35,6 +35,15 @@ function isProviderUsable(provider: ProviderConfig) {
   return true;
 }
 
+export function providerSupportsTools(provider: ProviderConfig) {
+  if (provider.supportsTools !== undefined) return provider.supportsTools;
+  return provider.type !== "grok_web" && provider.type !== "gemini_cli";
+}
+
+function requestNeedsTools(body: any) {
+  return (Array.isArray(body?.tools) && body.tools.length > 0) || body?.tool_choice != null;
+}
+
 /** UI / combo health — why a provider would be skipped by the router right now. */
 export function describeProviderRouteReadiness(provider: ProviderConfig): { ready: boolean; reason: string } {
   if (isProviderUsable(provider)) return { ready: true, reason: "Ready" };
@@ -156,6 +165,7 @@ export function chooseProvider(
   const taskType = store.router.evaluatorEnabled === false ? "chat" : detectTaskType(text);
   const estimatedInputTokens = estimateTokens(text || JSON.stringify(body).slice(0, 4000));
   const estimatedOutputTokens = requestedOutputTokens(body, estimateOutputTokens(estimatedInputTokens, taskType));
+  const needsTools = requestNeedsTools(body);
   const skippedProviders: RouteDecision["skippedProviders"] = [];
 
   const activeProviders = store.providers.filter((provider) => {
@@ -170,6 +180,10 @@ export function chooseProvider(
     }
     if (isProviderRoutingQuotaExhausted(provider, store)) {
       skippedProviders.push({ providerId: provider.id, reason: providerRoutingQuotaReason(provider, store) });
+      return false;
+    }
+    if (needsTools && !providerSupportsTools(provider)) {
+      skippedProviders.push({ providerId: provider.id, reason: "Provider does not support tool calling." });
       return false;
     }
     return true;

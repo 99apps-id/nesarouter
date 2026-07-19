@@ -208,8 +208,8 @@ export default function CliConfigFetcher({
       headers: { "content-type": "application/json" },
       body: JSON.stringify(
         token
-          ? { token, model: result?.model ?? modelTarget }
-          : { keyId: selectedKeyId, model: result?.model ?? modelTarget }
+          ? { token, model: result?.model ?? modelTarget, toolProbe: tool === "hermes" || tool === "openclaw" }
+          : { keyId: selectedKeyId, model: result?.model ?? modelTarget, toolProbe: tool === "hermes" || tool === "openclaw" }
       )
     });
     const payload = await response.json().catch(() => ({}));
