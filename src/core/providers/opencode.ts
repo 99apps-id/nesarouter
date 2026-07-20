@@ -179,6 +179,15 @@ export class OpenCodeExecutor implements ProviderExecutor {
 
   async validate(provider: ProviderConfig) {
     const models = await this.listModels(provider);
-    return { models, message: models.length ? `${models.length} models found.` : "OpenCode connected." };
+    await this.call(provider, {
+      model: provider.model,
+      messages: [{ role: "user", content: "Reply OK" }],
+      max_tokens: 1,
+      stream: false
+    });
+    return {
+      models,
+      message: `OpenCode inference accepted · ${models.length} models found.`
+    };
   }
 }

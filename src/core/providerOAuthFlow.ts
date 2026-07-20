@@ -5,11 +5,26 @@ import { cursorAccessTokenExpiresAt } from "@/core/cursorTokenImport";
 import { ProviderConfig } from "@/core/types";
 import { readProviderById, saveProviderOAuthTokens, markOAuthAccountConnection } from "@/lib/store";
 
-function tokenNeedsRefresh(provider: ProviderConfig, preset: OAuthPreset): boolean {
-  if (!provider.oauthAccessToken) return false;
-  if (!provider.oauthTokenExpiresAt) return true;
+const UNKNOWN_EXPIRY_REFRESH_INTERVAL_MS = 45 * 60_000;
+
+export function oauthTokenIsExpired(provider: Pick<ProviderConfig, "oauthTokenExpiresAt">, now = Date.now()): boolean {
+  if (!provider.oauthTokenExpiresAt) return false;
   const expiresAt = new Date(provider.oauthTokenExpiresAt).getTime();
-  return Date.now() + preset.refreshLeadMs >= expiresAt;
+  return Number.isFinite(expiresAt) && expiresAt <= now;
+}
+
+export function oauthTokenNeedsRefresh(
+  provider: Pick<ProviderConfig, "oauthAccessToken" | "oauthTokenExpiresAt" | "oauthLastRefreshAt">,
+  preset: Pick<OAuthPreset, "refreshLeadMs">,
+  now = Date.now()
+): boolean {
+  if (!provider.oauthAccessToken) return false;
+  if (!provider.oauthTokenExpiresAt) {
+    const lastRefresh = provider.oauthLastRefreshAt ? new Date(provider.oauthLastRefreshAt).getTime() : NaN;
+    return Number.isFinite(lastRefresh) && now - lastRefresh >= UNKNOWN_EXPIRY_REFRESH_INTERVAL_MS;
+  }
+  const expiresAt = new Date(provider.oauthTokenExpiresAt).getTime();
+  return !Number.isFinite(expiresAt) || now + preset.refreshLeadMs >= expiresAt;
 }
 
 function computeExpiry(expiresIn?: number): string | undefined {
@@ -65,7 +80,7 @@ async function ensureFreshAccessTokenImpl(provider: ProviderConfig, accountId?: 
   if (!snapshot.oauthAccessToken) return null;
 
   if (preset.profile === "github_copilot") {
-    if (tokenNeedsRefresh(snapshot, preset) && snapshot.oauthRefreshToken) {
+    if (oauthTokenNeedsRefresh(snapshot, preset) && snapshot.oauthRefreshToken) {
       try {
         const tokens = await refreshToken(preset, snapshot.oauthRefreshToken);
         const accessToken = tokens.access_token;
@@ -74,10 +89,16 @@ async function ensureFreshAccessTokenImpl(provider: ProviderConfig, accountId?: 
         const expiresAt = computeExpiry(tokens.expires_in);
         await saveProviderOAuthTokens(snapshot.id, { accessToken, refreshToken: refreshTokenValue, expiresAt }, { accountId: account.id });
         snapshot.oauthAccessToken = accessToken;
-      } catch {
-        // fall through with the existing access token
+      } catch (error) {
+        if (oauthTokenIsExpired(snapshot)) {
+          const message = error instanceof Error ? error.message : String(error);
+          await markOAuthAccountConnection(snapshot.id, account.id, false, `OAuth refresh failed: ${message.slice(0, 240)}. Reconnect this account.`);
+          return null;
+        }
+        // The current token is still within its declared lifetime; use it until expiry.
       }
     }
+    if (oauthTokenIsExpired(snapshot)) return null;
     if (!copilotTokenNeedsRefresh(snapshot, preset)) return snapshot.oauthCopilotToken ?? null;
     const githubAccessToken = snapshot.oauthAccessToken;
     if (!githubAccessToken) return snapshot.oauthCopilotToken ?? null;
@@ -93,8 +114,8 @@ async function ensureFreshAccessTokenImpl(provider: ProviderConfig, accountId?: 
     return refreshed.token;
   }
 
-  if (!tokenNeedsRefresh(snapshot, preset)) return snapshot.oauthAccessToken;
-  if (!snapshot.oauthRefreshToken) return snapshot.oauthAccessToken;
+  if (!oauthTokenNeedsRefresh(snapshot, preset)) return snapshot.oauthAccessToken;
+  if (!snapshot.oauthRefreshToken) return oauthTokenIsExpired(snapshot) ? null : snapshot.oauthAccessToken;
 
   try {
     if (preset.kiroDeviceFlow) {
@@ -133,7 +154,7 @@ async function ensureFreshAccessTokenImpl(provider: ProviderConfig, accountId?: 
     const message = error instanceof Error ? error.message : String(error);
     const fatal =
       /revoked|invalid_grant|already.?used|shouldLogout|expired.*refresh|unauthorized|invalid_token/i.test(message);
-    if (fatal) {
+    if (fatal || oauthTokenIsExpired(snapshot)) {
       try {
         await markOAuthAccountConnection(
           snapshot.id,
@@ -145,7 +166,7 @@ async function ensureFreshAccessTokenImpl(provider: ProviderConfig, accountId?: 
         /* best-effort */
       }
     }
-    return snapshot.oauthAccessToken;
+    return oauthTokenIsExpired(snapshot) ? null : snapshot.oauthAccessToken;
   }
 }
 

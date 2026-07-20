@@ -64,7 +64,7 @@ export default function ProviderDetail({
   const [oauthWaiting, setOauthWaiting] = useState(false);
   const oauthPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [importTok, setImportTok] = useState({ accessToken: "", refreshToken: "", expiresIn: "", machineId: "" });
-  const [device, setDevice] = useState<{ userCode: string; verificationUri: string; interval: number } | null>(null);
+  const [device, setDevice] = useState<{ userCode: string; verificationUri: string; interval: number; pendingId?: string } | null>(null);
   const [devicePolling, setDevicePolling] = useState(false);
   const [cursorImporting, setCursorImporting] = useState(false);
   const [vertexImporting, setVertexImporting] = useState(false);
@@ -561,7 +561,8 @@ export default function ProviderDetail({
       setDevice({
         userCode: result.user_code || "",
         verificationUri: result.verification_uri,
-        interval: result.interval ?? 5
+        interval: result.interval ?? 5,
+        pendingId: result.pending_id || undefined
       });
       if (result.openUrl || !result.user_code) {
         window.open(result.verification_uri, "_blank", "noopener,noreferrer");
@@ -577,7 +578,7 @@ export default function ProviderDetail({
     const response = await adminFetch(`/api/providers/${draft.id}/oauth/device/poll`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(oauthConnectBody())
+      body: JSON.stringify({ ...oauthConnectBody(), pendingId: device.pendingId })
     });
     if (guardAdminResponse(response, setError)) {
       setDevicePolling(false);

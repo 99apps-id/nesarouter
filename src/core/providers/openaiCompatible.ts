@@ -32,7 +32,17 @@ export function shouldDisableDeepSeekThinking(provider: ProviderConfig, body: an
   // OpenCode Zen (and similar proxies) host DeepSeek models under another hostname.
   const isDeepSeekModel = model.includes("deepseek");
   if (!isDeepSeekHost && !isDeepSeekModel) return false;
-  // Reasoner / R1-style models should keep thinking enabled.
+  const hasTools =
+    (Array.isArray(body?.tools) && body.tools.length > 0) ||
+    body?.tool_choice != null ||
+    (Array.isArray(body?.messages) &&
+      body.messages.some(
+        (message: any) =>
+          message?.role === "tool" || (Array.isArray(message?.tool_calls) && message.tool_calls.length > 0)
+      ));
+  // Tool/agent loops almost never replay reasoning_content — disable thinking for those.
+  if (hasTools) return true;
+  // Reasoner / R1-style models should keep thinking enabled for plain chat.
   if (/reasoner|(^|[\/_-])r1([\/_-]|$)|thinking/.test(model)) return false;
   return true;
 }
@@ -223,6 +233,18 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
 
     try {
       const models = await this.listModels(provider);
+      if (/openrouter\.ai/i.test(provider.baseUrl)) {
+        await this.call(provider, {
+          model: provider.model,
+          messages: [{ role: "user", content: "Reply OK" }],
+          max_tokens: 1,
+          stream: false
+        });
+        return {
+          models,
+          message: `OpenRouter inference accepted · ${models.length} models found.`
+        };
+      }
       return {
         models,
         message: provider.oauthProfile

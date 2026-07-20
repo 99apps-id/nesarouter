@@ -36,6 +36,8 @@ export function openaiMessagesToCursor(body: any): any[] {
   const systems: string[] = [];
   const out: any[] = [];
   let pendingToolResults: any[] = [];
+  /** Prior assistant tool_calls by id — Cursor tool_results need name + raw_args. */
+  const toolCallMeta = new Map<string, { name: string; arguments: string; index: number }>();
 
   const flushToolResults = () => {
     if (!pendingToolResults.length) return;
@@ -51,11 +53,16 @@ export function openaiMessagesToCursor(body: any): any[] {
     }
     if (message?.role === "tool") {
       const content = textFromContent(message?.content);
+      const id = typeof message.tool_call_id === "string" ? message.tool_call_id : "";
+      const meta = id ? toolCallMeta.get(id) : undefined;
       pendingToolResults.push({
         tool_call_id: message.tool_call_id,
         content,
         result_content: content,
-        tool_name: message.name
+        tool_name: message.name || meta?.name || "",
+        name: message.name || meta?.name || "",
+        raw_args: meta?.arguments || "{}",
+        tool_index: meta?.index != null ? meta.index + 1 : 1
       });
       continue;
     }
@@ -65,6 +72,15 @@ export function openaiMessagesToCursor(body: any): any[] {
       const entry: any = { role: "assistant", content: content || "" };
       if (Array.isArray(message.tool_calls) && message.tool_calls.length) {
         entry.tool_calls = message.tool_calls;
+        message.tool_calls.forEach((call: any, index: number) => {
+          const callId = typeof call?.id === "string" ? call.id : "";
+          if (!callId) return;
+          toolCallMeta.set(callId, {
+            name: String(call?.function?.name ?? call?.name ?? ""),
+            arguments: typeof call?.function?.arguments === "string" ? call.function.arguments : "{}",
+            index
+          });
+        });
       }
       out.push(entry);
       continue;
@@ -187,8 +203,18 @@ function applyFrameResult(
     const existing = state.toolCalls.find((item) => item.id === tc.id);
     const args = tc.function?.arguments ?? "";
     if (existing) {
-      existing.function.arguments += args;
-      if (args) out.toolArgsDelta = { id: tc.id, args };
+      if (!args) {
+        /* no-op */
+      } else if (args === existing.function.arguments) {
+        /* duplicate full payload */
+      } else if (args.startsWith(existing.function.arguments)) {
+        const suffix = args.slice(existing.function.arguments.length);
+        existing.function.arguments = args;
+        if (suffix) out.toolArgsDelta = { id: tc.id, args: suffix };
+      } else if (!existing.function.arguments.endsWith(args)) {
+        existing.function.arguments += args;
+        out.toolArgsDelta = { id: tc.id, args };
+      }
     } else {
       const entry = {
         id: tc.id,
@@ -196,7 +222,14 @@ function applyFrameResult(
         function: { name: tc.function?.name ?? "tool", arguments: args }
       };
       state.toolCalls.push(entry);
-      out.newToolCall = entry;
+      // Announce the tool call with empty arguments; send args as a separate delta
+      // so later incremental frames never double-concatenate a full first payload.
+      out.newToolCall = {
+        id: entry.id,
+        type: "function",
+        function: { name: entry.function.name, arguments: "" }
+      };
+      if (args) out.toolArgsDelta = { id: tc.id, args };
     }
   }
   return out;
@@ -256,12 +289,13 @@ function connectStreamToOpenAiSse(body: ReadableStream<Uint8Array>, model: strin
                     type: "function",
                     function: {
                       name: delta.newToolCall.function.name,
-                      arguments: delta.newToolCall.function.arguments
+                      arguments: ""
                     }
                   }
                 ]
               });
-            } else if (delta.toolArgsDelta) {
+            }
+            if (delta.toolArgsDelta) {
               const index = state.toolCalls.findIndex((t) => t.id === delta.toolArgsDelta!.id);
               if (index >= 0) {
                 enqueue({
@@ -379,11 +413,23 @@ export class CursorExecutor implements ProviderExecutor {
         400
       );
     }
-    // Soft check only (9router tokenExists). Live api2 probes consume quota and 429/5xx
-    // was flipping OAuth accounts to error on the periodic status probe.
+    // Cursor can accept imported credentials for discovery while rejecting every
+    // inference request (notably HTTP 464). A manual Test must verify the same
+    // ConnectRPC endpoint used by chat, otherwise the UI reports a false positive.
+    const model = provider.model || provider.models?.[0] || "default";
+    const messages = openaiMessagesToCursor([{ role: "user", content: "Reply OK" }]);
+    const framed = Buffer.from(generateCursorBody(messages, model, [], null, false));
+    const endpoint = `${baseUrl(provider).replace(/\/$/, "")}/aiserver.v1.ChatService/StreamUnifiedChatWithTools`;
+    const response = await proxyFetch(provider, endpoint, {
+      method: "POST",
+      headers: buildCursorHeaders(token, provider.oauthMachineId, true, cursorHeaderOptions(provider)),
+      body: framed
+    });
+    if (!response.ok) throw await upstreamError(provider, response);
+    await response.body?.cancel().catch(() => {});
     return {
       models: await this.listModels(provider),
-      message: "Cursor token + machine id present."
+      message: "Cursor inference endpoint accepted the request."
     };
   }
 }

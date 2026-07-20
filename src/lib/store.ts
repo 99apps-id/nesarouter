@@ -1519,6 +1519,9 @@ export async function saveProviderOAuthTokens(providerId: string, tokens: {
     ? createOAuthAccountId()
     : options?.accountId ?? existingAccounts[0]?.id ?? "legacy";
   const existing = existingAccounts.find((account) => account.id === accountId);
+  if (options?.accountId && !options.createNew && !existing) {
+    throw new Error("OAuth account no longer exists. Refresh the page and start Connect again.");
+  }
   const nextAccount: OAuthAccount = {
     id: accountId,
     name: options?.accountName ?? existing?.name ?? defaultOAuthAccountName(options?.createNew ? existingAccounts.length : Math.max(existingAccounts.length - 1, 0)),
@@ -1673,8 +1676,30 @@ export async function readProviderById(providerId: string): Promise<ProviderConf
   return row ? providerFromRow(row) : undefined;
 }
 
+function purgeExpiredOAuthPending(database: Database.Database, now = Date.now()) {
+  const rows = database.prepare(
+    "SELECT key, value FROM settings WHERE key LIKE 'oauthPending:%' OR key LIKE 'devicePending:%'"
+  ).all() as Array<{ key: string; value: string }>;
+  const remove = database.prepare("DELETE FROM settings WHERE key = ?");
+  for (const row of rows) {
+    try {
+      const value = JSON.parse(row.value) as { createdAt?: string; expiresAt?: string };
+      const createdAt = value.createdAt ? new Date(value.createdAt).getTime() : NaN;
+      const expiresAt = value.expiresAt ? new Date(value.expiresAt).getTime() : NaN;
+      const expired = Number.isFinite(expiresAt)
+        ? expiresAt <= now
+        : !Number.isFinite(createdAt) || now - createdAt > 60 * 60_000;
+      if (expired) remove.run(row.key);
+    } catch {
+      remove.run(row.key);
+    }
+  }
+}
+
 export async function saveOAuthPending(state: string, data: { providerId: string; accountId?: string; codeVerifier: string; redirectUri: string; createdAt: string }) {
-  writeSetting(getDb(), `oauthPending:${state}`, {
+  const database = getDb();
+  purgeExpiredOAuthPending(database);
+  writeSetting(database, `oauthPending:${state}`, {
     ...data,
     codeVerifier: encryptSecret(data.codeVerifier)
   });
@@ -1711,8 +1736,10 @@ export type DevicePendingState = {
 };
 
 export async function saveDevicePending(providerId: string, data: DevicePendingState, accountId?: string) {
+  const database = getDb();
+  purgeExpiredOAuthPending(database);
   const key = accountId ? `devicePending:${providerId}:${accountId}` : `devicePending:${providerId}`;
-  writeSetting(getDb(), key, {
+  writeSetting(database, key, {
     ...data,
     accountId: data.accountId ?? accountId,
     deviceCode: encryptSecret(data.deviceCode),

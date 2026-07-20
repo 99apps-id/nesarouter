@@ -64,6 +64,34 @@ describe("router", () => {
     expect(decision.provider.id).toBe("enabled-tools");
   });
 
+  it("treats mid-loop tool messages as needing tools even without tools array", () => {
+    const store = storeWith([
+      provider({ id: "chat-only", type: "grok_web", model: "web", priority: 1 }),
+      provider({ id: "tools", type: "openai_compatible", model: "agent", priority: 2 })
+    ]);
+    const decision = chooseProvider(store, {
+      model: "auto",
+      messages: [
+        { role: "assistant", tool_calls: [{ id: "t1", type: "function", function: { name: "read", arguments: "{}" } }] },
+        { role: "tool", tool_call_id: "t1", content: "ok" }
+      ]
+    });
+    expect(decision.provider.id).toBe("tools");
+  });
+
+  it("allows gemini_cli for tool calling by default", () => {
+    const store = storeWith([
+      provider({ id: "cli", type: "gemini_cli", model: "gemini-2.5-flash", priority: 1 }),
+      provider({ id: "other", type: "openai_compatible", model: "agent", priority: 2 })
+    ]);
+    const decision = chooseProvider(store, {
+      model: "auto",
+      messages: [{ role: "user", content: "use a tool" }],
+      tools: [{ type: "function", function: { name: "read_file", parameters: { type: "object" } } }]
+    });
+    expect(decision.provider.id).toBe("cli");
+  });
+
   it("matches an explicit model to its provider", () => {
     const store = storeWith([
       provider({ id: "paid", name: "Paid", tier: "premium", model: "gpt-4", priority: 1 }),

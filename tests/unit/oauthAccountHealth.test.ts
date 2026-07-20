@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { isOAuthAccountRoutable, oauthAccountHasRequiredMaterial, oauthAccountStatusLabel } from "@/core/oauthAccountHealth";
+import { isOAuthAccountFatalError, isOAuthAccountRoutable, oauthAccountHasRequiredMaterial, oauthAccountStatusLabel } from "@/core/oauthAccountHealth";
 import { OAuthAccount, ProviderConfig } from "@/core/types";
+import { UpstreamProviderError } from "@/core/providers/shared";
 
 function account(partial: Partial<OAuthAccount> = {}): OAuthAccount {
   return {
@@ -51,5 +52,9 @@ describe("oauth account health", () => {
         copilot
       )
     ).toBe(true);
+  });
+
+  it("treats Cursor HTTP 464 as a fatal account rejection", () => {
+    expect(isOAuthAccountFatalError(new UpstreamProviderError("Cursor IDE returned 464", 464))).toBe(true);
   });
 });
