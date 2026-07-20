@@ -128,6 +128,8 @@ export function claudeToOpenAi(body: any): any {
       }))
     : undefined;
 
+  const toolChoice = mapClaudeToolChoiceToOpenAi(body?.tool_choice);
+
   return {
     model: body?.model ?? "auto",
     messages,
@@ -135,9 +137,30 @@ export function claudeToOpenAi(body: any): any {
     ...(typeof body?.temperature === "number" ? { temperature: body.temperature } : {}),
     ...(typeof body?.top_p === "number" ? { top_p: body.top_p } : {}),
     ...(tools ? { tools } : {}),
-    ...(body?.tool_choice ? { tool_choice: body.tool_choice } : {}),
+    ...(toolChoice !== undefined ? { tool_choice: toolChoice } : {}),
     ...(body?.stream ? { stream: true, stream_options: { include_usage: true } } : {})
   };
+}
+
+/** Map Anthropic Messages `tool_choice` → OpenAI chat form. */
+export function mapClaudeToolChoiceToOpenAi(toolChoice: unknown): unknown {
+  if (toolChoice == null) return undefined;
+  if (typeof toolChoice === "string") {
+    if (toolChoice === "any") return "required";
+    if (toolChoice === "auto" || toolChoice === "none" || toolChoice === "required") return toolChoice;
+    return toolChoice;
+  }
+  if (typeof toolChoice === "object" && toolChoice !== null) {
+    const obj = toolChoice as { type?: string; name?: string; function?: { name?: string } };
+    if (obj.type === "auto") return "auto";
+    if (obj.type === "none") return "none";
+    if (obj.type === "any") return "required";
+    const name = obj.name ?? obj.function?.name;
+    if ((obj.type === "tool" || obj.type === "function") && typeof name === "string" && name) {
+      return { type: "function", function: { name } };
+    }
+  }
+  return toolChoice;
 }
 
 /* ----------------------------- OpenAI -> Claude ---------------------------- */
@@ -188,7 +211,9 @@ export function claudeStreamFromOpenAiSse(openAiSse: ReadableStream<Uint8Array>,
   let buffer = "";
   let started = false;
   let blockOpen = false;
+  let textBlockIndex: number | null = null;
   const toolBlocks = new Map<number, number>();
+  let nextBlockIndex = 0;
   let stopReason = "end_turn";
   let usage = { input_tokens: 0, output_tokens: 0 };
 
@@ -224,24 +249,42 @@ export function claudeStreamFromOpenAiSse(openAiSse: ReadableStream<Uint8Array>,
           if (delta?.content) {
             if (!blockOpen) {
               blockOpen = true;
-              controller.enqueue(emit("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }));
+              textBlockIndex = nextBlockIndex++;
+              controller.enqueue(emit("content_block_start", {
+                type: "content_block_start",
+                index: textBlockIndex,
+                content_block: { type: "text", text: "" }
+              }));
             }
-            controller.enqueue(emit("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: delta.content } }));
+            controller.enqueue(emit("content_block_delta", {
+              type: "content_block_delta",
+              index: textBlockIndex ?? 0,
+              delta: { type: "text_delta", text: delta.content }
+            }));
           }
           if (Array.isArray(delta?.tool_calls)) {
             for (const call of delta.tool_calls) {
               const callIndex = Number.isInteger(call?.index) ? call.index : 0;
               let blockIndex = toolBlocks.get(callIndex);
               if (call?.id && blockIndex === undefined) {
-                if (blockOpen) controller.enqueue(emit("content_block_stop", { type: "content_block_stop", index: 0 }));
-                blockOpen = false;
-                const newBlockIndex = callIndex + 1;
-                blockIndex = newBlockIndex;
-                toolBlocks.set(callIndex, newBlockIndex);
-                controller.enqueue(emit("content_block_start", { type: "content_block_start", index: newBlockIndex, content_block: { type: "tool_use", id: call.id, name: call?.function?.name, input: {} } }));
+                if (blockOpen && textBlockIndex != null) {
+                  controller.enqueue(emit("content_block_stop", { type: "content_block_stop", index: textBlockIndex }));
+                  blockOpen = false;
+                }
+                blockIndex = nextBlockIndex++;
+                toolBlocks.set(callIndex, blockIndex);
+                controller.enqueue(emit("content_block_start", {
+                  type: "content_block_start",
+                  index: blockIndex,
+                  content_block: { type: "tool_use", id: call.id, name: call?.function?.name, input: {} }
+                }));
               }
               if (call?.function?.arguments && blockIndex !== undefined) {
-                controller.enqueue(emit("content_block_delta", { type: "content_block_delta", index: blockIndex, delta: { type: "input_json_delta", partial_json: call.function.arguments } }));
+                controller.enqueue(emit("content_block_delta", {
+                  type: "content_block_delta",
+                  index: blockIndex,
+                  delta: { type: "input_json_delta", partial_json: call.function.arguments }
+                }));
               }
             }
           }
@@ -255,8 +298,12 @@ export function claudeStreamFromOpenAiSse(openAiSse: ReadableStream<Uint8Array>,
         }
       },
       flush(controller) {
-        if (blockOpen) controller.enqueue(emit("content_block_stop", { type: "content_block_stop", index: 0 }));
-        for (const blockIndex of toolBlocks.values()) controller.enqueue(emit("content_block_stop", { type: "content_block_stop", index: blockIndex }));
+        if (blockOpen && textBlockIndex != null) {
+          controller.enqueue(emit("content_block_stop", { type: "content_block_stop", index: textBlockIndex }));
+        }
+        for (const blockIndex of toolBlocks.values()) {
+          controller.enqueue(emit("content_block_stop", { type: "content_block_stop", index: blockIndex }));
+        }
         if (started) {
           controller.enqueue(emit("message_delta", { type: "message_delta", delta: { stop_reason: stopReason, stop_sequence: null }, usage: { output_tokens: usage.output_tokens } }));
           controller.enqueue(emit("message_stop", { type: "message_stop" }));
@@ -304,9 +351,23 @@ export function responsesToOpenAi(body: any): any {
     ...(body?.max_output_tokens ? { max_tokens: body.max_output_tokens } : {}),
     ...(typeof body?.temperature === "number" ? { temperature: body.temperature } : {}),
     ...(Array.isArray(body?.tools) ? { tools: body.tools.map((tool: any) => tool?.function ? tool : { type: "function", function: { name: tool?.name, description: tool?.description, parameters: tool?.parameters ?? {} } }) } : {}),
-    ...(body?.tool_choice !== undefined ? { tool_choice: body.tool_choice } : {}),
+    ...(body?.tool_choice !== undefined ? { tool_choice: mapResponsesToolChoiceToOpenAi(body.tool_choice) } : {}),
     ...(body?.stream ? { stream: true, stream_options: { include_usage: true } } : {})
   };
+}
+
+/** Map Responses API `tool_choice` → OpenAI chat form. */
+export function mapResponsesToolChoiceToOpenAi(toolChoice: unknown): unknown {
+  if (toolChoice == null) return undefined;
+  if (typeof toolChoice === "string") return toolChoice;
+  if (typeof toolChoice === "object" && toolChoice !== null) {
+    const obj = toolChoice as { type?: string; name?: string; function?: { name?: string } };
+    if (obj.type === "function") {
+      const name = obj.name ?? obj.function?.name;
+      if (typeof name === "string" && name) return { type: "function", function: { name } };
+    }
+  }
+  return toolChoice;
 }
 
 /* --------------------------- OpenAI -> Responses --------------------------- */
@@ -340,9 +401,37 @@ export function responsesStreamFromOpenAiSse(openAiSse: ReadableStream<Uint8Arra
   let started = false;
   let usage = { input_tokens: 0, output_tokens: 0 };
   let fullText = "";
+  const toolCalls = new Map<number, { call_id: string; name: string; arguments: string }>();
+  let textStarted = false;
+  let textDone = false;
+  let nextOutputIndex = 0;
+  const textOutputIndex = 0;
 
   const emit = (event: string, data: any) =>
     textEncoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+
+  const ensureStarted = (controller: TransformStreamDefaultController<Uint8Array>, parsed: any) => {
+    if (started) return;
+    started = true;
+    if (parsed?.usage?.prompt_tokens) usage.input_tokens = parsed.usage.prompt_tokens;
+    controller.enqueue(emit("response.created", {
+      type: "response.created",
+      response: { id: responseId, object: "response", status: "in_progress", model, output: [] }
+    }));
+  };
+
+  const ensureTextStarted = (controller: TransformStreamDefaultController<Uint8Array>) => {
+    if (textStarted) return;
+    textStarted = true;
+    nextOutputIndex = Math.max(nextOutputIndex, 1);
+    controller.enqueue(emit("response.output_text.started", {
+      type: "response.output_text.started",
+      response_id: responseId,
+      item_id: "msg_0",
+      output_index: textOutputIndex,
+      content_index: 0
+    }));
+  };
 
   return openAiSse.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
@@ -360,32 +449,139 @@ export function responsesStreamFromOpenAiSse(openAiSse: ReadableStream<Uint8Arra
           let parsed: any;
           try { parsed = JSON.parse(dataLine); } catch { continue; }
 
-          if (!started) {
-            started = true;
-            if (parsed?.usage?.prompt_tokens) usage.input_tokens = parsed.usage.prompt_tokens;
-            controller.enqueue(emit("response.created", {
-              type: "response.created",
-              response: { id: responseId, object: "response", status: "in_progress", model, output: [] }
-            }));
-            controller.enqueue(emit("response.output_text.started", { type: "response.output_text.started", response_id: responseId, item_id: "msg_0", output_index: 0, content_index: 0 }));
-          }
+          ensureStarted(controller, parsed);
 
           const delta = parsed?.choices?.[0]?.delta;
           if (delta?.content) {
+            ensureTextStarted(controller);
             fullText += delta.content;
-            controller.enqueue(emit("response.output_text.delta", { type: "response.output_text.delta", response_id: responseId, item_id: "msg_0", output_index: 0, content_index: 0, delta: delta.content }));
+            controller.enqueue(emit("response.output_text.delta", {
+              type: "response.output_text.delta",
+              response_id: responseId,
+              item_id: "msg_0",
+              output_index: textOutputIndex,
+              content_index: 0,
+              delta: delta.content
+            }));
           }
+
+          if (Array.isArray(delta?.tool_calls)) {
+            for (const call of delta.tool_calls) {
+              const index = Number(call?.index ?? 0);
+              const current = toolCalls.get(index) ?? {
+                call_id: typeof call?.id === "string" && call.id ? call.id : `call_${index}`,
+                name: "",
+                arguments: ""
+              };
+              if (typeof call?.id === "string" && call.id) current.call_id = call.id;
+              if (typeof call?.function?.name === "string" && call.function.name) {
+                if (!current.name) {
+                  current.name = call.function.name;
+                  const outputIndex = textStarted ? nextOutputIndex++ : index + (fullText ? 1 : 0);
+                  controller.enqueue(emit("response.output_item.added", {
+                    type: "response.output_item.added",
+                    response_id: responseId,
+                    output_index: outputIndex,
+                    item: {
+                      type: "function_call",
+                      id: `fc_${current.call_id}`,
+                      call_id: current.call_id,
+                      name: current.name,
+                      arguments: "",
+                      status: "in_progress"
+                    }
+                  }));
+                  (current as any)._outputIndex = outputIndex;
+                } else {
+                  current.name = call.function.name;
+                }
+              }
+              if (typeof call?.function?.arguments === "string" && call.function.arguments) {
+                current.arguments += call.function.arguments;
+                const outputIndex = (current as any)._outputIndex ?? index;
+                controller.enqueue(emit("response.function_call_arguments.delta", {
+                  type: "response.function_call_arguments.delta",
+                  response_id: responseId,
+                  item_id: `fc_${current.call_id}`,
+                  output_index: outputIndex,
+                  delta: call.function.arguments
+                }));
+              }
+              toolCalls.set(index, current);
+            }
+          }
+
           if (parsed?.usage?.completion_tokens) usage.output_tokens = parsed.usage.completion_tokens;
         }
       },
       flush(controller) {
-        if (started) {
-          controller.enqueue(emit("response.output_text.done", { type: "response.output_text.done", response_id: responseId, item_id: "msg_0", output_index: 0, content_index: 0, text: fullText }));
-          controller.enqueue(emit("response.completed", {
-            type: "response.completed",
-            response: { id: responseId, object: "response", status: "completed", model, output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: fullText }] }], usage }
+        if (!started) return;
+        if (textStarted && !textDone) {
+          textDone = true;
+          controller.enqueue(emit("response.output_text.done", {
+            type: "response.output_text.done",
+            response_id: responseId,
+            item_id: "msg_0",
+            output_index: textOutputIndex,
+            content_index: 0,
+            text: fullText
           }));
         }
+        const output: any[] = [];
+        if (fullText) {
+          output.push({
+            type: "message",
+            id: "msg_0",
+            role: "assistant",
+            content: [{ type: "output_text", text: fullText }]
+          });
+        }
+        for (const [index, call] of [...toolCalls.entries()].sort(([a], [b]) => a - b)) {
+          const outputIndex = (call as any)._outputIndex ?? index;
+          controller.enqueue(emit("response.function_call_arguments.done", {
+            type: "response.function_call_arguments.done",
+            response_id: responseId,
+            item_id: `fc_${call.call_id}`,
+            output_index: outputIndex,
+            arguments: call.arguments
+          }));
+          controller.enqueue(emit("response.output_item.done", {
+            type: "response.output_item.done",
+            response_id: responseId,
+            output_index: outputIndex,
+            item: {
+              type: "function_call",
+              id: `fc_${call.call_id}`,
+              call_id: call.call_id,
+              name: call.name,
+              arguments: call.arguments,
+              status: "completed"
+            }
+          }));
+          output.push({
+            type: "function_call",
+            id: `fc_${call.call_id}`,
+            call_id: call.call_id,
+            name: call.name,
+            arguments: call.arguments,
+            status: "completed"
+          });
+        }
+        controller.enqueue(emit("response.completed", {
+          type: "response.completed",
+          response: {
+            id: responseId,
+            object: "response",
+            status: "completed",
+            model,
+            output,
+            usage: {
+              input_tokens: usage.input_tokens,
+              output_tokens: usage.output_tokens,
+              total_tokens: usage.input_tokens + usage.output_tokens
+            }
+          }
+        }));
       }
     })
   );

@@ -44,7 +44,8 @@ function dataLineFromEvent(event: string) {
  */
 export function trackOpenAiStreamUsage(
   input: ReadableStream<Uint8Array>,
-  onUsage: (usage: OpenAiUsage) => void
+  onUsage: (usage: OpenAiUsage) => void,
+  onOutputText?: (text: string) => void
 ): ReadableStream<Uint8Array> {
   let buffer = "";
   return input.pipeThrough(
@@ -61,6 +62,17 @@ export function trackOpenAiStreamUsage(
           if (!data || data === "[DONE]") continue;
           try {
             const parsed = JSON.parse(data);
+            const choice = parsed?.choices?.[0];
+            const delta = choice?.delta ?? choice?.message ?? {};
+            const observed = [
+              delta?.content,
+              delta?.reasoning_content,
+              delta?.reasoning,
+              ...(Array.isArray(delta?.tool_calls)
+                ? delta.tool_calls.map((tool: any) => tool?.function?.arguments)
+                : [])
+            ].filter((value): value is string => typeof value === "string" && value.length > 0);
+            if (observed.length) onOutputText?.(observed.join(""));
             if (parsed?.usage && (parsed.usage.prompt_tokens || parsed.usage.completion_tokens)) {
               onUsage(parsed.usage as OpenAiUsage);
             }
@@ -97,6 +109,9 @@ export function geminiStreamToOpenAiSse(
   const id = `gemini-${Date.now()}`;
   const created = Math.floor(Date.now() / 1000);
   let buffer = "";
+  let toolCallIndex = 0;
+  let sawToolCall = false;
+  let roleSent = false;
 
   return geminiBody.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
@@ -112,9 +127,38 @@ export function geminiStreamToOpenAiSse(
           try {
             const parsed = unwrapGeminiSsePayload(JSON.parse(data));
             const parts = parsed?.candidates?.[0]?.content?.parts ?? [];
-            const text = parts.map((part: any) => part?.text ?? "").join("");
-            const finishReason = parsed?.candidates?.[0]?.finishReason?.toLowerCase?.() ?? null;
+            const text = parts.map((part: any) => (typeof part?.text === "string" ? part.text : "")).join("");
+            const toolCalls = parts
+              .filter((part: any) => part?.functionCall?.name)
+              .map((part: any) => {
+                const index = toolCallIndex++;
+                sawToolCall = true;
+                return {
+                  index,
+                  id: `call_${part.functionCall.name}_${index}`,
+                  type: "function" as const,
+                  function: {
+                    name: String(part.functionCall.name),
+                    arguments: JSON.stringify(part.functionCall.args ?? {})
+                  }
+                };
+              });
+            const rawFinish = parsed?.candidates?.[0]?.finishReason?.toLowerCase?.() ?? null;
+            const finishReason = rawFinish
+              ? sawToolCall || toolCalls.length
+                ? "tool_calls"
+                : rawFinish === "stop" || rawFinish === "end_turn"
+                  ? "stop"
+                  : rawFinish
+              : null;
             const usageMeta = parsed?.usageMetadata;
+            const delta: Record<string, unknown> = {};
+            if (!roleSent && (text || toolCalls.length)) {
+              delta.role = "assistant";
+              roleSent = true;
+            }
+            if (text) delta.content = text;
+            if (toolCalls.length) delta.tool_calls = toolCalls;
             const openAiChunk: Record<string, unknown> = {
               id,
               object: "chat.completion.chunk",
@@ -123,8 +167,8 @@ export function geminiStreamToOpenAiSse(
               choices: [
                 {
                   index: 0,
-                  delta: text ? { content: text } : {},
-                  finish_reason: finishReason ?? null
+                  delta,
+                  finish_reason: finishReason
                 }
               ]
             };
@@ -137,7 +181,9 @@ export function geminiStreamToOpenAiSse(
               openAiChunk.usage = usage;
               onUsage(usage);
             }
-            controller.enqueue(textEncoder.encode(`data: ${JSON.stringify(openAiChunk)}\n\n`));
+            if (Object.keys(delta).length || finishReason || usageMeta) {
+              controller.enqueue(textEncoder.encode(`data: ${JSON.stringify(openAiChunk)}\n\n`));
+            }
           } catch {
             // skip malformed chunk
           }
@@ -162,15 +208,15 @@ export type StreamEndState =
 
 export function withStreamEnd<T>(
   input: ReadableStream<T>,
-  onEnd: (state: StreamEndState) => void
+  onEnd: (state: StreamEndState) => unknown | Promise<unknown>
 ): ReadableStream<T> {
   let finished = false;
   let reader: ReadableStreamDefaultReader<T> | undefined;
-  const fire = (state: StreamEndState) => {
+  const fire = async (state: StreamEndState) => {
     if (finished) return;
     finished = true;
     try {
-      onEnd(state);
+      await onEnd(state);
     } catch {}
   };
   return new ReadableStream<T>({
@@ -179,21 +225,18 @@ export function withStreamEnd<T>(
       const pump = (): Promise<void> =>
         reader!.read().then(({ done, value }) => {
           if (done) {
-            controller.close();
-            fire({ status: "success" });
-            return;
+            return fire({ status: "success" }).finally(() => controller.close());
           }
           controller.enqueue(value);
           return pump();
         });
       pump().catch((err) => {
-        controller.error(err);
-        fire({ status: "error", error: err });
+        void fire({ status: "error", error: err }).finally(() => controller.error(err));
       });
     },
     cancel(reason) {
       void reader?.cancel(reason).catch(() => {});
-      fire({ status: "cancelled", reason });
+      return fire({ status: "cancelled", reason });
     }
   });
 }

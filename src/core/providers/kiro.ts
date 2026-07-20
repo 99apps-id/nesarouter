@@ -20,30 +20,79 @@ function upstreamModel(model: string) {
   return model.replace(/-(thinking|agentic)(-agentic)?$/i, "");
 }
 
-function kiroRequest(body: any, model: string, profileArn?: string) {
+function serializeToolContent(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (content == null) return "";
+  try { return JSON.stringify(content); } catch { return String(content); }
+}
+
+/** Translate OpenAI chat history into Kiro's native conversation/tool protocol. */
+export function kiroRequest(body: any, model: string, profileArn?: string) {
   const messages = Array.isArray(body?.messages) ? body.messages : [];
-  const transcript = messages
-    .map((message: any) => {
-      const content = textFromContent(message?.content);
-      return content ? `${message?.role === "system" ? "System" : message?.role === "assistant" ? "Assistant" : "User"}: ${content}` : "";
-    })
-    .filter(Boolean);
-  const lastUser = [...messages].reverse().find((message: any) => message?.role === "user");
-  const userText = textFromContent(lastUser?.content);
-  const context = transcript.length > 1 ? `${transcript.join("\n\n")}\n\n` : "";
+  const modelId = upstreamModel(model);
+  const tools = (Array.isArray(body?.tools) ? body.tools : [])
+    .map((tool: any) => tool?.function ?? tool)
+    .filter((tool: any) => typeof tool?.name === "string" && tool.name)
+    .map((tool: any) => ({
+      toolSpecification: {
+        name: tool.name,
+        description: tool.description || `Tool: ${tool.name}`,
+        inputSchema: { json: tool.parameters ?? tool.input_schema ?? { type: "object", properties: {} } }
+      }
+    }));
+
+  const turns: any[] = [];
+  for (const message of messages) {
+    if (message?.role === "assistant") {
+      const toolUses = (Array.isArray(message.tool_calls) ? message.tool_calls : []).map((call: any) => {
+        let input: unknown = {};
+        try { input = JSON.parse(call?.function?.arguments || "{}"); } catch { input = {}; }
+        return { toolUseId: call?.id || crypto.randomUUID(), name: call?.function?.name || "tool", input };
+      });
+      turns.push({ assistantResponseMessage: {
+        content: textFromContent(message.content),
+        ...(toolUses.length ? { toolUses } : {})
+      } });
+      continue;
+    }
+    if (message?.role === "tool") {
+      turns.push({ userInputMessage: {
+        content: "",
+        modelId,
+        origin: "AI_EDITOR",
+        userInputMessageContext: { toolResults: [{
+          toolUseId: message.tool_call_id,
+          status: "success",
+          content: [{ text: serializeToolContent(message.content) }]
+        }] }
+      } });
+      continue;
+    }
+    const content = textFromContent(message?.content);
+    if (content) turns.push({ userInputMessage: {
+      content: message?.role === "system" ? `<system-reminder>\n${content}\n</system-reminder>` : content,
+      modelId,
+      origin: "AI_EDITOR"
+    } });
+  }
+
+  let currentMessage = turns.pop();
+  if (!currentMessage?.userInputMessage) {
+    if (currentMessage) turns.push(currentMessage);
+    currentMessage = { userInputMessage: { content: "Continue the conversation.", modelId, origin: "AI_EDITOR" } };
+  }
+  if (tools.length) {
+    currentMessage.userInputMessage.userInputMessageContext = {
+      ...(currentMessage.userInputMessage.userInputMessageContext ?? {}), tools
+    };
+  }
 
   return {
     conversationState: {
       chatTriggerType: "MANUAL",
       conversationId: crypto.randomUUID(),
-      currentMessage: {
-        userInputMessage: {
-          content: `${context}${userText || "Continue the conversation."}`,
-          modelId: upstreamModel(model),
-          origin: "AI_EDITOR"
-        }
-      },
-      history: []
+      currentMessage,
+      history: turns
     },
     ...(profileArn ? { profileArn } : {}),
     inferenceConfig: {
@@ -165,6 +214,9 @@ export function kiroEventStreamToOpenAiSse(input: ReadableStream<Uint8Array>, mo
   let sentFinish = false;
   let sawAssistant = false;
   let usage: Record<string, number> | undefined;
+  let sawToolUse = false;
+  const toolIndexById = new Map<string, number>();
+  let nextToolIndex = 0;
 
   return input.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
     transform(part, controller) {
@@ -184,6 +236,29 @@ export function kiroEventStreamToOpenAiSse(input: ReadableStream<Uint8Array>, mo
           const content = payload.reasoningContentEvent?.content ?? payload.content ?? payload.text;
           if (content) controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk(model, { reasoning_content: content }))}\n\n`));
         }
+        if (event.eventType === "toolUseEvent") {
+          const toolUse = payload.toolUseEvent ?? payload;
+          if (toolUse.name || toolUse.toolUseId) {
+            const input = toolUse.input ?? {};
+            const toolUseId = toolUse.toolUseId || `call_${crypto.randomUUID()}`;
+            let index = toolIndexById.get(toolUseId);
+            if (index == null) {
+              index = nextToolIndex++;
+              toolIndexById.set(toolUseId, index);
+            }
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk(model, {
+              ...(sawAssistant ? {} : { role: "assistant" }),
+              tool_calls: [{
+                index,
+                id: toolUseId,
+                type: "function",
+                function: { name: toolUse.name || "tool", arguments: typeof input === "string" ? input : JSON.stringify(input) }
+              }]
+            }))}\n\n`));
+            sawAssistant = true;
+            sawToolUse = true;
+          }
+        }
         if (event.eventType === "metricsEvent") {
           const metrics = payload.metricsEvent ?? payload;
           const promptTokens = Number(metrics.inputTokens ?? 0);
@@ -191,13 +266,13 @@ export function kiroEventStreamToOpenAiSse(input: ReadableStream<Uint8Array>, mo
           if (promptTokens || completionTokens) usage = { prompt_tokens: promptTokens, completion_tokens: completionTokens, total_tokens: promptTokens + completionTokens };
         }
         if (event.eventType === "messageStopEvent" && !sentFinish) {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk(model, {}, "stop", usage))}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk(model, {}, sawToolUse ? "tool_calls" : "stop", usage))}\n\n`));
           sentFinish = true;
         }
       }
     },
     flush(controller) {
-      if (!sentFinish) controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk(model, {}, "stop", usage))}\n\n`));
+      if (!sentFinish) controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk(model, {}, sawToolUse ? "tool_calls" : "stop", usage))}\n\n`));
       controller.enqueue(encoder.encode("data: [DONE]\n\n"));
     }
   }));

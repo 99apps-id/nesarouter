@@ -47,6 +47,26 @@ function firstUserBlob(body: any): string {
   return "";
 }
 
+/** Stable seed when the user blob is empty (tool-only follow-ups / Responses). */
+function continuationSeed(body: any): string {
+  if (typeof body?.previous_response_id === "string" && body.previous_response_id.trim()) {
+    return `prev:${body.previous_response_id.trim()}`;
+  }
+  const messages = Array.isArray(body?.messages) ? body.messages : [];
+  for (const message of messages) {
+    if (message?.role === "assistant" && Array.isArray(message.tool_calls)) {
+      for (const call of message.tool_calls) {
+        if (typeof call?.id === "string" && call.id) return `tc:${call.id}`;
+      }
+    }
+  }
+  for (const item of Array.isArray(body?.input) ? body.input : []) {
+    if (!item || typeof item !== "object") continue;
+    if (typeof item.call_id === "string" && item.call_id) return `tc:${item.call_id}`;
+  }
+  return "";
+}
+
 function clientNamespace(request?: Request) {
   const credential = request?.headers.get("authorization")?.trim() || "anonymous";
   return crypto.createHash("sha256").update(credential).digest("hex").slice(0, 16);
@@ -77,7 +97,7 @@ export function stickySessionKey(body: any, request?: Request): string | null {
   if (!isAgentContinuation(body)) return null;
 
   const model = typeof body?.model === "string" ? body.model.trim().toLowerCase() : "";
-  const seed = `${model}\n${firstUserBlob(body)}`;
+  const seed = `${model}\n${firstUserBlob(body) || continuationSeed(body)}`;
   if (!seed.trim()) return null;
   const digest = crypto.createHash("sha256").update(seed).digest("hex").slice(0, 24);
   return `${namespace}:auto:${digest}`;

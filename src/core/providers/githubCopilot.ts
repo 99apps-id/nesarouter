@@ -1,4 +1,5 @@
 import { ProviderConfig } from "@/core/types";
+import { stripPrivateRouterFields } from "@/core/providers/openaiCompatible";
 import { baseUrl, cleanApiKey, ProviderExecutor, proxyFetch, sortModelIds, UpstreamProviderError, upstreamError } from "@/core/providers/shared";
 
 /**
@@ -14,7 +15,10 @@ export class GithubCopilotExecutor implements ProviderExecutor {
     if (!token) {
       throw new UpstreamProviderError(`${provider.name} has no Copilot session token.`, 401);
     }
-    const upstreamBody: Record<string, unknown> = { ...body, model: provider.model };
+    const upstreamBody: Record<string, unknown> = {
+      ...stripPrivateRouterFields(body),
+      model: provider.model
+    };
     if (body?.stream) {
       const streamOptions = body.stream_options && typeof body.stream_options === "object" ? body.stream_options : {};
       upstreamBody.stream_options = { include_usage: true, ...streamOptions };

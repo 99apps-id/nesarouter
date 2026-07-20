@@ -31,6 +31,15 @@ describe("DeepSeek thinking defaults", () => {
     expect(shouldDisableDeepSeekThinking(deepseek("deepseek-reasoner"), { messages: [] })).toBe(false);
   });
 
+  it("disables thinking for reasoner models during tool/agent loops", () => {
+    expect(
+      shouldDisableDeepSeekThinking(deepseek("deepseek-reasoner"), {
+        tools: [{ type: "function", function: { name: "read", parameters: {} } }],
+        messages: [{ role: "user", content: "read a file" }]
+      })
+    ).toBe(true);
+  });
+
   it("does not inject thinking onto Runware DeepSeek AIR models", () => {
     const runware = {
       ...deepseek("deepseek:v4@flash"),

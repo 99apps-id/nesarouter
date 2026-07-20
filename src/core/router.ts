@@ -37,11 +37,19 @@ function isProviderUsable(provider: ProviderConfig) {
 
 export function providerSupportsTools(provider: ProviderConfig) {
   if (provider.supportsTools !== undefined) return provider.supportsTools;
-  return provider.type !== "grok_web" && provider.type !== "gemini_cli";
+  // grok_web flattens chat to plain text. gemini_cli uses the same Gemini tool
+  // mapping as `gemini` (stream path now maps functionCall → tool_calls).
+  return provider.type !== "grok_web";
 }
 
 function requestNeedsTools(body: any) {
-  return (Array.isArray(body?.tools) && body.tools.length > 0) || body?.tool_choice != null;
+  if ((Array.isArray(body?.tools) && body.tools.length > 0) || body?.tool_choice != null) return true;
+  const messages = Array.isArray(body?.messages) ? body.messages : [];
+  return messages.some(
+    (message: any) =>
+      message?.role === "tool" ||
+      (Array.isArray(message?.tool_calls) && message.tool_calls.length > 0)
+  );
 }
 
 /** UI / combo health — why a provider would be skipped by the router right now. */

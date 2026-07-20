@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AnthropicMessagesExecutor } from "@/core/providers/anthropic";
 import { CursorExecutor } from "@/core/providers/cursor";
 import { GithubCopilotExecutor } from "@/core/providers/githubCopilot";
@@ -22,6 +22,7 @@ function base(partial: Partial<ProviderConfig>): ProviderConfig {
 }
 
 describe("soft OAuth validation", () => {
+  afterEach(() => vi.unstubAllGlobals());
   it("accepts Claude OAuth without calling Messages", async () => {
     const result = await new AnthropicMessagesExecutor().validate(
       base({
@@ -35,7 +36,9 @@ describe("soft OAuth validation", () => {
     expect(result.message).toMatch(/OAuth token present/i);
   });
 
-  it("accepts Cursor when token + machine id exist without api2 call", async () => {
+  it("accepts Cursor only after the inference endpoint accepts the request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Uint8Array(), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
     const result = await new CursorExecutor().validate(
       base({
         type: "cursor",
@@ -45,7 +48,23 @@ describe("soft OAuth validation", () => {
         baseUrl: "https://api2.cursor.sh"
       })
     );
-    expect(result.message).toMatch(/token \+ machine id present/i);
+    expect(result.message).toMatch(/inference endpoint accepted/i);
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("rejects Cursor when inference returns HTTP 464", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status: 464 })));
+    await expect(
+      new CursorExecutor().validate(
+        base({
+          type: "cursor",
+          oauthProfile: "cursor",
+          oauthAccessToken: "a".repeat(60),
+          oauthMachineId: "machine-abc",
+          baseUrl: "https://api2.cursor.sh"
+        })
+      )
+    ).rejects.toMatchObject({ status: 464 });
   });
 
   it("rejects Cursor without machine id", async () => {

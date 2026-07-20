@@ -43,6 +43,15 @@ function backLink(entry: LoopbackEntry) {
   return `<p><a href="${escapeOAuthHtml(entry.successRedirect)}">Back to NesaRouter</a></p>`;
 }
 
+function closeLoopback(entry: LoopbackEntry) {
+  for (const [port, candidate] of loopbackMap()) {
+    if (candidate !== entry) continue;
+    loopbackMap().delete(port);
+    entry.server.close();
+    break;
+  }
+}
+
 async function handleLoopbackCallback(req: http.IncomingMessage, res: http.ServerResponse, entry: LoopbackEntry) {
   try {
     const url = new URL(req.url ?? "/", "http://127.0.0.1");
@@ -82,8 +91,6 @@ async function handleLoopbackCallback(req: http.IncomingMessage, res: http.Serve
       res.end(htmlPage("OAuth error", "<p>Invalid or expired OAuth state. Start Connect again from NesaRouter.</p>"));
       return;
     }
-    await deleteOAuthPending(state);
-
     const provider = await readProviderById(pending.providerId);
     const preset = getPreset(provider?.oauthProfile);
     if (!provider || !preset) {
@@ -123,6 +130,7 @@ async function handleLoopbackCallback(req: http.IncomingMessage, res: http.Serve
       { accessToken, refreshToken, expiresAt },
       { accountId: pending.accountId, createNew: !pending.accountId }
     );
+    await deleteOAuthPending(state);
 
     const done = entry.successRedirect.includes("?")
       ? `${entry.successRedirect}&oauth=connected`
@@ -136,6 +144,7 @@ async function handleLoopbackCallback(req: http.IncomingMessage, res: http.Serve
          <script>setTimeout(function(){ window.close(); }, 1200);</script>`
       )
     );
+    closeLoopback(entry);
   } catch (error) {
     const message = error instanceof Error ? error.message : "exchange failed";
     res.writeHead(500, { "content-type": "text/html; charset=utf-8" });

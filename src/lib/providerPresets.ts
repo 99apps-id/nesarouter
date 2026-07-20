@@ -106,6 +106,7 @@ export const providerPresets: ProviderConfig[] = [
     baseUrl: "https://api.xiaomimimo.com/api/free-ai/openai/chat",
     model: "mimo-auto",
     models: ["mimo-auto"],
+    supportsTools: false,
     priority: 18,
     inputCostPerMTok: 0,
     outputCostPerMTok: 0

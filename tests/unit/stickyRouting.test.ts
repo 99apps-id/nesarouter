@@ -127,4 +127,17 @@ describe("stickyRouting", () => {
     expect(sticky.provider.id).toBe("second");
     expect(sticky.routingReason).toMatch(/Sticky session/i);
   });
+
+  it("keeps sticky key for tool-only follow-ups without user text", () => {
+    const key = stickySessionKey({
+      model: "auto",
+      messages: [
+        { role: "assistant", tool_calls: [{ id: "call_sticky", type: "function", function: { name: "read", arguments: "{}" } }] },
+        { role: "tool", tool_call_id: "call_sticky", content: "ok" }
+      ]
+    });
+    expect(key).toBeTruthy();
+    rememberStickyProvider(key, "second");
+    expect(peekStickyProvider(key)).toBe("second");
+  });
 });

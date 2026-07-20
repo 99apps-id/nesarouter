@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import crypto from "node:crypto";
 import { finalizeAdminResponse, requireAdmin } from "@/lib/adminApi";
 import { generatePkce, registerKiroOidcClient, startDeviceFlow, startKiroDeviceFlow } from "@/core/oauthPkce";
 import { getPreset, usesOAuthDeviceFlow } from "@/core/oauthProviderPresets";
@@ -24,6 +25,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   try {
+    // A new account has no account id yet. Give each pending flow its own key
+    // so concurrent Connect operations cannot overwrite one another.
+    const pendingId = body.createNew ? `new-${crypto.randomUUID()}` : body.accountId;
     if (preset!.kiroDeviceFlow) {
       const registered = await registerKiroOidcClient(preset!);
       const info = await startKiroDeviceFlow(preset!, registered.clientId, registered.clientSecret);
@@ -37,13 +41,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         clientId: info.clientId,
         clientSecret: info.clientSecret,
         region: info.region
-      }, body.createNew ? undefined : body.accountId);
+      }, pendingId);
       return finalizeAdminResponse(
         NextResponse.json({
           user_code: info.user_code,
           verification_uri: info.verification_uri,
           expires_in: info.expires_in,
-          interval: info.interval
+          interval: info.interval,
+          pending_id: pendingId
         }),
         request
       );
@@ -59,14 +64,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       expiresAt: new Date(Date.now() + expiresInSec * 1000).toISOString(),
       accountId: body.createNew ? undefined : body.accountId,
       codeVerifier: pkce?.verifier
-    }, body.createNew ? undefined : body.accountId);
+    }, pendingId);
     return finalizeAdminResponse(
       NextResponse.json({
         user_code: info.user_code,
         verification_uri: info.verification_uri,
         expires_in: info.expires_in,
         interval: info.interval,
-        openUrl: !info.user_code ? info.verification_uri : undefined
+        openUrl: !info.user_code ? info.verification_uri : undefined,
+        pending_id: pendingId
       }),
       request
     );

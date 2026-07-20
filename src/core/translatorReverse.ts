@@ -68,6 +68,14 @@ export function openAiToolContentToClaude(content: unknown): string | any[] {
 export function openAiChatToClaudeRequest(body: any): any {
   const messages: any[] = [];
   let systemText = "";
+  /** Anthropic requires consecutive tool_result blocks in a single user message. */
+  let pendingToolResults: any[] = [];
+
+  const flushToolResults = () => {
+    if (!pendingToolResults.length) return;
+    messages.push({ role: "user", content: pendingToolResults });
+    pendingToolResults = [];
+  };
 
   for (const message of body?.messages ?? []) {
     if (message?.role === "system") {
@@ -78,16 +86,14 @@ export function openAiChatToClaudeRequest(body: any): any {
       continue;
     }
     if (message?.role === "tool") {
-      messages.push({
-        role: "user",
-        content: [{
-          type: "tool_result",
-          tool_use_id: message.tool_call_id,
-          content: openAiToolContentToClaude(message.content)
-        }]
+      pendingToolResults.push({
+        type: "tool_result",
+        tool_use_id: message.tool_call_id,
+        content: openAiToolContentToClaude(message.content)
       });
       continue;
     }
+    flushToolResults();
     const role = message?.role === "assistant" ? "assistant" : "user";
     const content: any[] = [];
     if (typeof message?.content === "string" && message.content) {
@@ -104,13 +110,16 @@ export function openAiChatToClaudeRequest(body: any): any {
     }
     if (content.length) messages.push({ role, content });
   }
+  flushToolResults();
 
   const tools = Array.isArray(body?.tools)
-    ? body.tools.map((tool: any) => ({
-        name: tool?.function?.name,
-        description: tool?.function?.description,
-        input_schema: tool?.function?.parameters ?? { type: "object", properties: {} }
-      }))
+    ? body.tools
+        .map((tool: any) => ({
+          name: tool?.function?.name,
+          description: tool?.function?.description,
+          input_schema: tool?.function?.parameters ?? { type: "object", properties: {} }
+        }))
+        .filter((tool: { name?: unknown }) => typeof tool.name === "string" && tool.name)
     : undefined;
 
   const toolChoice = mapOpenAiToolChoiceToClaude(body?.tool_choice);
@@ -181,8 +190,14 @@ export function claudeSseToOpenAiSse(claudeSse: ReadableStream<Uint8Array>, mode
   let toolCallId = "";
   let toolName = "";
   let usage = { prompt_tokens: 0, completion_tokens: 0 };
+  let roleSent = false;
 
   const emit = (obj: any) => textEncoder.encode(`data: ${JSON.stringify(obj)}\n\n`);
+  const withRole = (delta: Record<string, unknown>) => {
+    if (roleSent) return delta;
+    roleSent = true;
+    return { role: "assistant", ...delta };
+  };
 
   return claudeSse.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
@@ -209,14 +224,26 @@ export function claudeSseToOpenAiSse(claudeSse: ReadableStream<Uint8Array>, mode
             toolName = parsed.content_block.name;
             controller.enqueue(emit({
               id, object: "chat.completion.chunk", created, model,
-              choices: [{ index: 0, delta: { tool_calls: [{ index: toolIndex, id: toolCallId, type: "function", function: { name: toolName, arguments: "" } }] }, finish_reason: null }]
+              choices: [{
+                index: 0,
+                delta: withRole({
+                  tool_calls: [{ index: toolIndex, id: toolCallId, type: "function", function: { name: toolName, arguments: "" } }]
+                }),
+                finish_reason: null
+              }]
             }));
           }
           if (parsed?.type === "content_block_delta") {
             if (parsed?.delta?.type === "text_delta") {
-              controller.enqueue(emit({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { content: parsed.delta.text }, finish_reason: null }] }));
+              controller.enqueue(emit({
+                id, object: "chat.completion.chunk", created, model,
+                choices: [{ index: 0, delta: withRole({ content: parsed.delta.text }), finish_reason: null }]
+              }));
             } else if (parsed?.delta?.type === "input_json_delta" && toolIndex >= 0) {
-              controller.enqueue(emit({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { tool_calls: [{ index: toolIndex, function: { arguments: parsed.delta.partial_json } }] }, finish_reason: null }] }));
+              controller.enqueue(emit({
+                id, object: "chat.completion.chunk", created, model,
+                choices: [{ index: 0, delta: { tool_calls: [{ index: toolIndex, function: { arguments: parsed.delta.partial_json } }] }, finish_reason: null }]
+              }));
             }
           }
           if (parsed?.type === "message_delta") {
@@ -324,58 +351,37 @@ export function openAiChatToResponsesRequest(body: any, options?: { codex?: bool
     }
     if (message?.role === "tool") {
       const text = textFromMessageContent(message.content);
-      if (!text) continue;
-      if (codex) {
-        input.push({
-          type: "message",
-          role: "user",
-          content: responsesInputContent(`Tool result (${message.tool_call_id ?? "tool"}): ${text}`, "user")
-        });
-      } else {
-        input.push({
-          type: "function_call_output",
-          call_id: message.tool_call_id ?? message.id ?? "tool",
-          output: text
-        });
-      }
+      // Empty string is a valid tool result (successful no-output tools).
+      input.push({
+        type: "function_call_output",
+        call_id: message.tool_call_id ?? message.id ?? "tool",
+        output: text
+      });
       continue;
     }
     const role = message?.role === "assistant" ? "assistant" : "user";
     const text = textFromMessageContent(message?.content);
     const hasTools = Array.isArray(message?.tool_calls) && message.tool_calls.length;
     if (!text && !hasTools) continue;
-    if (codex) {
-      const parts = text ? responsesInputContent(text, role) : [];
-      if (hasTools) {
-        for (const call of message.tool_calls) {
-          parts.push({
-            type: "output_text",
-            text: `[tool_call ${call?.function?.name ?? "fn"} ${call?.id ?? ""}] ${call?.function?.arguments ?? ""}`
-          });
-        }
+    if (hasTools && role === "assistant") {
+      for (const call of message.tool_calls) {
+        input.push({
+          type: "function_call",
+          call_id: call?.id ?? `call_${call?.function?.name ?? "fn"}`,
+          name: call?.function?.name ?? "tool",
+          arguments: call?.function?.arguments ?? "{}"
+        });
       }
-      if (parts.length) input.push({ type: "message", role, content: parts });
+      if (text) {
+        input.push({
+          type: "message",
+          role: "assistant",
+          content: responsesInputPartsFromContent(text, "assistant")
+        });
+      }
     } else {
-      if (hasTools && role === "assistant") {
-        for (const call of message.tool_calls) {
-          input.push({
-            type: "function_call",
-            call_id: call?.id ?? `call_${call?.function?.name ?? "fn"}`,
-            name: call?.function?.name ?? "tool",
-            arguments: call?.function?.arguments ?? "{}"
-          });
-        }
-        if (text) {
-          input.push({
-            type: "message",
-            role: "assistant",
-            content: responsesInputPartsFromContent(text, "assistant")
-          });
-        }
-      } else {
-        const parts = responsesInputPartsFromContent(message?.content, role);
-        if (parts.length) input.push({ type: "message", role, content: parts });
-      }
+      const parts = responsesInputPartsFromContent(message?.content, role);
+      if (parts.length) input.push({ type: "message", role, content: parts });
     }
   }
 
@@ -385,6 +391,24 @@ export function openAiChatToResponsesRequest(body: any, options?: { codex?: bool
     ...(instructions ? { instructions } : {}),
     ...(body?.stream ? { stream: true } : {})
   };
+
+  if (Array.isArray(body?.tools) && body.tools.length) {
+    request.tools = body.tools.map((tool: any) => {
+      const fn = tool?.function ?? tool;
+      return {
+        type: "function",
+        name: fn?.name,
+        description: fn?.description,
+        parameters: fn?.parameters ?? { type: "object", properties: {} }
+      };
+    });
+  }
+  if (body?.tool_choice != null) {
+    const choice = body.tool_choice;
+    request.tool_choice = choice?.type === "function" && choice?.function?.name
+      ? { type: "function", name: choice.function.name }
+      : choice;
+  }
 
   if (codex) {
     request.store = false;
@@ -397,18 +421,6 @@ export function openAiChatToResponsesRequest(body: any, options?: { codex?: bool
 
   if (body?.max_tokens) request.max_output_tokens = body.max_tokens;
   if (typeof body?.temperature === "number") request.temperature = body.temperature;
-  if (Array.isArray(body?.tools) && body.tools.length) {
-    request.tools = body.tools.map((tool: any) => {
-      const fn = tool?.function ?? tool;
-      return {
-        type: "function",
-        name: fn?.name,
-        description: fn?.description,
-        parameters: fn?.parameters ?? { type: "object", properties: {} }
-      };
-    });
-  }
-  if (body?.tool_choice != null) request.tool_choice = body.tool_choice;
   return request;
 }
 
@@ -447,7 +459,15 @@ export function normalizeCodexResponsesRequest(request: Record<string, unknown>)
 export function responsesResponseToOpenAi(payload: any, model: string): any {
   const out = Array.isArray(payload?.output) ? payload.output : [];
   let text = "";
+  const toolCalls: any[] = [];
   for (const item of out) {
+    if (item?.type === "function_call") {
+      toolCalls.push({
+        id: item.call_id ?? item.id ?? `call_${toolCalls.length}`,
+        type: "function",
+        function: { name: item.name ?? "tool", arguments: item.arguments ?? "{}" }
+      });
+    }
     const content = Array.isArray(item?.content) ? item.content : [];
     for (const part of content) {
       if (part?.type === "output_text" && typeof part.text === "string") text += part.text;
@@ -460,7 +480,11 @@ export function responsesResponseToOpenAi(payload: any, model: string): any {
     object: "chat.completion",
     created: Math.floor(Date.now() / 1000),
     model,
-    choices: [{ index: 0, message: { role: "assistant", content: text }, finish_reason: "stop" }],
+    choices: [{
+      index: 0,
+      message: { role: "assistant", content: text || null, ...(toolCalls.length ? { tool_calls: toolCalls } : {}) },
+      finish_reason: toolCalls.length ? "tool_calls" : "stop"
+    }],
     usage: { prompt_tokens: inputTokens, completion_tokens: outputTokens, total_tokens: inputTokens + outputTokens }
   };
 }
@@ -472,8 +496,28 @@ export function responsesSseToOpenAiSse(responsesSse: ReadableStream<Uint8Array>
   const created = Math.floor(Date.now() / 1000);
   let buffer = "";
   let usage = { prompt_tokens: 0, completion_tokens: 0 };
+  let sawToolCall = false;
+  let sawTextDelta = false;
+  const toolArgumentDeltas = new Set<number>();
+  /** Map Responses output_index → contiguous OpenAI tool_call index (0..N-1). */
+  const toolIndexByOutput = new Map<number, number>();
+  let nextToolIndex = 0;
+  let roleSent = false;
 
   const emit = (obj: any) => textEncoder.encode(`data: ${JSON.stringify(obj)}\n\n`);
+  const withRole = (delta: Record<string, unknown>) => {
+    if (roleSent) return delta;
+    roleSent = true;
+    return { role: "assistant", ...delta };
+  };
+  const openAiToolIndex = (outputIndex: number) => {
+    let index = toolIndexByOutput.get(outputIndex);
+    if (index == null) {
+      index = nextToolIndex++;
+      toolIndexByOutput.set(outputIndex, index);
+    }
+    return index;
+  };
 
   return responsesSse.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
@@ -492,12 +536,84 @@ export function responsesSseToOpenAiSse(responsesSse: ReadableStream<Uint8Array>
           try { parsed = JSON.parse(dataLine); } catch { continue; }
 
           if (parsed?.type === "response.output_text.delta" && typeof parsed?.delta === "string") {
-            controller.enqueue(emit({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: { content: parsed.delta }, finish_reason: null }] }));
+            sawTextDelta = true;
+            controller.enqueue(emit({
+              id, object: "chat.completion.chunk", created, model,
+              choices: [{ index: 0, delta: withRole({ content: parsed.delta }), finish_reason: null }]
+            }));
+          }
+          if (parsed?.type === "response.output_item.added" && parsed?.item?.type === "function_call") {
+            sawToolCall = true;
+            const index = openAiToolIndex(Number(parsed.output_index ?? 0));
+            controller.enqueue(emit({
+              id, object: "chat.completion.chunk", created, model,
+              choices: [{
+                index: 0,
+                delta: withRole({
+                  tool_calls: [{
+                    index,
+                    id: parsed.item.call_id ?? parsed.item.id,
+                    type: "function",
+                    function: { name: parsed.item.name, arguments: "" }
+                  }]
+                }),
+                finish_reason: null
+              }]
+            }));
+          }
+          if (parsed?.type === "response.function_call_arguments.delta" && typeof parsed?.delta === "string") {
+            sawToolCall = true;
+            const index = openAiToolIndex(Number(parsed.output_index ?? 0));
+            toolArgumentDeltas.add(index);
+            controller.enqueue(emit({
+              id, object: "chat.completion.chunk", created, model,
+              choices: [{ index: 0, delta: { tool_calls: [{ index, function: { arguments: parsed.delta } }] }, finish_reason: null }]
+            }));
+          }
+          if (parsed?.type === "response.output_item.done") {
+            const item = parsed?.item;
+            const outputIndex = Number(parsed.output_index ?? 0);
+            if (item?.type === "message" && !sawTextDelta) {
+              for (const part of item?.content ?? []) {
+                if (part?.type === "output_text" && typeof part?.text === "string" && part.text) {
+                  sawTextDelta = true;
+                  controller.enqueue(emit({
+                    id, object: "chat.completion.chunk", created, model,
+                    choices: [{ index: 0, delta: withRole({ content: part.text }), finish_reason: null }]
+                  }));
+                }
+              }
+            }
+            if (item?.type === "function_call") {
+              const index = openAiToolIndex(outputIndex);
+              if (!toolArgumentDeltas.has(index) && typeof item?.arguments === "string") {
+                sawToolCall = true;
+                controller.enqueue(emit({
+                  id, object: "chat.completion.chunk", created, model,
+                  choices: [{ index: 0, delta: { tool_calls: [{ index, function: { arguments: item.arguments } }] }, finish_reason: null }]
+                }));
+              }
+            }
           }
           if (parsed?.type === "response.completed" && parsed?.response?.usage) {
+            if (!sawTextDelta && !sawToolCall) {
+              for (const item of parsed?.response?.output ?? []) {
+                if (item?.type === "message") {
+                  for (const part of item?.content ?? []) {
+                    if (part?.type === "output_text" && typeof part?.text === "string" && part.text) {
+                      sawTextDelta = true;
+                      controller.enqueue(emit({
+                        id, object: "chat.completion.chunk", created, model,
+                        choices: [{ index: 0, delta: withRole({ content: part.text }), finish_reason: null }]
+                      }));
+                    }
+                  }
+                }
+              }
+            }
             usage.prompt_tokens = parsed.response.usage.input_tokens ?? 0;
             usage.completion_tokens = parsed.response.usage.output_tokens ?? 0;
-            controller.enqueue(emit({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }], usage }));
+            controller.enqueue(emit({ id, object: "chat.completion.chunk", created, model, choices: [{ index: 0, delta: {}, finish_reason: sawToolCall ? "tool_calls" : "stop" }], usage }));
           }
         }
       },

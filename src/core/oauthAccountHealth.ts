@@ -4,6 +4,10 @@ import { OAuthAccount, ProviderConfig } from "@/core/types";
 /** Errors that mean the account should be skipped in routing (auth, quota, no access). */
 export function isOAuthAccountFatalError(error: UpstreamProviderError): boolean {
   const text = `${error.message} ${error.providerCode ?? ""} ${error.providerType ?? ""}`.toLowerCase();
+  // Cursor uses non-standard HTTP 464 when the imported IDE session/device is
+  // rejected for inference. Retrying the same account cannot recover it, so it
+  // must stop being advertised and selected as routable.
+  if (error.status === 464) return true;
   if ([401, 402, 403].includes(error.status)) return true;
   if (error.status === 429 && /quota|billing|credit|exhausted|insufficient|limit reached|spend/.test(text)) return true;
   if (/subscription.*expired|expired.*subscription|not authorized|no access|invalid.*token|forbidden|payment required|billing|credit|quota exceeded|insufficient_quota|account.*disabled/.test(text)) {

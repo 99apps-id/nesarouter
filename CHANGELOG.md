@@ -2,6 +2,25 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.40 - 2026-07-20
+
+### Security
+
+- Stop routing expired OAuth credentials when refresh fails, sanitize upstream OAuth errors, reject stale account targets, isolate concurrent multi-account device flows, and clean up expired pending authorization state.
+- Retain OAuth callback state until token exchange and encrypted persistence succeed, close completed loopback listeners, and prevent iFlow credential-bearing URLs from appearing in application errors or logs.
+
+### Fixed
+
+- Preserve function declarations, forced tool choice, assistant tool calls, tool results, streamed arguments, and tool-call finish reasons across OpenAI Chat, Responses, Anthropic Messages, Gemini, Cursor, Kiro, Vertex, GitHub Copilot, OpenRouter, and OpenCode adapters.
+- Return a real JSON chat completion when `stream:false` is requested from a streaming upstream, without corrupting usage accounting, cache safety, or concurrency tickets.
+- Keep agent continuations on the same upstream account/provider, recognize tool-only continuation turns, and exclude providers that cannot support the requested tool protocol.
+- Validate Cursor, OpenRouter, and OpenCode with representative inference requests so the dashboard no longer reports false-positive connections.
+- Preserve provider-specific tool names and arguments through Cursor/Gemini continuations, strip private router fields before strict upstream calls, and harden incremental SSE/protobuf argument handling against duplicate payloads.
+
+### Validation
+
+- 313 unit tests across 57 files, TypeScript validation, dependency audit, OSS public-boundary check, production build, and OSS/SaaS VPS health checks pass.
+
 ## 0.1.39 - 2026-07-20
 
 ### Fixed

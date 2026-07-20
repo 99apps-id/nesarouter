@@ -49,11 +49,12 @@ export function extractChatgptAccountId(token: string): string | undefined {
   }
 }
 
-async function collectSseChatCompletion(stream: ReadableStream<Uint8Array>, model: string) {
+export async function collectSseChatCompletion(stream: ReadableStream<Uint8Array>, model: string) {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let content = "";
+  const toolCalls = new Map<number, { id?: string; type: "function"; function: { name?: string; arguments: string } }>();
   let usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
   let finishReason: string | null = "stop";
 
@@ -76,6 +77,14 @@ async function collectSseChatCompletion(stream: ReadableStream<Uint8Array>, mode
       }
       const delta = parsed?.choices?.[0]?.delta?.content;
       if (typeof delta === "string") content += delta;
+      for (const call of parsed?.choices?.[0]?.delta?.tool_calls ?? []) {
+        const index = Number(call?.index ?? 0);
+        const current = toolCalls.get(index) ?? { type: "function" as const, function: { arguments: "" } };
+        if (call?.id) current.id = call.id;
+        if (call?.function?.name) current.function.name = call.function.name;
+        if (typeof call?.function?.arguments === "string") current.function.arguments += call.function.arguments;
+        toolCalls.set(index, current);
+      }
       if (parsed?.choices?.[0]?.finish_reason) finishReason = parsed.choices[0].finish_reason;
       if (parsed?.usage) {
         usage = {
@@ -92,7 +101,19 @@ async function collectSseChatCompletion(stream: ReadableStream<Uint8Array>, mode
     object: "chat.completion",
     created: Math.floor(Date.now() / 1000),
     model,
-    choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: finishReason }],
+    choices: [{
+      index: 0,
+      message: {
+        role: "assistant",
+        content: content || null,
+        ...(toolCalls.size ? { tool_calls: [...toolCalls.entries()].sort(([a], [b]) => a - b).map(([index, call]) => ({
+          id: call.id ?? `call_${index}`,
+          type: "function",
+          function: { name: call.function.name ?? "tool", arguments: call.function.arguments }
+        })) } : {})
+      },
+      finish_reason: toolCalls.size ? "tool_calls" : finishReason
+    }],
     usage
   };
 }

@@ -15,7 +15,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
   const { id } = await context.params;
-  const body = (await request.json().catch(() => ({}))) as { accountId?: string };
+  const body = (await request.json().catch(() => ({}))) as { accountId?: string; pendingId?: string };
   const provider = await readProviderById(id);
   if (!provider) return NextResponse.json({ error: "Provider not found." }, { status: 404 });
   const preset = getPreset(provider.oauthProfile);
@@ -24,13 +24,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   const accountId = body.accountId?.trim() || undefined;
-  const pending = await readDevicePending(id, accountId);
+  const pendingId = body.pendingId?.trim() || accountId;
+  const pending = await readDevicePending(id, pendingId);
   if (!pending) return NextResponse.json({ error: "No device flow in progress. Call /device/start first." }, { status: 400 });
   const expired = pending.expiresAt
     ? Date.now() > new Date(pending.expiresAt).getTime()
     : Date.now() - new Date(pending.createdAt).getTime() > 15 * 60_000;
   if (expired) {
-    await deleteDevicePending(id);
+    await deleteDevicePending(id, pendingId);
     return NextResponse.json({ error: "Device flow expired. Restart." }, { status: 410 });
   }
 
@@ -59,7 +60,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       accountId: pending.accountId,
       createNew: !pending.accountId
     });
-    await deleteDevicePending(id, pending.accountId);
+    await deleteDevicePending(id, pendingId);
     return finalizeAdminResponse(NextResponse.json({ status: "ok" }), request);
   } catch (error) {
     const err = error as Error & { pending?: boolean; interval?: number };

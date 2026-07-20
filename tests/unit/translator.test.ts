@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { claudeStreamFromOpenAiSse, claudeToOpenAi, openAiToClaude, responsesToOpenAi, openAiToResponses } from "@/core/translator";
+import {
+  claudeStreamFromOpenAiSse,
+  claudeToOpenAi,
+  mapClaudeToolChoiceToOpenAi,
+  mapResponsesToolChoiceToOpenAi,
+  openAiToClaude,
+  responsesStreamFromOpenAiSse,
+  responsesToOpenAi,
+  openAiToResponses
+} from "@/core/translator";
 
 describe("translator claude", () => {
   it("converts a simple Claude request to OpenAI chat", () => {
@@ -23,6 +32,44 @@ describe("translator claude", () => {
     const tool = openAi.messages.find((m: any) => m.role === "tool");
     expect(tool.tool_call_id).toBe("t1");
     expect(tool.content).toBe("done");
+  });
+
+  it("maps Anthropic tool_choice shapes to OpenAI", () => {
+    expect(mapClaudeToolChoiceToOpenAi({ type: "auto" })).toBe("auto");
+    expect(mapClaudeToolChoiceToOpenAi({ type: "any" })).toBe("required");
+    expect(mapClaudeToolChoiceToOpenAi({ type: "tool", name: "Lookup" })).toEqual({
+      type: "function",
+      function: { name: "Lookup" }
+    });
+    expect(mapResponsesToolChoiceToOpenAi({ type: "function", name: "Lookup" })).toEqual({
+      type: "function",
+      function: { name: "Lookup" }
+    });
+  });
+
+  it("emits function_call events from OpenAI tool_calls SSE on /v1/responses stream", async () => {
+    const payload = {
+      choices: [
+        {
+          delta: {
+            tool_calls: [{ index: 0, id: "call_1", function: { name: "lookup", arguments: '{"q":"x"}' } }]
+          },
+          finish_reason: "tool_calls"
+        }
+      ]
+    };
+    const input = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(payload)}\n\n`));
+        controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+        controller.close();
+      }
+    });
+    const text = await new Response(responsesStreamFromOpenAiSse(input, "m")).text();
+    expect(text).toContain("response.function_call_arguments.delta");
+    expect(text).toContain('"name":"lookup"');
+    expect(text).toContain('"call_id":"call_1"');
+    expect(text).toContain("response.completed");
   });
 
   it("converts OpenAI completion back to Claude shape", () => {
@@ -115,8 +162,9 @@ describe("translator responses", () => {
     const text = await new Response(claudeStreamFromOpenAiSse(input, "m")).text();
     expect(text).toContain('"id":"a"');
     expect(text).toContain('"id":"b"');
+    // Tool-only streams start at content block index 0 (no leading text block).
+    expect(text).toContain('"index":0');
     expect(text).toContain('"index":1');
-    expect(text).toContain('"index":2');
   });
   it("converts a Responses request with string input", () => {
     const openAi = responsesToOpenAi({ model: "m", input: "hi", instructions: "be brief", max_output_tokens: 50 });

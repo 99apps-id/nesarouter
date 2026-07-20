@@ -9,6 +9,7 @@ import {
   resolveVertexProjectId
 } from "@/core/vertexCredentials";
 import { claudeResponseToOpenAi, claudeSseToOpenAiSse, openAiChatToClaudeRequest } from "@/core/translatorReverse";
+import { stripPrivateRouterFields } from "@/core/providers/openaiCompatible";
 import { ProviderExecutor, proxyFetch, UpstreamProviderError, upstreamError } from "@/core/providers/shared";
 
 function vertexLocation(provider: ProviderConfig) {
@@ -144,7 +145,7 @@ export class VertexExecutor implements ProviderExecutor {
       const headers: Record<string, string> = { "content-type": "application/json" };
       if (auth.accessToken) headers.authorization = `Bearer ${auth.accessToken}`;
       const upstreamBody = {
-        ...body,
+        ...stripPrivateRouterFields(body),
         model: provider.model,
         stream: Boolean(body?.stream)
       };

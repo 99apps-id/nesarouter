@@ -24,7 +24,6 @@ export async function GET(request: Request) {
   if (!pending) {
     return NextResponse.redirect(publicUrl("/providers?oauth_error=invalid_state", request));
   }
-  await deleteOAuthPending(state);
   const pendingAgeMs = Date.now() - new Date(pending.createdAt).getTime();
   if (pendingAgeMs > 10 * 60_000) {
     return NextResponse.redirect(publicUrl("/providers?oauth_error=state_expired", request));
@@ -58,6 +57,7 @@ export async function GET(request: Request) {
       accountId: pending.accountId,
       createNew: !pending.accountId
     });
+    await deleteOAuthPending(state);
     return NextResponse.redirect(publicUrl("/providers?oauth=connected", request));
   } catch (error) {
     const message = error instanceof Error ? error.message : "exchange failed";
