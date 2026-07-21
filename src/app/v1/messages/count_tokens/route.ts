@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/core/auth";
+import { authorizeRequest, readJsonBodyLimited, RequestBodyTooLargeError } from "@/core/auth";
 import { estimateTokens } from "@/core/estimation";
 import { readStore } from "@/lib/store";
 
@@ -19,8 +19,9 @@ export async function POST(request: Request) {
 
   let body: any;
   try {
-    body = await request.json();
-  } catch {
+    body = await readJsonBodyLimited(request);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return NextResponse.json({ error: { message: error.message } }, { status: 413 });
     return NextResponse.json({ error: { message: "Request body must be valid JSON." } }, { status: 400 });
   }
 

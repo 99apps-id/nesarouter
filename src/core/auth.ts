@@ -32,3 +32,40 @@ export function isRequestBodyTooLarge(request: Request, maxBytes = 16 * 1024 * 1
   const length = Number(raw);
   return Number.isFinite(length) && length > maxBytes;
 }
+
+export class RequestBodyTooLargeError extends Error {
+  constructor(readonly maxBytes: number) {
+    super(`Request body exceeds ${Math.floor(maxBytes / (1024 * 1024))} MB.`);
+    this.name = "RequestBodyTooLargeError";
+  }
+}
+
+/** Read JSON with an enforced byte limit, including chunked bodies without Content-Length. */
+export async function readJsonBodyLimited<T = unknown>(
+  request: Request,
+  maxBytes = 16 * 1024 * 1024
+): Promise<T> {
+  if (isRequestBodyTooLarge(request, maxBytes)) throw new RequestBodyTooLargeError(maxBytes);
+  if (!request.body) return JSON.parse("") as T;
+
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = "";
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > maxBytes) {
+        await reader.cancel().catch(() => {});
+        throw new RequestBodyTooLargeError(maxBytes);
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    return JSON.parse(text) as T;
+  } finally {
+    try { reader.releaseLock(); } catch {}
+  }
+}

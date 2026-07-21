@@ -54,6 +54,13 @@ function loggedModel(body: any, fallback: string) {
   return requested;
 }
 
+/** Never let malformed provider usage poison quotas, budgets, or SQLite sums. */
+export function safeTokenCount(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return Math.max(0, Math.floor(fallback));
+  return Math.floor(parsed);
+}
+
 function isQuotaError(error: UpstreamProviderError) {
   const text = `${error.message} ${error.providerCode ?? ""} ${error.providerType ?? ""}`.toLowerCase();
   return error.status === 429 && /insufficient[_\s-]?quota|quota|billing|exceeded your current quota/.test(text);
@@ -422,8 +429,8 @@ function skippedProvidersHeader(skipped: RouteDecision["skippedProviders"] | und
 async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream: any, key: string, body: any, keyIndex?: number) {
   const structuredTools = hasStructuredToolProtocol(body);
   const usage = upstream?.usage ?? {};
-  const inputTokens = Number(usage.prompt_tokens ?? decision.estimatedInputTokens);
-  const outputTokens = Number(usage.completion_tokens ?? decision.estimatedOutputTokens);
+  const inputTokens = safeTokenCount(usage.prompt_tokens, decision.estimatedInputTokens);
+  const outputTokens = safeTokenCount(usage.completion_tokens, decision.estimatedOutputTokens);
   const totalCostUsd =
     decision.provider.tier === "free"
       ? 0
@@ -524,10 +531,13 @@ async function finalizeStream(
 
   const finalizeLog = (streamEnd: StreamEndState) => {
     ticket?.release();
-    const inputTokens = capturedUsage?.prompt_tokens ?? baseLog.inputTokens;
+    const inputTokens = safeTokenCount(capturedUsage?.prompt_tokens, baseLog.inputTokens);
     // `estimatedOutputTokens` can be the client's very large max_tokens value.
     // It is suitable for admission reservation, never for actual usage ledger.
-    const outputTokens = capturedUsage?.completion_tokens ?? Math.ceil(observedOutputCharacters / 4);
+    const outputTokens = safeTokenCount(
+      capturedUsage?.completion_tokens,
+      Math.ceil(observedOutputCharacters / 4)
+    );
     const totalCostUsd =
       decision.provider.tier === "free"
         ? 0

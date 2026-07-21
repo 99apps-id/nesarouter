@@ -36,4 +36,18 @@ describe("OpenRouter validation", () => {
     vi.stubGlobal("fetch", fetchMock);
     await expect(new OpenAiCompatibleExecutor().validate(provider)).rejects.toMatchObject({ status: 401 });
   });
+
+  it("forces streaming usage collection for an accurate ledger", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("data: [DONE]\n\n", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await new OpenAiCompatibleExecutor().call(provider, {
+      model: "openrouter/free",
+      messages: [{ role: "user", content: "hello" }],
+      stream: true,
+      stream_options: { include_usage: false, custom: true }
+    });
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const sent = JSON.parse(String(init.body));
+    expect(sent.stream_options).toEqual({ include_usage: true, custom: true });
+  });
 });

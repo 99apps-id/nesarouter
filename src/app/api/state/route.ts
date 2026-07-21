@@ -5,7 +5,7 @@ import { keyRows } from "@/lib/keyIdentity";
 import { redactCacheEntryForClient, redactProviderForClient } from "@/lib/providerRedact";
 import { getTodaySpend, getTodayRequestCount, readStore, writeStore } from "@/lib/store";
 import { Combo } from "@/core/types";
-import { validateStatePatch } from "@/lib/statePatch";
+import { mergeRouterPatch, validateStatePatch } from "@/lib/statePatch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,10 +60,14 @@ export async function PUT(request: Request) {
   const combos: Combo[] = Array.isArray(patch.combos) ? (patch.combos as Combo[]) : store.combos;
   const aliases = Array.isArray(patch.aliases) ? patch.aliases : store.aliases;
 
+  const nextRouter = patch.router
+    ? mergeRouterPatch(store.router, patch.router)
+    : store.router;
+
   const nextStore = {
     ...store,
     budget: patch.budget ? { ...store.budget, ...patch.budget } : store.budget,
-    router: patch.router ? { ...store.router, ...patch.router } : store.router,
+    router: nextRouter,
     combos,
     aliases
   };

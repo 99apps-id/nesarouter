@@ -10,7 +10,9 @@ const UNKNOWN_EXPIRY_REFRESH_INTERVAL_MS = 45 * 60_000;
 export function oauthTokenIsExpired(provider: Pick<ProviderConfig, "oauthTokenExpiresAt">, now = Date.now()): boolean {
   if (!provider.oauthTokenExpiresAt) return false;
   const expiresAt = new Date(provider.oauthTokenExpiresAt).getTime();
-  return Number.isFinite(expiresAt) && expiresAt <= now;
+  // A persisted but malformed expiry must fail closed. Treating it as an
+  // unknown-expiry token can keep a broken credential routable forever.
+  return !Number.isFinite(expiresAt) || expiresAt <= now;
 }
 
 export function oauthTokenNeedsRefresh(

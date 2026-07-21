@@ -28,6 +28,10 @@ describe("OAuth refresh safety", () => {
     }, preset, now)).toBe(true);
   });
 
+  it("fails closed for a malformed persisted expiry", () => {
+    expect(oauthTokenIsExpired({ oauthTokenExpiresAt: "not-a-date" }, now)).toBe(true);
+  });
+
   it("redacts OAuth credentials from upstream error bodies", () => {
     const secret = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     const result = sanitizeOAuthErrorBody(JSON.stringify({

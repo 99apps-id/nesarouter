@@ -33,6 +33,16 @@ describe("provider account pool", () => {
   });
 
   it("removes duplicate credentials from the pool", () => {
-    expect(configuredProviderKeys(provider({ apiKeys: ["primary", "second"] })).map((item) => item.key)).toEqual(["primary", "second"]);
+    expect(configuredProviderKeys(provider({ apiKeys: ["primary", "second"] }))).toEqual([
+      { key: "primary", index: 0 },
+      { key: "second", index: 1 }
+    ]);
+  });
+
+  it("keeps quota indexes compact when blank and duplicate credentials are present", () => {
+    expect(configuredProviderKeys(provider({ apiKey: "", apiKeys: ["second", "", "second", "third"] }))).toEqual([
+      { key: "second", index: 0 },
+      { key: "third", index: 1 }
+    ]);
   });
 });

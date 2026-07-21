@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildHeadroomLaunchSpec } from "@/lib/headroom/detect";
+import { normalizeHeadroomPort } from "@/lib/headroom/process";
 
 describe("Headroom process launch", () => {
   it("uses the CLI executable when it is on PATH", () => {
@@ -18,5 +19,12 @@ describe("Headroom process launch", () => {
 
   it("reports no launch method when Headroom is absent", () => {
     expect(buildHeadroomLaunchSpec(null, null)).toBeNull();
+  });
+
+  it("rejects fractional and out-of-range proxy ports", () => {
+    expect(normalizeHeadroomPort(9000)).toBe(9000);
+    expect(normalizeHeadroomPort(9000.5)).toBe(8787);
+    expect(normalizeHeadroomPort(0)).toBe(8787);
+    expect(normalizeHeadroomPort(65536)).toBe(8787);
   });
 });

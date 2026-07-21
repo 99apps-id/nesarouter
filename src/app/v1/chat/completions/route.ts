@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
 import { handleChat } from "@/core/chatHandler";
-import { authorizeClientRequest, isRequestBodyTooLarge } from "@/core/auth";
+import { authorizeClientRequest, readJsonBodyLimited, RequestBodyTooLargeError } from "@/core/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   if (!(await authorizeClientRequest(request))) return NextResponse.json({ error: { message: "Invalid NesaRouter API key." } }, { status: 401 });
-  if (isRequestBodyTooLarge(request)) return NextResponse.json({ error: { message: "Request body exceeds 16 MB." } }, { status: 413 });
   let body: any;
   try {
-    body = await request.json();
-  } catch {
+    body = await readJsonBodyLimited(request);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return NextResponse.json({ error: { message: error.message } }, { status: 413 });
     return NextResponse.json({ error: { message: "Request body must be valid JSON." } }, { status: 400 });
   }
   const { response } = await handleChat(body, request);
