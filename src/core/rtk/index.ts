@@ -10,10 +10,18 @@ import { autoDetectFilter } from "./autodetect";
 import { safeApply } from "./applyFilter";
 import { smartTruncate } from "./filters/smartTruncate";
 
-export interface RtkResult {
-  body: any;
+export interface RtkResult<T = unknown> {
+  body: T;
   savedChars: number;
   hits?: Array<{ shape: string; filter: string; saved: number }>;
+}
+
+type UnknownRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): UnknownRecord | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as UnknownRecord
+    : null;
 }
 
 function compressText(text: string, hits: NonNullable<RtkResult["hits"]>, shape: string): string {
@@ -61,42 +69,44 @@ function compressToolMessageContent(content: unknown, hits: NonNullable<RtkResul
   if (!Array.isArray(content)) return content;
 
   let changed = false;
-  const next = content.map((part: any) => {
-    if (!part || typeof part !== "object") return part;
+  const next = content.map((part) => {
+    const partRecord = asRecord(part);
+    if (!partRecord) return part;
 
-    if (part.type === "tool_result") {
-      if (part.is_error === true) return part;
-      if (typeof part.content === "string") {
-        const compressed = compressText(part.content, hits, `${shape}-tool_result`);
-        if (compressed !== part.content) {
+    if (partRecord.type === "tool_result") {
+      if (partRecord.is_error === true) return part;
+      if (typeof partRecord.content === "string") {
+        const compressed = compressText(partRecord.content, hits, `${shape}-tool_result`);
+        if (compressed !== partRecord.content) {
           changed = true;
-          return { ...part, content: compressed };
+          return { ...partRecord, content: compressed };
         }
-      } else if (Array.isArray(part.content)) {
+      } else if (Array.isArray(partRecord.content)) {
         let innerChanged = false;
-        const inner = part.content.map((block: any) => {
-          if (block?.type === "text" && typeof block.text === "string") {
-            const compressed = compressText(block.text, hits, `${shape}-tool_result-text`);
-            if (compressed !== block.text) {
+        const inner = partRecord.content.map((block) => {
+          const blockRecord = asRecord(block);
+          if (blockRecord?.type === "text" && typeof blockRecord.text === "string") {
+            const compressed = compressText(blockRecord.text, hits, `${shape}-tool_result-text`);
+            if (compressed !== blockRecord.text) {
               innerChanged = true;
-              return { ...block, text: compressed };
+              return { ...blockRecord, text: compressed };
             }
           }
           return block;
         });
         if (innerChanged) {
           changed = true;
-          return { ...part, content: inner };
+          return { ...partRecord, content: inner };
         }
       }
       return part;
     }
 
-    if (part.type === "text" && typeof part.text === "string") {
-      const compressed = compressText(part.text, hits, `${shape}-text`);
-      if (compressed !== part.text) {
+    if (partRecord.type === "text" && typeof partRecord.text === "string") {
+      const compressed = compressText(partRecord.text, hits, `${shape}-text`);
+      if (compressed !== partRecord.text) {
         changed = true;
-        return { ...part, text: compressed };
+        return { ...partRecord, text: compressed };
       }
     }
 
@@ -109,46 +119,50 @@ function compressToolMessageContent(content: unknown, hits: NonNullable<RtkResul
 /**
  * Walk an OpenAI (or Responses) chat body and compress tool-result content.
  */
-export function compressToolResults(body: any): RtkResult {
+export function compressToolResults<T>(body: T): RtkResult<T> {
   if (!body) return { body, savedChars: 0 };
+  const bodyRecord = asRecord(body);
+  if (!bodyRecord) return { body, savedChars: 0 };
 
   const hits: NonNullable<RtkResult["hits"]> = [];
 
   // OpenAI chat / Claude-shaped messages
-  if (Array.isArray(body.messages)) {
-    const nextMessages = body.messages.map((message: any) => {
-      if (!message || typeof message !== "object") return message;
+  if (Array.isArray(bodyRecord.messages)) {
+    const nextMessages = bodyRecord.messages.map((message) => {
+      const messageRecord = asRecord(message);
+      if (!messageRecord) return message;
 
-      if (message.type === "function_call_output") {
-        if (typeof message.output === "string") {
-          const compressed = compressText(message.output, hits, "openai-responses-string");
-          return compressed !== message.output ? { ...message, output: compressed } : message;
+      if (messageRecord.type === "function_call_output") {
+        if (typeof messageRecord.output === "string") {
+          const compressed = compressText(messageRecord.output, hits, "openai-responses-string");
+          return compressed !== messageRecord.output ? { ...messageRecord, output: compressed } : message;
         }
-        if (Array.isArray(message.output)) {
+        if (Array.isArray(messageRecord.output)) {
           let changed = false;
-          const output = message.output.map((part: any) => {
-            if (part?.type === "input_text" && typeof part.text === "string") {
-              const compressed = compressText(part.text, hits, "openai-responses-array");
-              if (compressed !== part.text) {
+          const output = messageRecord.output.map((part) => {
+            const partRecord = asRecord(part);
+            if (partRecord?.type === "input_text" && typeof partRecord.text === "string") {
+              const compressed = compressText(partRecord.text, hits, "openai-responses-array");
+              if (compressed !== partRecord.text) {
                 changed = true;
-                return { ...part, text: compressed };
+                return { ...partRecord, text: compressed };
               }
             }
             return part;
           });
-          return changed ? { ...message, output } : message;
+          return changed ? { ...messageRecord, output } : message;
         }
         return message;
       }
 
-      if (message.role === "tool") {
-        const content = compressToolMessageContent(message.content, hits, "openai-tool");
-        return content !== message.content ? { ...message, content } : message;
+      if (messageRecord.role === "tool") {
+        const content = compressToolMessageContent(messageRecord.content, hits, "openai-tool");
+        return content !== messageRecord.content ? { ...messageRecord, content } : message;
       }
 
-      if (Array.isArray(message.content)) {
-        const content = compressToolMessageContent(message.content, hits, "blocks");
-        return content !== message.content ? { ...message, content } : message;
+      if (Array.isArray(messageRecord.content)) {
+        const content = compressToolMessageContent(messageRecord.content, hits, "blocks");
+        return content !== messageRecord.content ? { ...messageRecord, content } : message;
       }
 
       return message;
@@ -156,28 +170,29 @@ export function compressToolResults(body: any): RtkResult {
 
     const savedChars = hits.reduce((sum, hit) => sum + hit.saved, 0);
     if (savedChars === 0) return { body, savedChars: 0, hits };
-    return { body: { ...body, messages: nextMessages }, savedChars, hits };
+    return { body: { ...bodyRecord, messages: nextMessages } as T, savedChars, hits };
   }
 
   // OpenAI Responses API: body.input
-  if (Array.isArray(body.input)) {
-    const nextInput = body.input.map((message: any) => {
-      if (!message || typeof message !== "object") return message;
-      if (message.type === "function_call_output") {
-        if (typeof message.output === "string") {
-          const compressed = compressText(message.output, hits, "openai-responses-string");
-          return compressed !== message.output ? { ...message, output: compressed } : message;
+  if (Array.isArray(bodyRecord.input)) {
+    const nextInput = bodyRecord.input.map((message) => {
+      const messageRecord = asRecord(message);
+      if (!messageRecord) return message;
+      if (messageRecord.type === "function_call_output") {
+        if (typeof messageRecord.output === "string") {
+          const compressed = compressText(messageRecord.output, hits, "openai-responses-string");
+          return compressed !== messageRecord.output ? { ...messageRecord, output: compressed } : message;
         }
       }
-      if (message.role === "tool" && typeof message.content === "string") {
-        const compressed = compressText(message.content, hits, "openai-tool");
-        return compressed !== message.content ? { ...message, content: compressed } : message;
+      if (messageRecord.role === "tool" && typeof messageRecord.content === "string") {
+        const compressed = compressText(messageRecord.content, hits, "openai-tool");
+        return compressed !== messageRecord.content ? { ...messageRecord, content: compressed } : message;
       }
       return message;
     });
     const savedChars = hits.reduce((sum, hit) => sum + hit.saved, 0);
     if (savedChars === 0) return { body, savedChars: 0, hits };
-    return { body: { ...body, input: nextInput }, savedChars, hits };
+    return { body: { ...bodyRecord, input: nextInput } as T, savedChars, hits };
   }
 
   return { body, savedChars: 0 };
