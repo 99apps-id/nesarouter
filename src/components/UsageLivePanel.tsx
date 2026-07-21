@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Activity, RefreshCw } from "lucide-react";
-import { money } from "@/lib/format";
+import { money, formatNumber, formatTime } from "@/lib/format";
 
 interface UsageStatsPayload {
   totalRequests: number;
@@ -38,7 +38,7 @@ export default function UsageLivePanel() {
     if (!response?.ok) return;
     const payload = (await response.json()) as UsageStatsPayload;
     setStats(payload);
-    setUpdatedAt(new Date().toLocaleTimeString());
+    setUpdatedAt(formatTime(new Date()));
     setLoading(false);
   }
 
@@ -73,8 +73,8 @@ export default function UsageLivePanel() {
             <span>
               <Activity size={14} /> {stats.totalRequests} req
             </span>
-            <span>{stats.inputTokens.toLocaleString("en-US")} in</span>
-            <span>{stats.outputTokens.toLocaleString("en-US")} out</span>
+            <span>{formatNumber(stats.inputTokens)} in</span>
+            <span>{formatNumber(stats.outputTokens)} out</span>
             <span>{money(stats.totalCostUsd)}</span>
             <span>{Math.round(stats.cacheHitRate * 100)}% cache</span>
             {updatedAt ? <span className="subtle">Updated {updatedAt}</span> : null}

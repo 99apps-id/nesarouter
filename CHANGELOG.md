@@ -2,6 +2,13 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.43 - 2026-07-21
+
+### Fixed
+
+- Prevent client-side Application errors on Usage by formatting numbers and times with a fixed `en-US` locale so server HTML and browser hydration always match.
+- Allow Cloudflare Web Analytics beacon under production Content-Security-Policy when the site is served behind Cloudflare.
+
 ## 0.1.42 - 2026-07-21
 
 ### Fixed

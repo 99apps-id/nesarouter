@@ -1,4 +1,4 @@
-import { money } from "@/lib/format";
+import { formatNumber, money } from "@/lib/format";
 import ProviderIcon from "@/components/ProviderIcon";
 
 export interface UsageByProviderRow {
@@ -48,9 +48,9 @@ export default function UsageByProviderTable({ rows }: { rows: UsageByProviderRo
                       <span title={row.providerName}>{row.providerName}</span>
                     </span>
                   </td>
-                  <td className="num">{row.requests.toLocaleString("en-US")}</td>
-                  <td className="num">{row.inputTokens.toLocaleString("en-US")}</td>
-                  <td className="num">{row.outputTokens.toLocaleString("en-US")}</td>
+                  <td className="num">{formatNumber(row.requests)}</td>
+                  <td className="num">{formatNumber(row.inputTokens)}</td>
+                  <td className="num">{formatNumber(row.outputTokens)}</td>
                   <td className="num">{money(row.totalCostUsd)}</td>
                 </tr>
               ))}

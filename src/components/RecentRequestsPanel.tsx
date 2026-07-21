@@ -1,5 +1,5 @@
 import { UsageLog } from "@/core/types";
-import { money } from "@/lib/format";
+import { formatTime, money } from "@/lib/format";
 import ProviderIcon from "@/components/ProviderIcon";
 
 export default function RecentRequestsPanel({ usage }: { usage: UsageLog[] }) {
@@ -36,7 +36,7 @@ export default function RecentRequestsPanel({ usage }: { usage: UsageLog[] }) {
                 </div>
                 <div>
                   <strong>{money(item.totalCostUsd)}</strong>
-                  <span>{new Date(item.createdAt).toLocaleTimeString()}</span>
+                  <span>{formatTime(item.createdAt)}</span>
                 </div>
               </div>
             );
