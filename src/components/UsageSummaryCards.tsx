@@ -1,5 +1,5 @@
 import { Activity, Coins, Download, Upload } from "lucide-react";
-import { money } from "@/lib/format";
+import { formatNumber, money } from "@/lib/format";
 
 export default function UsageSummaryCards({
   totalRequests,
@@ -22,12 +22,12 @@ export default function UsageSummaryCards({
       <div className="metric">
         <Upload size={20} />
         <span>Input tokens</span>
-        <strong>{inputTokens.toLocaleString("en-US")}</strong>
+        <strong>{formatNumber(inputTokens)}</strong>
       </div>
       <div className="metric">
         <Download size={20} />
         <span>Output tokens</span>
-        <strong>{outputTokens.toLocaleString("en-US")}</strong>
+        <strong>{formatNumber(outputTokens)}</strong>
       </div>
       <div className="metric">
         <Coins size={20} />

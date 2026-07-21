@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Activity, AlertTriangle, Check, Clock3, LocateFixed, Pause, Play, RefreshCw, Server, ZoomIn, ZoomOut } from "lucide-react";
 import type { ProviderConfig, UsageLog } from "@/core/types";
 import ProviderIcon from "@/components/ProviderIcon";
-import { money } from "@/lib/format";
+import { money, formatNumber, formatTime } from "@/lib/format";
 import { providerActivity, routeEventsForProviders, type RouteEvent } from "@/lib/usageFlow";
 
 const LIVE_REFRESH_MS = 4_000;
@@ -342,7 +342,7 @@ export default function UsageFlow({ providers, usage }: { providers: ProviderCon
         </div>
         <div className="live-map-actions">
           <span className="live-map-updated" role="status">
-            {refreshError || (paused ? "Updates paused" : lastUpdated ? `Updated ${lastUpdated.toLocaleTimeString()}` : "Connecting…")}
+            {refreshError || (paused ? "Updates paused" : lastUpdated ? `Updated ${formatTime(lastUpdated)}` : "Connecting…")}
           </span>
           <button className="button secondary compact-button" type="button" onClick={() => setPaused((value) => !value)} aria-pressed={paused}>
             {paused ? <Play size={14} /> : <Pause size={14} />}
@@ -385,7 +385,7 @@ export default function UsageFlow({ providers, usage }: { providers: ProviderCon
             {selected ? (
               <>
                 <dl className="route-facts">
-                  <div><dt>Tokens</dt><dd>{(selected.inputTokens + selected.outputTokens).toLocaleString("en-US")}</dd></div>
+                  <div><dt>Tokens</dt><dd>{formatNumber(selected.inputTokens + selected.outputTokens)}</dd></div>
                   <div><dt>Cost</dt><dd>{money(selected.totalCostUsd)}</dd></div>
                   <div><dt>Budget</dt><dd>{selected.budgetStatus}</dd></div>
                   <div><dt>Cache</dt><dd>{selected.cacheStatus}</dd></div>

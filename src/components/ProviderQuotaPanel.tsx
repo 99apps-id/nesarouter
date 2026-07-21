@@ -1,6 +1,7 @@
 import { Gauge } from "lucide-react";
 import { ProviderConfig, UsageLog } from "@/core/types";
 import { getProviderQuotaState, listKeyQuotaStates, UsageQuotaStore } from "@/core/quota";
+import { formatNumber } from "@/lib/format";
 
 export default function ProviderQuotaPanel({
   providers,
@@ -47,7 +48,7 @@ export default function ProviderQuotaPanel({
               <div className="quota-meta">
                 <strong>{provider.name}</strong>
                 <span className={`quota-tone ${tone}`}>
-                  {state.used.toLocaleString()} / {state.limit.toLocaleString()} tok ({pct}%)
+                  {formatNumber(state.used)} / {formatNumber(state.limit)} tok ({pct}%)
                 </span>
               </div>
               <div className="quota-bar">
@@ -60,7 +61,7 @@ export default function ProviderQuotaPanel({
                     return (
                       <span key={keyState.index} className="subtle">
                         key #{keyState.index + 1}
-                        {keyState.explicit ? "" : " (inherit)"}: {keyState.used.toLocaleString()}/{keyState.limit.toLocaleString()} ({keyPct}%)
+                        {keyState.explicit ? "" : " (inherit)"}: {formatNumber(keyState.used)}/{formatNumber(keyState.limit)} ({keyPct}%)
                       </span>
                     );
                   })}

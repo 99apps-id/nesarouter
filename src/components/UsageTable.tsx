@@ -1,5 +1,5 @@
 import { UsageLog } from "@/core/types";
-import { money } from "@/lib/format";
+import { formatTime, money } from "@/lib/format";
 import ProviderIcon from "@/components/ProviderIcon";
 
 export default function UsageTable({ usage }: { usage: UsageLog[] }) {
@@ -24,7 +24,7 @@ export default function UsageTable({ usage }: { usage: UsageLog[] }) {
           const skipTitle = item.skippedProviders?.map((s) => `${s.providerId}: ${s.reason}`).join("\n") ?? "";
           return (
             <div className="usage-row" role="row" key={item.id}>
-              <span>{new Date(item.createdAt).toLocaleTimeString()}</span>
+              <span>{formatTime(item.createdAt)}</span>
               <span className="provider-cell">
                 <ProviderIcon provider={{ providerName: item.providerName, model: item.model }} size="sm" active={item.status === "success"} />
                 <span className="usage-provider-copy">

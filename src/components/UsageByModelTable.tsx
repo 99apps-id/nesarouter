@@ -1,4 +1,4 @@
-import { money } from "@/lib/format";
+import { money, formatNumber, formatTime } from "@/lib/format";
 import ProviderIcon from "@/components/ProviderIcon";
 
 export interface UsageByModelRow {
@@ -51,11 +51,11 @@ export default function UsageByModelTable({ rows }: { rows: UsageByModelRow[] })
                       <span title={row.providerName}>{row.providerName}</span>
                     </span>
                   </td>
-                  <td className="num">{row.requests.toLocaleString("en-US")}</td>
-                  <td className="num">{row.inputTokens.toLocaleString("en-US")}</td>
-                  <td className="num">{row.outputTokens.toLocaleString("en-US")}</td>
+                  <td className="num">{formatNumber(row.requests)}</td>
+                  <td className="num">{formatNumber(row.inputTokens)}</td>
+                  <td className="num">{formatNumber(row.outputTokens)}</td>
                   <td className="num">{money(row.totalCostUsd)}</td>
-                  <td className="num" suppressHydrationWarning>{new Date(row.lastUsed).toLocaleTimeString()}</td>
+                  <td className="num">{formatTime(row.lastUsed)}</td>
                 </tr>
               ))}
             </tbody>
