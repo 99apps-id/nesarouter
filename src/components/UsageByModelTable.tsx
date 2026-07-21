@@ -51,11 +51,11 @@ export default function UsageByModelTable({ rows }: { rows: UsageByModelRow[] })
                       <span title={row.providerName}>{row.providerName}</span>
                     </span>
                   </td>
-                  <td className="num">{row.requests.toLocaleString()}</td>
-                  <td className="num">{row.inputTokens.toLocaleString()}</td>
-                  <td className="num">{row.outputTokens.toLocaleString()}</td>
+                  <td className="num">{row.requests.toLocaleString("en-US")}</td>
+                  <td className="num">{row.inputTokens.toLocaleString("en-US")}</td>
+                  <td className="num">{row.outputTokens.toLocaleString("en-US")}</td>
                   <td className="num">{money(row.totalCostUsd)}</td>
-                  <td className="num">{new Date(row.lastUsed).toLocaleTimeString()}</td>
+                  <td className="num" suppressHydrationWarning>{new Date(row.lastUsed).toLocaleTimeString()}</td>
                 </tr>
               ))}
             </tbody>

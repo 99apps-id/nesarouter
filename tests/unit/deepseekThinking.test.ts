@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatCompletionsUrl, shouldDisableDeepSeekThinking, stripPrivateRouterFields } from "@/core/providers/openaiCompatible";
+import { chatCompletionsUrl, prepareOpenAiUpstreamBody, shouldDisableDeepSeekThinking, stripPrivateRouterFields } from "@/core/providers/openaiCompatible";
 import { ProviderConfig } from "@/core/types";
 
 function deepseek(model = "deepseek-v4-flash"): ProviderConfig {
@@ -89,5 +89,37 @@ describe("private router request fields", () => {
     const body = { model: "client-model", messages: [{ role: "user", content: "hi" }], _nesaTenant: "private", _nesaRoute: { id: 1 }, stream: true };
     expect(stripPrivateRouterFields(body)).toEqual({ model: "client-model", messages: body.messages, stream: true });
     expect(body).toHaveProperty("_nesaTenant", "private");
+  });
+});
+
+describe("strict upstream request fields", () => {
+  const mistral = {
+    ...deepseek("codestral-latest"),
+    id: "mistral",
+    name: "Mistral",
+    baseUrl: "https://api.mistral.ai/v1"
+  } as ProviderConfig;
+
+  it("strips OpenAI-only user field before Mistral", () => {
+    const body = {
+      model: "codestral-latest",
+      messages: [{ role: "user", content: "hi" }],
+      user: "google-oauth2|user_01KX8YNYKT8ZFX0FHBJR6BG4EK",
+      stream: true
+    };
+    expect(prepareOpenAiUpstreamBody(body, mistral)).toEqual({
+      model: "codestral-latest",
+      messages: body.messages,
+      stream: true
+    });
+  });
+
+  it("keeps user field for permissive OpenAI-compatible hosts", () => {
+    const body = {
+      model: "deepseek-chat",
+      messages: [{ role: "user", content: "hi" }],
+      user: "google-oauth2|user_01KX8YNYKT8ZFX0FHBJR6BG4EK"
+    };
+    expect(prepareOpenAiUpstreamBody(body, deepseek())).toEqual(body);
   });
 });

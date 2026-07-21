@@ -48,9 +48,9 @@ export default function UsageByProviderTable({ rows }: { rows: UsageByProviderRo
                       <span title={row.providerName}>{row.providerName}</span>
                     </span>
                   </td>
-                  <td className="num">{row.requests.toLocaleString()}</td>
-                  <td className="num">{row.inputTokens.toLocaleString()}</td>
-                  <td className="num">{row.outputTokens.toLocaleString()}</td>
+                  <td className="num">{row.requests.toLocaleString("en-US")}</td>
+                  <td className="num">{row.inputTokens.toLocaleString("en-US")}</td>
+                  <td className="num">{row.outputTokens.toLocaleString("en-US")}</td>
                   <td className="num">{money(row.totalCostUsd)}</td>
                 </tr>
               ))}

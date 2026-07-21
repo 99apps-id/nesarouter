@@ -5,6 +5,11 @@ import { dirname, join } from "node:path";
 const rootDir = dirname(fileURLToPath(import.meta.url));
 const packageJson = JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8"));
 
+// Next.js dev mode relies on eval (react-refresh / eval-source-map); without
+// 'unsafe-eval' the browser blocks all client JS and nothing is interactive.
+const isDev = process.env.NODE_ENV !== "production";
+const scriptSrc = isDev ? "'self' 'unsafe-inline' 'unsafe-eval'" : "'self' 'unsafe-inline'";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   devIndicators: false,
@@ -16,7 +21,7 @@ const nextConfig = {
     return [{
       source: "/:path*",
       headers: [
-        { key: "Content-Security-Policy", value: "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; img-src 'self' data: https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: http: ws: wss:" },
+        { key: "Content-Security-Policy", value: `default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; form-action 'self'; img-src 'self' data: https:; script-src ${scriptSrc}; style-src 'self' 'unsafe-inline'; connect-src 'self' https: http: ws: wss:` },
         { key: "X-Content-Type-Options", value: "nosniff" },
         { key: "X-Frame-Options", value: "DENY" },
         { key: "Referrer-Policy", value: "no-referrer" },

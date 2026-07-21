@@ -26,6 +26,7 @@ type RouteMapNode = {
   x: number;
   y: number;
   state: "neutral" | "success" | "error" | "cache";
+  live: boolean;
   provider?: { id?: string; name?: string; providerName?: string; model?: string };
 };
 
@@ -38,7 +39,7 @@ function clampZoom(value: number) {
   return Math.min(1.8, Math.max(0.1, Number(value.toFixed(2))));
 }
 
-function providerMapNodes(providers: ProviderConfig[], selected?: RouteEvent) {
+function providerMapNodes(providers: ProviderConfig[], selected?: RouteEvent, liveProviderIds?: Set<string>) {
   let ring = 0;
   let ringStart = 0;
   return providers.map((provider, index): RouteMapNode => {
@@ -65,6 +66,7 @@ function providerMapNodes(providers: ProviderConfig[], selected?: RouteEvent) {
       x: Math.round(Math.cos(angle) * radiusX),
       y: Math.round(Math.sin(angle) * radiusY),
       state: isSelected ? (selected?.cacheStatus === "hit" ? "cache" : selected?.status === "error" ? "error" : "success") : "neutral",
+      live: liveProviderIds?.has(provider.id) ?? false,
       provider
     };
   });
@@ -86,7 +88,10 @@ function flowPath(node: RouteMapNode, index: number) {
 
 function RouteMapNodeCard({ node }: { node: RouteMapNode }) {
   return (
-    <div className={`route-map-node ${node.state}`} style={{ left: `calc(50% + ${node.x}px)`, top: `calc(50% + ${node.y}px)` }}>
+    <div
+      className={`route-map-node ${node.state}${node.live ? " live" : ""}`}
+      style={{ left: `calc(50% + ${node.x}px)`, top: `calc(50% + ${node.y}px)` }}
+    >
       {node.provider ? <ProviderIcon provider={node.provider} size="sm" active={node.state === "success" || node.state === "cache"} /> : null}
       <span>
         <small>{node.label}</small>
@@ -97,8 +102,40 @@ function RouteMapNodeCard({ node }: { node: RouteMapNode }) {
   );
 }
 
-function RouteMap({ selected, providers }: { selected?: RouteEvent; providers: ProviderConfig[] }) {
-  const nodes = useMemo(() => providerMapNodes(providers, selected), [providers, selected]);
+/** Comet head + fading glow trail following the selected route path. */
+function RouteComet({ path, tone }: { path: string; tone: "success" | "error" | "cache" }) {
+  // Negative begins keep every trail dot mid-flight on mount; each dot lags the
+  // head by 45ms so the trail hugs the curve instead of drawing a chord.
+  const trail = [
+    { r: 3.1, begin: "-2.655s", className: "t1" },
+    { r: 2.4, begin: "-2.61s", className: "t2" },
+    { r: 1.8, begin: "-2.565s", className: "t3" },
+    { r: 1.2, begin: "-2.52s", className: "t4" }
+  ];
+  return (
+    <g className={`route-flow-comet ${tone}`}>
+      {trail.map((dot) => (
+        <circle key={dot.className} className={`route-comet-trail ${dot.className}`} r={dot.r}>
+          <animateMotion dur="1.35s" path={path} repeatCount="indefinite" begin={dot.begin} />
+        </circle>
+      ))}
+      <circle className="route-comet-head" r="4">
+        <animateMotion dur="1.35s" path={path} repeatCount="indefinite" begin="-2.7s" />
+      </circle>
+    </g>
+  );
+}
+
+function RouteMap({
+  selected,
+  providers,
+  liveProviderIds
+}: {
+  selected?: RouteEvent;
+  providers: ProviderConfig[];
+  liveProviderIds: Set<string>;
+}) {
+  const nodes = useMemo(() => providerMapNodes(providers, selected, liveProviderIds), [providers, selected, liveProviderIds]);
   const [mapSize, setMapSize] = useState({ width: 820, height: 430 });
   const maxNodeX = Math.max(1, ...nodes.map((node) => Math.abs(node.x) + 94));
   const maxNodeY = Math.max(1, ...nodes.map((node) => Math.abs(node.y) + 38));
@@ -207,18 +244,27 @@ function RouteMap({ selected, providers }: { selected?: RouteEvent; providers: P
           {nodes.map((node, index) => {
             const selectedProvider = node.state !== "neutral";
             const path = flowPath(node, index);
+            const tone = node.state === "cache" ? "cache" : node.state === "error" ? "error" : "success";
             return (
               <g key={node.id}>
-                <path className={`route-flow-path ${selectedProvider ? "active" : "idle"}`} d={path} markerEnd={`url(#route-arrow-${selectedProvider ? "active" : "idle"})`} />
-                {selectedProvider && !reduceMotion ? (
-                  <circle className="route-flow-pulse" r="4">
-                    <animateMotion dur="1.35s" path={path} repeatCount="indefinite" />
-                  </circle>
-                ) : null}
+                <path
+                  className={`route-flow-path ${selectedProvider ? `active ${tone}` : "idle"}`}
+                  d={path}
+                  markerEnd={`url(#route-arrow-${selectedProvider ? "active" : "idle"})`}
+                />
+                {selectedProvider && !reduceMotion ? <RouteComet path={path} tone={tone} /> : null}
               </g>
             );
           })}
         </svg>
+        {!reduceMotion ? (
+          <div className="route-hub-waves" key={selected?.id ?? "idle"} aria-hidden="true">
+            <span className="route-hub-flash" />
+            <span className="route-hub-wave w1" />
+            <span className="route-hub-wave w2" />
+            <span className="route-hub-wave w3" />
+          </div>
+        ) : null}
         <div className="route-hub" aria-label="NesaRouter decision hub">
           <span className="brand-icon router-center-logo" aria-hidden="true">
             <span className="brand-letter">N</span>
@@ -251,7 +297,11 @@ export default function UsageFlow({ providers, usage }: { providers: ProviderCon
   const fleet = useMemo(() => providerActivity(visibleProviders, events), [events, visibleProviders]);
   const recentUpstream = events.filter((row) => row.isRecent && row.isUpstream);
   const recentErrors = recentUpstream.filter((row) => row.status === "error").length;
-  const liveProviderCount = new Set(recentUpstream.map((row) => row.providerId)).size;
+  const liveProviderIds = useMemo(
+    () => new Set(recentUpstream.map((row) => row.providerId).filter((id): id is string => Boolean(id))),
+    [recentUpstream]
+  );
+  const liveProviderCount = liveProviderIds.size;
   const selectedVisibleSkipped = selected?.skippedProviders?.filter((item) => visibleProviderIds.has(item.providerId)) ?? [];
 
   async function refresh() {
@@ -326,7 +376,7 @@ export default function UsageFlow({ providers, usage }: { providers: ProviderCon
                 <strong className={`route-result ${selected.status}`}>{selected.status === "success" ? <Check size={13} /> : <AlertTriangle size={13} />}{selected.status}</strong>
               ) : <strong>Idle</strong>}
             </div>
-            <RouteMap selected={selected} providers={visibleProviders} />
+            <RouteMap selected={selected} providers={visibleProviders} liveProviderIds={liveProviderIds} />
           </article>
 
           <div className="route-side-rail route-detail-collage">
@@ -335,7 +385,7 @@ export default function UsageFlow({ providers, usage }: { providers: ProviderCon
             {selected ? (
               <>
                 <dl className="route-facts">
-                  <div><dt>Tokens</dt><dd>{(selected.inputTokens + selected.outputTokens).toLocaleString()}</dd></div>
+                  <div><dt>Tokens</dt><dd>{(selected.inputTokens + selected.outputTokens).toLocaleString("en-US")}</dd></div>
                   <div><dt>Cost</dt><dd>{money(selected.totalCostUsd)}</dd></div>
                   <div><dt>Budget</dt><dd>{selected.budgetStatus}</dd></div>
                   <div><dt>Cache</dt><dd>{selected.cacheStatus}</dd></div>

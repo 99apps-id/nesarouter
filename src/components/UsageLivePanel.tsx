@@ -73,8 +73,8 @@ export default function UsageLivePanel() {
             <span>
               <Activity size={14} /> {stats.totalRequests} req
             </span>
-            <span>{stats.inputTokens.toLocaleString()} in</span>
-            <span>{stats.outputTokens.toLocaleString()} out</span>
+            <span>{stats.inputTokens.toLocaleString("en-US")} in</span>
+            <span>{stats.outputTokens.toLocaleString("en-US")} out</span>
             <span>{money(stats.totalCostUsd)}</span>
             <span>{Math.round(stats.cacheHitRate * 100)}% cache</span>
             {updatedAt ? <span className="subtle">Updated {updatedAt}</span> : null}
