@@ -2,6 +2,21 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.41 - 2026-07-21
+
+### Changed
+
+- Redesign Live Routing animations with hub flash/waves, comet trails on the selected path, and a stronger heartbeat on providers with recent traffic.
+
+### Fixed
+
+- Allow Next.js Fast Refresh under Content-Security-Policy in development by permitting `unsafe-eval` only when `NODE_ENV` is not production.
+- Stabilize usage number formatting with an explicit `en-US` locale so theme switches no longer trip hydration mismatches.
+
+### Validation
+
+- Local OSS preview of language/theme toggles and live-map animations; production CSP remains without `unsafe-eval`.
+
 ## 0.1.40 - 2026-07-20
 
 ### Security

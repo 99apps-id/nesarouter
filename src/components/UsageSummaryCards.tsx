@@ -22,12 +22,12 @@ export default function UsageSummaryCards({
       <div className="metric">
         <Upload size={20} />
         <span>Input tokens</span>
-        <strong>{inputTokens.toLocaleString()}</strong>
+        <strong>{inputTokens.toLocaleString("en-US")}</strong>
       </div>
       <div className="metric">
         <Download size={20} />
         <span>Output tokens</span>
-        <strong>{outputTokens.toLocaleString()}</strong>
+        <strong>{outputTokens.toLocaleString("en-US")}</strong>
       </div>
       <div className="metric">
         <Coins size={20} />

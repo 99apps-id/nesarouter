@@ -2727,8 +2727,10 @@ button:focus-visible {
 }
 
 .route-flow-path.idle {
-  opacity: 0.42;
+  animation: map-data-flow 3.6s linear infinite;
+  opacity: 0.34;
   stroke: color-mix(in oklch, var(--primary) 44%, var(--border));
+  stroke-dasharray: 3 9;
   stroke-width: 1.2;
 }
 
@@ -2740,17 +2742,127 @@ button:focus-visible {
   stroke-width: 2;
 }
 
+.route-flow-path.active.success {
+  filter: drop-shadow(0 0 4px color-mix(in oklch, var(--success) 62%, transparent));
+  stroke: var(--success);
+}
+
+.route-flow-path.active.error {
+  filter: drop-shadow(0 0 4px color-mix(in oklch, var(--danger) 62%, transparent));
+  stroke: var(--danger);
+}
+
+.route-flow-path.active.cache {
+  filter: drop-shadow(0 0 4px color-mix(in oklch, var(--primary) 66%, transparent));
+  stroke: var(--primary-strong);
+}
+
 .route-flow-arrow.idle {
   fill: color-mix(in oklch, var(--primary) 44%, var(--border));
 }
 
-.route-flow-arrow.active,
-.route-flow-pulse {
+.route-flow-arrow.active {
   fill: var(--primary-strong);
 }
 
-.route-flow-pulse {
-  filter: drop-shadow(0 0 5px var(--primary));
+/* Comet head + fading glow trail on the selected route */
+.route-comet-head {
+  fill: var(--primary-strong);
+  filter:
+    drop-shadow(0 0 5px var(--primary))
+    drop-shadow(0 0 14px color-mix(in oklch, var(--primary) 55%, transparent));
+}
+
+.route-comet-trail {
+  fill: var(--primary);
+}
+
+.route-comet-trail.t1 {
+  opacity: 0.55;
+}
+
+.route-comet-trail.t2 {
+  opacity: 0.38;
+}
+
+.route-comet-trail.t3 {
+  opacity: 0.22;
+}
+
+.route-comet-trail.t4 {
+  opacity: 0.1;
+}
+
+.route-flow-comet.success .route-comet-head {
+  fill: var(--success);
+  filter:
+    drop-shadow(0 0 5px var(--success))
+    drop-shadow(0 0 14px color-mix(in oklch, var(--success) 55%, transparent));
+}
+
+.route-flow-comet.success .route-comet-trail {
+  fill: var(--success);
+}
+
+.route-flow-comet.error .route-comet-head {
+  fill: var(--danger);
+  filter:
+    drop-shadow(0 0 5px var(--danger))
+    drop-shadow(0 0 14px color-mix(in oklch, var(--danger) 55%, transparent));
+}
+
+.route-flow-comet.error .route-comet-trail {
+  fill: var(--danger);
+}
+
+/* Hub flash burst + radiating pulse waves (restarts on every new route) */
+.route-hub-waves {
+  height: 0;
+  left: 50%;
+  pointer-events: none;
+  position: absolute;
+  top: 50%;
+  width: 0;
+  z-index: 2;
+}
+
+.route-hub-flash,
+.route-hub-wave {
+  border-radius: 999px;
+  position: absolute;
+}
+
+.route-hub-flash {
+  animation: route-hub-flash 0.95s ease-out 1 both;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklch, var(--primary-strong) 72%, white) 0%,
+    color-mix(in oklch, var(--primary) 42%, transparent) 46%,
+    transparent 72%
+  );
+  height: 190px;
+  left: -95px;
+  top: -95px;
+  width: 190px;
+}
+
+.route-hub-wave {
+  animation: route-hub-wave 3.3s ease-out infinite;
+  border: 2px solid color-mix(in oklch, var(--primary) 62%, transparent);
+  box-shadow: 0 0 18px color-mix(in oklch, var(--primary) 20%, transparent) inset;
+  height: 150px;
+  left: -75px;
+  opacity: 0;
+  top: -75px;
+  width: 150px;
+}
+
+.route-hub-wave.w2 {
+  animation-delay: 1.1s;
+}
+
+.route-hub-wave.w3 {
+  animation-delay: 2.2s;
 }
 
 .route-map .route-hub,
@@ -2843,6 +2955,28 @@ button:focus-visible {
 
 .route-map-node.cache {
   border-color: var(--primary);
+}
+
+/* Providers with traffic in the live window: heartbeat + light sweep */
+.route-map-node.live {
+  animation: route-node-beat 1.4s ease-in-out infinite;
+  border-color: color-mix(in oklch, var(--primary) 70%, var(--border));
+  overflow: hidden;
+}
+
+.route-map-node.live::after {
+  animation: route-node-shine 1.4s ease-in-out infinite;
+  background: linear-gradient(
+    115deg,
+    transparent 32%,
+    color-mix(in oklch, var(--primary-strong) 30%, transparent) 50%,
+    transparent 68%
+  );
+  content: "";
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+  transform: translateX(-130%);
 }
 
 .route-map-node span {
@@ -3184,6 +3318,11 @@ button:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .route-event,
   .route-flow-path.active,
+  .route-flow-path.idle,
+  .route-hub-flash,
+  .route-hub-wave,
+  .route-map-node.live,
+  .route-map-node.live::after,
   .spin {
     animation: none !important;
     transition-duration: 0.01ms !important;
@@ -3418,6 +3557,58 @@ button:focus-visible {
 @keyframes map-data-flow {
   to {
     stroke-dashoffset: -24;
+  }
+}
+
+@keyframes route-hub-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  18% {
+    opacity: 0.95;
+    transform: scale(0.75);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.55);
+  }
+}
+
+@keyframes route-hub-wave {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  12% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(3.1);
+  }
+}
+
+@keyframes route-node-beat {
+  0%,
+  100% {
+    box-shadow: 0 0 8px color-mix(in oklch, var(--primary) 18%, transparent);
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    box-shadow: 0 0 26px color-mix(in oklch, var(--primary) 45%, transparent);
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+}
+
+@keyframes route-node-shine {
+  0%,
+  52% {
+    transform: translateX(-130%);
+  }
+  86%,
+  100% {
+    transform: translateX(130%);
   }
 }
 
