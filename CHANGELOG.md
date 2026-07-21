@@ -2,6 +2,12 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.42 - 2026-07-21
+
+### Fixed
+
+- Remove a stale unit test that referenced a non-exported helper and blocked TypeScript validation of v0.1.41.
+
 ## 0.1.41 - 2026-07-21
 
 ### Changed
