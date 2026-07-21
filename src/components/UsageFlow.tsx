@@ -11,7 +11,7 @@ import { providerActivity, routeEventsForProviders, type RouteEvent } from "@/li
 const LIVE_REFRESH_MS = 4_000;
 
 function relativeTime(ageMs: number) {
-  if (!Number.isFinite(ageMs)) return "unknown";
+  if (!Number.isFinite(ageMs) || ageMs < 0) return "—";
   if (ageMs < 10_000) return "now";
   if (ageMs < 60_000) return `${Math.floor(ageMs / 1000)}s ago`;
   if (ageMs < 3_600_000) return `${Math.floor(ageMs / 60_000)}m ago`;
@@ -286,7 +286,7 @@ export default function UsageFlow({ providers, usage }: { providers: ProviderCon
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshError, setRefreshError] = useState("");
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [nowMs, setNowMs] = useState(0);
   const visibleProviders = useMemo(() => providers.filter(isVisibleProvider), [providers]);
   const visibleProviderIds = useMemo(() => new Set(visibleProviders.map((provider) => provider.id)), [visibleProviders]);
   const events = useMemo(
@@ -297,10 +297,10 @@ export default function UsageFlow({ providers, usage }: { providers: ProviderCon
   const fleet = useMemo(() => providerActivity(visibleProviders, events), [events, visibleProviders]);
   const recentUpstream = events.filter((row) => row.isRecent && row.isUpstream);
   const recentErrors = recentUpstream.filter((row) => row.status === "error").length;
-  const liveProviderIds = useMemo(
-    () => new Set(recentUpstream.map((row) => row.providerId).filter((id): id is string => Boolean(id))),
-    [recentUpstream]
-  );
+  const liveProviderIds = useMemo(() => {
+    if (!nowMs) return new Set<string>();
+    return new Set(recentUpstream.map((row) => row.providerId).filter((id): id is string => Boolean(id)));
+  }, [nowMs, recentUpstream]);
   const liveProviderCount = liveProviderIds.size;
   const selectedVisibleSkipped = selected?.skippedProviders?.filter((item) => visibleProviderIds.has(item.providerId)) ?? [];
 
@@ -324,6 +324,7 @@ export default function UsageFlow({ providers, usage }: { providers: ProviderCon
   }
 
   useEffect(() => {
+    setNowMs(Date.now());
     if (paused) return;
     void refresh();
     const timer = window.setInterval(() => void refresh(), LIVE_REFRESH_MS);
@@ -440,7 +441,7 @@ export default function UsageFlow({ providers, usage }: { providers: ProviderCon
                 >
                   <span className={`event-state ${row.status} ${row.cacheStatus === "hit" ? "cache" : ""}`} aria-hidden="true" />
                   <span className="event-main"><strong>{row.model}</strong><small>{row.cacheStatus === "hit" ? "Cache" : row.providerName}</small></span>
-                  <span className="event-meta"><strong>{money(row.totalCostUsd)}</strong><small>{relativeTime(row.ageMs)}</small></span>
+                  <span className="event-meta"><strong>{money(row.totalCostUsd)}</strong><small>{nowMs ? relativeTime(row.ageMs) : "—"}</small></span>
                 </button>
               ))}
               {events.length === 0 ? <p className="route-events-empty">No routing events yet.</p> : null}

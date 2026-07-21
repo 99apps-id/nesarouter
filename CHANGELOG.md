@@ -2,6 +2,13 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.44 - 2026-07-21
+
+### Fixed
+
+- Stop Live Routing from calling `Date.now()` during the first render so server HTML and browser hydration stay identical.
+- Render request timestamps in a fixed UTC clock to avoid timezone hydration mismatches.
+
 ## 0.1.43 - 2026-07-21
 
 ### Fixed
