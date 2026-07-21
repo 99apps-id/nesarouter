@@ -72,12 +72,14 @@ export function configuredOAuthAccounts(provider: ProviderConfig): Array<OAuthAc
   const raw = Array.isArray(provider.oauthAccounts) ? provider.oauthAccounts : [];
   const source = raw.length ? raw : [legacyAccountFromProvider(provider)].filter(Boolean) as OAuthAccount[];
   const seen = new Set<string>();
-  const accounts = source.flatMap((account, index) => {
+  const accounts: Array<OAuthAccount & { index: number }> = [];
+  for (const account of source) {
+    const index = accounts.length;
     const id = account.id?.trim() || `account-${index + 1}`;
-    if (seen.has(id)) return [];
+    if (seen.has(id)) continue;
     seen.add(id);
-    return [{ ...hydratePrimaryAccountFromProvider(account, provider, index), id, index }];
-  });
+    accounts.push({ ...hydratePrimaryAccountFromProvider(account, provider, index), id, index });
+  }
   // Empty oauthAccounts[] with legacy columns still present (e.g. after a bad save).
   if (!accounts.length) {
     const legacy = legacyAccountFromProvider(provider);

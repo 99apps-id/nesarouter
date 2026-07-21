@@ -99,7 +99,7 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
       };
       if (body?.stream) {
         const streamOptions = body.stream_options && typeof body.stream_options === "object" ? body.stream_options : {};
-        upstreamBody.stream_options = { include_usage: true, ...streamOptions };
+        upstreamBody.stream_options = { ...streamOptions, include_usage: true };
       }
       const response = await proxyFetch(provider, mimoFreeChatUrl(provider.baseUrl), {
         method: "POST",
@@ -141,7 +141,7 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
 
     if (body?.stream) {
       const streamOptions = body.stream_options && typeof body.stream_options === "object" ? body.stream_options : {};
-      upstreamBody.stream_options = { include_usage: true, ...streamOptions };
+      upstreamBody.stream_options = { ...streamOptions, include_usage: true };
     }
 
     const response = await proxyFetch(provider, chatCompletionsUrl(provider), {

@@ -309,8 +309,24 @@ function stripEnvKeys(content: string, keys: string[]) {
 
 /** Remove a TOML table like `[model_providers.nesa]` through the next table header. */
 export function stripTomlTable(content: string, header: string) {
-  const re = new RegExp(`(?:^|\\n)\\[${header.replace(/\./g, "\\.")}\\][^\\[]*`, "g");
-  return content.replace(re, "\n").replace(/\n{3,}/g, "\n\n").trim() + (content.trim() ? "\n" : "");
+  const lines = content.split(/\r?\n/);
+  const normalizedHeader = header.trim();
+  const kept: string[] = [];
+  let dropping = false;
+
+  for (const line of lines) {
+    // Only a table header at the start of a line ends the current table.
+    // Brackets inside arrays and quoted values are ordinary TOML content.
+    const table = line.match(/^\s*\[([^\[\]]+)\]\s*(?:#.*)?$/)?.[1]?.trim();
+    if (table) {
+      dropping = table === normalizedHeader;
+      if (dropping) continue;
+    }
+    if (!dropping) kept.push(line);
+  }
+
+  const result = kept.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  return result ? `${result}\n` : "";
 }
 
 function continueNesaBaseUrl(settings: Record<string, unknown>): string | undefined {

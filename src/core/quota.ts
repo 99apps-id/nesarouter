@@ -24,11 +24,11 @@ function configuredKeyIndexes(provider: ProviderConfig): number[] {
   }
   const seen = new Set<string>();
   const indexes: number[] = [];
-  candidates.forEach((value, index) => {
+  candidates.forEach((value) => {
     const key = typeof value === "string" ? value.trim() : "";
     if (!key || seen.has(key)) return;
     seen.add(key);
-    indexes.push(index);
+    indexes.push(indexes.length);
   });
   return indexes;
 }

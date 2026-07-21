@@ -276,6 +276,24 @@ describe("router", () => {
     expect(decision.provider.id).toBe("b");
   });
 
+  it("round robin uses the newest successful usage even when input rows are unsorted", () => {
+    const combo: Combo = { id: "c1", name: "rr", providerIds: ["a", "b", "c"], strategy: "round_robin" };
+    const usage = [
+      { id: "old", createdAt: "2026-07-20T00:00:00.000Z", providerId: "a" },
+      { id: "new", createdAt: "2026-07-22T00:00:00.000Z", providerId: "b" }
+    ].map((item) => ({
+      ...item, providerName: item.providerId, model: "m", tier: "free" as const,
+      taskType: "chat" as const, inputTokens: 1, outputTokens: 1, totalCostUsd: 0,
+      costSource: "free" as const, cacheStatus: "skipped" as const, budgetStatus: "ok" as const,
+      routingReason: "test", status: "success" as const
+    }));
+    const store = storeWith([
+      provider({ id: "a" }), provider({ id: "b" }), provider({ id: "c" })
+    ], [combo]);
+    store.usage = usage;
+    expect(chooseProvider(store, { model: "rr", messages: [] }, [], combo).provider.id).toBe("c");
+  });
+
   it("pins the manual provider and ignores budget prefer_cheaper override", () => {
     const store = storeWith([
       provider({ id: "cheap", name: "Cheap", tier: "cheap", model: "c", priority: 1 }),

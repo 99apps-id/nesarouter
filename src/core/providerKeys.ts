@@ -40,12 +40,16 @@ export function configuredProviderKeys(provider: ProviderConfig): PickedKey[] {
     candidates.push(provider.oauthAccessToken);
   }
   const seen = new Set<string>();
-  return candidates.flatMap((value, index) => {
+  const configured: PickedKey[] = [];
+  for (const value of candidates) {
     const key = typeof value === "string" ? value.trim() : "";
-    if (!key || seen.has(key)) return [];
+    if (!key || seen.has(key)) continue;
     seen.add(key);
-    return [{ key, index }];
-  });
+    // Runtime indexes must match the deduplicated key list shown in the UI and
+    // used by keyQuotas. Raw array positions can contain blanks/duplicates.
+    configured.push({ key, index: configured.length });
+  }
+  return configured;
 }
 
 /**

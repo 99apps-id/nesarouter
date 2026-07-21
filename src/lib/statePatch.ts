@@ -1,3 +1,5 @@
+import type { NesaStore } from "@/core/types";
+
 const ROUTER_KEYS = new Set([
   "routingMode", "providerStrategy", "fallbackMode", "evaluatorEnabled", "preferFreeTier", "cacheEnabled",
   "manualProviderId", "mediaRouting", "rtkEnabled", "tokenSaver", "headroomEnabled", "headroomUrl",
@@ -12,6 +14,36 @@ function record(value: unknown): value is Record<string, any> {
 function httpUrl(value: string, allowEmpty = false) {
   if (allowEmpty && !value.trim()) return true;
   try { return ["http:", "https:"].includes(new URL(value).protocol); } catch { return false; }
+}
+
+export function mergeRouterPatch(
+  current: NesaStore["router"],
+  patch: Partial<Omit<NesaStore["router"], "mediaRouting" | "tokenSaver" | "cliTools">> & {
+    mediaRouting?: Partial<NonNullable<NesaStore["router"]["mediaRouting"]>>;
+    tokenSaver?: Partial<NonNullable<NesaStore["router"]["tokenSaver"]>>;
+    cliTools?: NonNullable<NesaStore["router"]["cliTools"]>;
+  }
+): NesaStore["router"] {
+  const { mediaRouting, tokenSaver, cliTools, ...scalars } = patch;
+  return {
+    ...current,
+    ...scalars,
+    ...(mediaRouting
+      ? { mediaRouting: { ...current.mediaRouting, ...mediaRouting } }
+      : {}),
+    ...(tokenSaver
+      ? {
+          tokenSaver: {
+            caveman: current.tokenSaver?.caveman ?? "off",
+            ponytail: current.tokenSaver?.ponytail ?? "off",
+            ...tokenSaver
+          }
+        }
+      : {}),
+    ...(cliTools
+      ? { cliTools: { ...current.cliTools, ...cliTools } }
+      : {})
+  };
 }
 
 export function validateStatePatch(patch: unknown): string | null {
@@ -74,16 +106,32 @@ export function validateStatePatch(patch: unknown): string | null {
 
   if (patch.combos !== undefined) {
     if (!Array.isArray(patch.combos)) return "combos must be an array.";
+    const identifiers = new Set<string>();
     for (const combo of patch.combos) {
       if (!record(combo) || !String(combo.id || "").trim() || !String(combo.name || "").trim() ||
-        !Array.isArray(combo.providerIds) || combo.providerIds.some((id: unknown) => typeof id !== "string") ||
+        !Array.isArray(combo.providerIds) || combo.providerIds.length === 0 ||
+        combo.providerIds.some((id: unknown) => typeof id !== "string" || !id.trim()) ||
         !["fallback", "round_robin"].includes(combo.strategy)) return "Each combo must have id, name, providerIds, and a valid strategy.";
+      const providerIds = combo.providerIds.map((id: string) => id.trim());
+      if (new Set(providerIds).size !== providerIds.length) return "A provider can only appear once in each combo.";
+      const id = String(combo.id).trim().toLowerCase();
+      const name = String(combo.name).trim().toLowerCase();
+      if (identifiers.has(id) || identifiers.has(name)) return "Combo ids and names must be unique.";
+      identifiers.add(id);
+      identifiers.add(name);
     }
   }
   if (patch.aliases !== undefined) {
     if (!Array.isArray(patch.aliases)) return "aliases must be an array.";
+    const ids = new Set<string>();
+    const names = new Set<string>();
     for (const alias of patch.aliases) {
       if (!record(alias) || !String(alias.id || "").trim() || !String(alias.alias || "").trim() || !String(alias.target || "").trim()) return "Each alias must have id, alias, and target.";
+      const id = String(alias.id).trim().toLowerCase();
+      const name = String(alias.alias).trim().toLowerCase();
+      if (ids.has(id) || names.has(name)) return "Alias ids and names must be unique.";
+      ids.add(id);
+      names.add(name);
     }
   }
   return null;

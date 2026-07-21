@@ -216,4 +216,22 @@ describe("cli local apply merge", () => {
     expect(readCliToolStatus("cursor").configStatus).toBe("unsupported");
     expect(resetCliToolConfigLocal("cursor").ok).toBe(false);
   });
+
+  it("removes a TOML table without stopping at arrays inside the table", async () => {
+    const { stripTomlTable } = await import("@/lib/cliLocalApply");
+    const input = [
+      "[model_providers.nesa]",
+      'models = ["gpt-5", "claude"]',
+      'headers = { feature = "[enabled]" }',
+      'base_url = "http://localhost:20129/v1"',
+      "",
+      "[model_providers.other]",
+      'name = "keep"'
+    ].join("\n");
+    const result = stripTomlTable(input, "model_providers.nesa");
+    expect(result).not.toContain("base_url");
+    expect(result).not.toContain("gpt-5");
+    expect(result).toContain("[model_providers.other]");
+    expect(result).toContain('name = "keep"');
+  });
 });

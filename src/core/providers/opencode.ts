@@ -125,7 +125,7 @@ export class OpenCodeExecutor implements ProviderExecutor {
       }
       if (stream) {
         const streamOptions = body.stream_options && typeof body.stream_options === "object" ? body.stream_options : {};
-        upstreamBody.stream_options = { include_usage: true, ...streamOptions };
+        upstreamBody.stream_options = { ...streamOptions, include_usage: true };
       }
     }
 

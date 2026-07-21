@@ -71,8 +71,13 @@ export interface StartOptions {
   kompress?: boolean;
 }
 
+export function normalizeHeadroomPort(value: unknown): number {
+  const port = Number(value);
+  return Number.isInteger(port) && port > 0 && port < 65536 ? port : DEFAULT_PORT;
+}
+
 export async function startHeadroomProxy(opts: StartOptions = {}): Promise<{ pid: number; alreadyRunning: boolean }> {
-  const safePort = Number(opts.port) > 0 && Number(opts.port) < 65536 ? Number(opts.port) : DEFAULT_PORT;
+  const safePort = normalizeHeadroomPort(opts.port);
   const binary = findHeadroomBinary();
   const python = binary ? null : findPython310();
   const launch = buildHeadroomLaunchSpec(binary, python);

@@ -2,6 +2,26 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.45 - 2026-07-22
+
+### Security
+
+- Enforce JSON request limits while reading chunked AI, MCP, search, and web-fetch bodies instead of trusting `Content-Length` alone.
+- Treat malformed persisted OAuth expiry timestamps as expired so broken credentials cannot remain routable indefinitely.
+
+### Fixed
+
+- Keep multi-key quota, cooldown, rotation, and usage indexes aligned after blank or duplicate credentials are removed.
+- Compact duplicate OAuth account slots and select the true latest successful provider for global and combo round-robin routing, even when usage rows are unsorted.
+- Sanitize malformed or negative upstream token counts before they reach budgets, quotas, costs, or SQLite usage records.
+- Force usage reporting on OpenAI-compatible, OpenRouter, OpenCode, and GitHub Copilot streams so clients cannot accidentally disable accurate ledger accounting.
+- Deep-merge nested router state, reject ambiguous bulk combo/alias updates, and prevent partial state saves from erasing media, token-saver, or CLI settings.
+- Remove TOML provider tables safely when arrays contain brackets, and reject fractional/out-of-range Headroom proxy ports.
+
+### Validation
+
+- ESLint, TypeScript validation, 326 unit tests across 59 files, dependency audit, OSS public-boundary check, and production build pass.
+
 ## 0.1.44 - 2026-07-21
 
 ### Fixed

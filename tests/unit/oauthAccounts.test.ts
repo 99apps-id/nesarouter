@@ -38,6 +38,18 @@ describe("oauth account pool", () => {
     expect(configuredOAuthAccounts(provider).map((item) => item.id)).toEqual(["a1", "a2"]);
   });
 
+  it("compacts indexes after duplicate account ids are discarded", () => {
+    const provider = oauthProvider([
+      { id: "a1", oauthAccessToken: "tok-1" },
+      { id: "a1", oauthAccessToken: "duplicate" },
+      { id: "a2", oauthAccessToken: "tok-2" }
+    ]);
+    expect(configuredOAuthAccounts(provider).map(({ id, index }) => ({ id, index }))).toEqual([
+      { id: "a1", index: 0 },
+      { id: "a2", index: 1 }
+    ]);
+  });
+
   it("rotates oauth accounts between requests", () => {
     const provider = oauthProvider([
       { id: "a1", name: "Account 1", oauthAccessToken: "tok-1" },

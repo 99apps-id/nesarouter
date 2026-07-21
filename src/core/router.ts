@@ -1,4 +1,4 @@
-import { BudgetSettings, Combo, NesaStore, ProviderConfig, ProviderTier, RouteDecision, TaskType } from "@/core/types";
+import { BudgetSettings, Combo, NesaStore, ProviderConfig, ProviderTier, RouteDecision, TaskType, UsageLog } from "@/core/types";
 import { resolveModelAlias } from "@/core/aliases";
 import { getBudgetStatus } from "@/core/budget";
 import { detectTaskType, estimateCost, estimateOutputTokens, estimateTokens, extractRequestText, requestedOutputTokens } from "@/core/estimation";
@@ -94,7 +94,17 @@ function sortProviders(providers: ProviderConfig[], mode: NesaStore["router"]["r
 
 function rotateRoundRobin(providers: ProviderConfig[], store: NesaStore) {
   if (providers.length <= 1) return providers;
-  const latestSuccess = store.usage.find((item) => item.status === "success" && providers.some((provider) => provider.id === item.providerId));
+  const providerIds = new Set(providers.map((provider) => provider.id));
+  const latestSuccess = store.usage
+    .filter((item) => item.status === "success" && providerIds.has(item.providerId))
+    .reduce<UsageLog | undefined>((latest, item) => {
+      if (!latest) return item;
+      const itemTime = Date.parse(item.createdAt);
+      const latestTime = Date.parse(latest.createdAt);
+      if (!Number.isFinite(itemTime)) return latest;
+      if (!Number.isFinite(latestTime) || itemTime > latestTime) return item;
+      return latest;
+    }, undefined);
   if (!latestSuccess) return providers;
   const index = providers.findIndex((provider) => provider.id === latestSuccess.providerId);
   if (index < 0) return providers;
