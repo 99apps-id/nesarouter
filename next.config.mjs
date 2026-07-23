@@ -16,6 +16,9 @@ const nextConfig = {
   devIndicators: false,
   reactStrictMode: true,
   output: "standalone",
+  // Keep standalone traces inside this app even when NesaRouter lives in a
+  // monorepo or beside another package-lock.json.
+  outputFileTracingRoot: rootDir,
   serverExternalPackages: ["better-sqlite3"],
   allowedDevOrigins: ["localhost", "127.0.0.1"],
   async headers() {

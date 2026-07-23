@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { chatCompletionsUrl, shouldDisableDeepSeekThinking, stripPrivateRouterFields } from "@/core/providers/openaiCompatible";
+import {
+  chatCompletionsUrl,
+  prepareOpenAiUpstreamBody,
+  shouldDisableDeepSeekThinking,
+  stripPrivateRouterFields
+} from "@/core/providers/openaiCompatible";
 import { ProviderConfig } from "@/core/types";
 
 function deepseek(model = "deepseek-v4-flash"): ProviderConfig {
@@ -90,4 +95,18 @@ describe("private router request fields", () => {
     expect(stripPrivateRouterFields(body)).toEqual({ model: "client-model", messages: body.messages, stream: true });
     expect(body).toHaveProperty("_nesaTenant", "private");
   });
+
+  it("removes the unsupported user field only for Mistral", () => {
+    const body = { model: "client-model", messages: [{ role: "user", content: "hi" }], user: "account-123" };
+    expect(prepareOpenAiUpstreamBody(body, deepseekMistral())).toEqual({
+      model: "client-model",
+      messages: body.messages
+    });
+    expect(prepareOpenAiUpstreamBody(body, { ...deepseek(), id: "openai", baseUrl: "https://api.openai.com/v1" })).toEqual(body);
+    expect(body.user).toBe("account-123");
+  });
 });
+
+function deepseekMistral(): ProviderConfig {
+  return { ...deepseek(), id: "mistral", name: "Mistral", baseUrl: "https://api.mistral.ai/v1" };
+}

@@ -49,7 +49,7 @@ export default function UsageLivePanel() {
       await load();
     };
     tick();
-    const timer = window.setInterval(tick, 8000);
+    const timer = window.setInterval(tick, 10_000);
     return () => {
       cancelled = true;
       window.clearInterval(timer);

@@ -33,6 +33,8 @@ export const PROVIDER_PREFIXES: Record<string, string> = {
   kilooauth: "oauth-kilocode",
 
   // Common API-key presets
+  nr: "nesarouter",
+  nesa: "nesarouter",
   or: "openrouter-free",
   openrouter: "openrouter-free",
   orp: "openrouter-paid",

@@ -5,6 +5,20 @@ import { ProviderConfig } from "@/core/types";
 
 const providers = [
   {
+    id: "nesarouter",
+    name: "NesaRouter",
+    type: "openai_compatible",
+    tier: "balanced",
+    status: "active",
+    baseUrl: "https://nesarouter.com/v1",
+    apiKey: "nesa_test",
+    model: "nesarouter/nesa-free",
+    models: ["nesarouter/nesa-free"],
+    priority: 34,
+    inputCostPerMTok: 0,
+    outputCostPerMTok: 0
+  },
+  {
     id: "oauth-chatgpt",
     name: "Codex",
     type: "openai_responses",
@@ -47,8 +61,19 @@ describe("provider prefixes", () => {
   });
 
   it("keeps slash-containing configured model ids intact", () => {
+    expect(parsePrefixedModel("nesarouter/nesa-free", providers)).toBeNull();
     expect(parsePrefixedModel("openrouter/free", providers)).toBeNull();
     expect(parsePrefixedModel("meta-llama/llama-3.1-8b-instruct:free", providers)).toBeNull();
+  });
+
+  it("routes NesaRouter through its short aliases", () => {
+    expect(resolvePrefixToProviderId("nr", providers)).toBe("nesarouter");
+    expect(resolvePrefixToProviderId("nesa", providers)).toBe("nesarouter");
+    expect(parsePrefixedModel("nr/nesarouter/nesa-free", providers)).toEqual({
+      prefix: "nr",
+      providerId: "nesarouter",
+      modelId: "nesarouter/nesa-free"
+    });
   });
 
   it("accepts full provider id prefixes", () => {

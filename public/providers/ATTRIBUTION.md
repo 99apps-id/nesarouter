@@ -25,4 +25,4 @@ Provider names and marks are used only to identify configured upstream services.
 node scripts/fetch-provider-icons.mjs
 ```
 
-Trademarks remain the property of their respective owners. NesaRouter is not affiliated with or endorsed by these providers.
+The NesaRouter N mark is an original NesaRouter project asset. Other trademarks remain the property of their respective owners. NesaRouter is not affiliated with or endorsed by these providers.

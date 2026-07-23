@@ -244,3 +244,30 @@ export async function upstreamError(provider: ProviderConfig, response: Response
     providerType
   });
 }
+
+/** Parse a successful upstream JSON response without leaking a raw SyntaxError. */
+export async function upstreamJson<T = Record<string, unknown>>(
+  provider: ProviderConfig,
+  response: Response,
+  context = "response"
+): Promise<T> {
+  const text = await response.text();
+  let payload: unknown;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new UpstreamProviderError(
+      `${provider.name} returned malformed JSON for ${context}.`,
+      502,
+      { providerCode: "malformed_json", providerType: provider.type }
+    );
+  }
+  if (payload === null || typeof payload !== "object") {
+    throw new UpstreamProviderError(
+      `${provider.name} returned an invalid JSON payload for ${context}.`,
+      502,
+      { providerCode: "invalid_payload", providerType: provider.type }
+    );
+  }
+  return payload as T;
+}

@@ -2727,11 +2727,20 @@ button:focus-visible {
 }
 
 .route-flow-path.idle {
-  animation: map-data-flow 3.6s linear infinite;
-  opacity: 0.34;
+  animation: map-data-flow 5.4s linear infinite;
+  opacity: 0.2;
   stroke: color-mix(in oklch, var(--primary) 44%, var(--border));
-  stroke-dasharray: 3 9;
-  stroke-width: 1.2;
+  stroke-dasharray: 2 11;
+  stroke-width: 1.1;
+}
+
+.route-flow-path.afterglow {
+  animation: map-data-flow 2.2s linear infinite;
+  filter: drop-shadow(0 0 2px color-mix(in oklch, var(--success) 28%, transparent));
+  opacity: 0.52;
+  stroke: color-mix(in oklch, var(--success) 62%, var(--border));
+  stroke-dasharray: 5 10;
+  stroke-width: 1.45;
 }
 
 .route-flow-path.active {
@@ -3318,6 +3327,7 @@ button:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .route-event,
   .route-flow-path.active,
+  .route-flow-path.afterglow,
   .route-flow-path.idle,
   .route-hub-flash,
   .route-hub-wave,

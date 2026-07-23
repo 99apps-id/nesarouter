@@ -23,10 +23,15 @@ let watchdogTimer: ReturnType<typeof setInterval> | null = null;
 
 async function respawn() {
   if (svc.spawnInProgress || svc.cancelled) return;
+  // The watchdog is also a liveness check. Never create another quick tunnel
+  // while the PID recorded by the managed process is still alive. Without
+  // this guard every watchdog tick leaked one cloudflared child.
+  if (isCloudflaredRunning()) return;
   if (Date.now() - svc.lastRestartAt < 30_000) return;
   const settings = await readTunnelSettings();
   if (!settings.enabled || !svc.activeLocalPort) return;
   svc.lastRestartAt = Date.now();
+  svc.spawnInProgress = true;
   try {
     const { tunnelUrl } = await spawnQuickTunnel(svc.activeLocalPort, async (url) => {
       await writeTunnelSettings({ tunnelUrl });
@@ -34,6 +39,8 @@ async function respawn() {
     await writeTunnelSettings({ tunnelUrl });
   } catch {
     // next watchdog tick will retry
+  } finally {
+    svc.spawnInProgress = false;
   }
 }
 

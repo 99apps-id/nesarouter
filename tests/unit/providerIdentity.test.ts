@@ -11,6 +11,19 @@ describe("provider identity", () => {
     );
   });
 
+  it("uses the NesaRouter N mark for NesaRouter gateways and model namespaces", () => {
+    for (const input of [
+      { id: "nesarouter", name: "NesaRouter", model: "gpt-5.6-sol" },
+      { id: "custom", name: "Nesa Gateway", baseUrl: "https://router.kliimora.id/v1", model: "claude-sonnet" },
+      { providerName: "Custom Gateway", model: "nesarouter/nesa-free" }
+    ]) {
+      const identity = providerIdentity(input);
+      expect(identity.key).toBe("nesarouter");
+      expect(identity.iconPath).toBe("/providers/nesarouter.svg");
+      expect(fs.existsSync(path.join(process.cwd(), "public", identity.iconPath!))).toBe(true);
+    }
+  });
+
   it("covers the extended provider catalog with a visual identity", () => {
     for (const id of [
       "alibaba-coding",

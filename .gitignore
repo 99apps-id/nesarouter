@@ -5,6 +5,8 @@ node_modules/
 out/
 data/
 test-results/
+coverage/
+playwright-report/
 .env
 .env.*
 !.env.example
@@ -17,6 +19,7 @@ tmp-*.png
 tmp-*.py
 scripts/tmp-*
 .tmp/
+.commandcode/
 .hallmark/
 artifacts/
 skills-lock.json
