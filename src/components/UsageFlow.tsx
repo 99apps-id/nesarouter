@@ -1,14 +1,15 @@
 "use client";
 
 import type { PointerEvent as ReactPointerEvent, WheelEvent as ReactWheelEvent } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, AlertTriangle, Check, Clock3, LocateFixed, Pause, Play, RefreshCw, Server, ZoomIn, ZoomOut } from "lucide-react";
 import type { ProviderConfig, UsageLog } from "@/core/types";
 import ProviderIcon from "@/components/ProviderIcon";
 import { money, formatNumber, formatTime } from "@/lib/format";
 import { providerActivity, routeEventsForProviders, type RouteEvent } from "@/lib/usageFlow";
 
-const LIVE_REFRESH_MS = 4_000;
+const LIVE_REFRESH_MS = 2_000;
+const ROUTE_AFTERGLOW_MS = 120_000;
 
 function relativeTime(ageMs: number) {
   if (!Number.isFinite(ageMs) || ageMs < 0) return "—";
@@ -129,11 +130,13 @@ function RouteComet({ path, tone }: { path: string; tone: "success" | "error" | 
 function RouteMap({
   selected,
   providers,
-  liveProviderIds
+  liveProviderIds,
+  afterglowProviderIds
 }: {
   selected?: RouteEvent;
   providers: ProviderConfig[];
   liveProviderIds: Set<string>;
+  afterglowProviderIds: Set<string>;
 }) {
   const nodes = useMemo(() => providerMapNodes(providers, selected, liveProviderIds), [providers, selected, liveProviderIds]);
   const [mapSize, setMapSize] = useState({ width: 820, height: 430 });
@@ -243,12 +246,13 @@ function RouteMap({
           </defs>
           {nodes.map((node, index) => {
             const selectedProvider = node.state !== "neutral";
+            const afterglow = !selectedProvider && afterglowProviderIds.has(node.id);
             const path = flowPath(node, index);
             const tone = node.state === "cache" ? "cache" : node.state === "error" ? "error" : "success";
             return (
               <g key={node.id}>
                 <path
-                  className={`route-flow-path ${selectedProvider ? `active ${tone}` : "idle"}`}
+                  className={`route-flow-path ${selectedProvider ? `active ${tone}` : afterglow ? "afterglow" : "idle"}`}
                   d={path}
                   markerEnd={`url(#route-arrow-${selectedProvider ? "active" : "idle"})`}
                 />
@@ -287,6 +291,8 @@ export default function UsageFlow({ providers, usage }: { providers: ProviderCon
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refreshError, setRefreshError] = useState("");
   const [nowMs, setNowMs] = useState(0);
+  const refreshInFlight = useRef(false);
+  const followLatestRef = useRef(true);
   const visibleProviders = useMemo(() => providers.filter(isVisibleProvider), [providers]);
   const visibleProviderIds = useMemo(() => new Set(visibleProviders.map((provider) => provider.id)), [visibleProviders]);
   const events = useMemo(
@@ -301,10 +307,21 @@ export default function UsageFlow({ providers, usage }: { providers: ProviderCon
     if (!nowMs) return new Set<string>();
     return new Set(recentUpstream.map((row) => row.providerId).filter((id): id is string => Boolean(id)));
   }, [nowMs, recentUpstream]);
+  const afterglowProviderIds = useMemo(() => {
+    if (!nowMs) return new Set<string>();
+    return new Set(
+      recentUpstream
+        .filter((row) => row.status === "success" && row.ageMs <= ROUTE_AFTERGLOW_MS)
+        .map((row) => row.providerId)
+        .filter((id): id is string => Boolean(id))
+    );
+  }, [nowMs, recentUpstream]);
   const liveProviderCount = liveProviderIds.size;
   const selectedVisibleSkipped = selected?.skippedProviders?.filter((item) => visibleProviderIds.has(item.providerId)) ?? [];
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
     setRefreshing(true);
     setRefreshError("");
     try {
@@ -315,13 +332,14 @@ export default function UsageFlow({ providers, usage }: { providers: ProviderCon
       setLiveUsage(rows);
       setNowMs(Date.now());
       setLastUpdated(new Date());
-      setSelectedId((current) => current || rows[0]?.id || "");
+      setSelectedId((current) => followLatestRef.current ? rows[0]?.id || current : current || rows[0]?.id || "");
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "Usage refresh failed");
     } finally {
+      refreshInFlight.current = false;
       setRefreshing(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     setNowMs(Date.now());
@@ -329,7 +347,7 @@ export default function UsageFlow({ providers, usage }: { providers: ProviderCon
     void refresh();
     const timer = window.setInterval(() => void refresh(), LIVE_REFRESH_MS);
     return () => window.clearInterval(timer);
-  }, [paused]);
+  }, [paused, refresh]);
 
   return (
     <section className="panel usage-flow-panel" aria-labelledby="live-routing-title">
@@ -377,7 +395,12 @@ export default function UsageFlow({ providers, usage }: { providers: ProviderCon
                 <strong className={`route-result ${selected.status}`}>{selected.status === "success" ? <Check size={13} /> : <AlertTriangle size={13} />}{selected.status}</strong>
               ) : <strong>Idle</strong>}
             </div>
-            <RouteMap selected={selected} providers={visibleProviders} liveProviderIds={liveProviderIds} />
+            <RouteMap
+              selected={selected}
+              providers={visibleProviders}
+              liveProviderIds={liveProviderIds}
+              afterglowProviderIds={afterglowProviderIds}
+            />
           </article>
 
           <div className="route-side-rail route-detail-collage">
@@ -437,7 +460,10 @@ export default function UsageFlow({ providers, usage }: { providers: ProviderCon
                   type="button"
                   aria-pressed={selected?.id === row.id}
                   className={`route-event ${selected?.id === row.id ? "selected" : ""}`}
-                  onClick={() => setSelectedId(row.id)}
+                  onClick={() => {
+                    followLatestRef.current = row.id === events[0]?.id;
+                    setSelectedId(row.id);
+                  }}
                 >
                   <span className={`event-state ${row.status} ${row.cacheStatus === "hit" ? "cache" : ""}`} aria-hidden="true" />
                   <span className="event-main"><strong>{row.model}</strong><small>{row.cacheStatus === "hit" ? "Cache" : row.providerName}</small></span>

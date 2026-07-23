@@ -2,6 +2,30 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.46 - 2026-07-23
+
+### Added
+
+- Add NesaRouter as an OpenAI-compatible provider preset with its official N mark, public `/v1` endpoint, dynamic model loading, and `nr` / `nesa` routing prefixes.
+- Add enforceable Vitest coverage thresholds and a Chromium E2E flow covering admin login, bootstrap-password change, and the provider catalog.
+
+### Security
+
+- Bound the public admin-login JSON body and reject malformed JSON without consuming a password attempt.
+- Exclude local agent, test, coverage, and report directories from Git and Docker build contexts.
+- Pin a non-vulnerable Sharp release used by the Next.js image pipeline.
+
+### Fixed
+
+- Prevent the Cloudflare quick-tunnel watchdog from spawning a new `cloudflared` process every minute while the managed tunnel is healthy, and serialize recovery attempts after a real exit.
+- Convert malformed successful upstream JSON into a structured 502 provider error instead of leaking a generic parser failure.
+- Prevent overlapping Live Routing refreshes and reduce Live Routing / Usage polling pressure to ten-second intervals.
+- Install Headroom into a persistent, non-root virtual environment and include Python venv support in the production Docker image.
+
+### Validation
+
+- ESLint, TypeScript validation, 336 unit tests across 62 files, coverage thresholds, Chromium E2E, standalone production build/smoke, dependency audit, and OSS public-boundary checks pass.
+
 ## 0.1.45 - 2026-07-22
 
 ### Security

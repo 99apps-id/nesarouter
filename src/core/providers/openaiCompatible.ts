@@ -15,6 +15,7 @@ import {
   ProviderExecutor,
   proxyFetch,
   sortModelIds,
+  upstreamJson,
   UpstreamProviderError,
   upstreamError,
   xiaomiMimoAuthHeaders,
@@ -88,6 +89,78 @@ export function stripPrivateRouterFields(body: Record<string, unknown> | null | 
   return out;
 }
 
+const STRICT_UPSTREAM_STRIP_FIELDS = [
+  "user",
+  "store",
+  "service_tier",
+  "metadata",
+  "parallel_tool_calls",
+  "prediction",
+  "reasoning_effort"
+] as const;
+
+function isStrictOpenAiUpstream(provider: ProviderConfig): boolean {
+  return provider.id.toLowerCase() === "mistral" || /mistral\.ai/i.test(provider.baseUrl);
+}
+
+/** Remove OpenAI-only fields rejected by strict compatible hosts such as Mistral. */
+export function stripUnsupportedOpenAiFields(
+  body: Record<string, unknown>,
+  provider: ProviderConfig
+): Record<string, unknown> {
+  if (!isStrictOpenAiUpstream(provider)) return body;
+  const out = { ...body };
+  for (const key of STRICT_UPSTREAM_STRIP_FIELDS) delete out[key];
+  return out;
+}
+
+export function prepareOpenAiUpstreamBody(
+  body: Record<string, unknown> | null | undefined,
+  provider: ProviderConfig
+): Record<string, unknown> {
+  const stripped = stripUnsupportedOpenAiFields(stripPrivateRouterFields(body), provider);
+  return isRunware(provider) ? normalizeRunwareToolSchemas(stripped) : stripped;
+}
+
+/** Runware requires every function schema to expose at least one property. */
+export function normalizeRunwareToolSchemas(body: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(body.tools)) return body;
+  let changed = false;
+  const tools = body.tools.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
+    const tool = entry as Record<string, unknown>;
+    const fn = tool.function;
+    if (!fn || typeof fn !== "object" || Array.isArray(fn)) return entry;
+    const functionTool = fn as Record<string, unknown>;
+    const rawSchema = functionTool.parameters;
+    const schema = rawSchema && typeof rawSchema === "object" && !Array.isArray(rawSchema)
+      ? rawSchema as Record<string, unknown>
+      : { type: "object" };
+    const properties = schema.properties;
+    if (properties && typeof properties === "object" && !Array.isArray(properties) && Object.keys(properties).length > 0) {
+      return entry;
+    }
+    changed = true;
+    return {
+      ...tool,
+      function: {
+        ...functionTool,
+        parameters: {
+          ...schema,
+          type: "object",
+          properties: {
+            __unused: {
+              type: "boolean",
+              description: "Compatibility placeholder. Omit this optional field."
+            }
+          }
+        }
+      }
+    };
+  });
+  return changed ? { ...body, tools } : body;
+}
+
 export class OpenAiCompatibleExecutor implements ProviderExecutor {
   async call(provider: ProviderConfig, body: any, apiKey?: string) {
     if (isMimoFree(provider)) {
@@ -116,12 +189,12 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
           });
           if (!retry.ok) throw await upstreamError(provider, retry);
           if (body?.stream) return retry.body ?? new ReadableStream<Uint8Array>();
-          return retry.json();
+          return upstreamJson(provider, retry, "chat completion");
         }
         throw await upstreamError(provider, response);
       }
       if (body?.stream) return response.body ?? new ReadableStream<Uint8Array>();
-      return response.json();
+      return upstreamJson(provider, response, "chat completion");
     }
 
     const token = resolveBearerToken(provider, apiKey);
@@ -131,7 +204,7 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
     const authHeaders: Record<string, string> =
       token && !isAzureOpenAiHost(provider.baseUrl) ? { authorization: `Bearer ${token}` } : {};
     const upstreamBody: Record<string, unknown> = {
-      ...stripPrivateRouterFields(body),
+      ...prepareOpenAiUpstreamBody(body, provider),
       model: provider.model
     };
 
@@ -159,7 +232,7 @@ export class OpenAiCompatibleExecutor implements ProviderExecutor {
 
     if (!response.ok) throw await upstreamError(provider, response);
     if (body?.stream) return response.body ?? new ReadableStream<Uint8Array>();
-    return response.json();
+    return upstreamJson(provider, response, "chat completion");
   }
 
   async listModels(provider: ProviderConfig) {

@@ -23,7 +23,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=20129
 ENV HOSTNAME=0.0.0.0
 ENV DATA_DIR=/app/data
+ENV HOME=/app/data
 ENV NESA_APP_VERSION=${NESA_APP_VERSION}
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends python3 python3-venv ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 RUN groupadd --system --gid 1001 nesa && useradd --system --uid 1001 --gid nesa nesa
 

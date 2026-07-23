@@ -1,6 +1,6 @@
 {
   "name": "nesa-router",
-  "version": "0.1.45",
+  "version": "0.1.46",
   "private": true,
   "license": "MIT",
   "description": "NesaRouter - Next Smart Adaptive Router",
@@ -18,6 +18,9 @@
     "typecheck": "tsc --noEmit",
     "check:public-boundary": "node scripts/check-public-boundary.mjs",
     "test": "npm run check:public-boundary && vitest run",
+    "test:coverage": "npm run check:public-boundary && vitest run --coverage",
+    "pretest:e2e": "node scripts/prepare-e2e.mjs",
+    "test:e2e": "playwright test",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -30,16 +33,20 @@
     "undici": "^6.27.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
+    "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9.39.5",
     "eslint-config-next": "^15.5.20",
+    "sharp": "^0.35.3",
     "typescript": "^5.7.2",
     "vitest": "^4.1.10"
   },
   "overrides": {
-    "postcss": "^8.5.10"
+    "postcss": "^8.5.10",
+    "sharp": "^0.35.3"
   }
 }

@@ -50,6 +50,18 @@ export const providerPresets: ProviderConfig[] = [
 
   // --- Free / local ---
   preset({
+    id: "nesarouter",
+    name: "NesaRouter",
+    type: "openai_compatible",
+    tier: "balanced",
+    baseUrl: "https://nesarouter.com/v1",
+    model: "nesarouter/nesa-free",
+    models: ["nesarouter/nesa-free"],
+    priority: 34,
+    inputCostPerMTok: 0,
+    outputCostPerMTok: 0
+  }),
+  preset({
     id: "openrouter-free",
     name: "OpenRouter Free",
     type: "openai_compatible",
@@ -1177,6 +1189,7 @@ export const providerPresetGroups: Array<{ label: string; ids: string[] }> = [
   {
     label: "Global API key",
     ids: [
+      "nesarouter",
       "runware",
       "perplexity",
       "perplexity-agent",

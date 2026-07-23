@@ -9,11 +9,51 @@ const HEADROOM_DIR = path.join(getDataDir(), "headroom");
 const PID_FILE = path.join(HEADROOM_DIR, "proxy.pid");
 const LOG_FILE = path.join(HEADROOM_DIR, "proxy.log");
 const INSTALL_LOG_FILE = path.join(HEADROOM_DIR, "install.log");
+const VENV_DIR = path.join(HEADROOM_DIR, "venv");
 const DEFAULT_PORT = 8787;
 const STARTUP_TIMEOUT_MS = 8000;
 
 function ensureDir() {
   if (!fs.existsSync(HEADROOM_DIR)) fs.mkdirSync(HEADROOM_DIR, { recursive: true });
+}
+
+export function headroomVenvPython(
+  venvDir = VENV_DIR,
+  platform = process.platform
+) {
+  return platform === "win32"
+    ? path.win32.join(venvDir, "Scripts", "python.exe")
+    : path.posix.join(venvDir.replaceAll("\\", "/"), "bin", "python");
+}
+
+function managedHeadroomPython() {
+  const python = headroomVenvPython();
+  if (!fs.existsSync(python)) return null;
+  try {
+    execFileSync(python, ["-m", "pip", "show", "headroom-ai"], {
+      stdio: "ignore",
+      timeout: 8000,
+      windowsHide: true,
+      env: HEADROOM_PROCESS_ENV
+    });
+    return python;
+  } catch {
+    return null;
+  }
+}
+
+function ensureManagedVenv(systemPython: string) {
+  const managed = headroomVenvPython();
+  if (fs.existsSync(managed)) return managed;
+  ensureDir();
+  execFileSync(systemPython, ["-m", "venv", VENV_DIR], {
+    stdio: "ignore",
+    timeout: 120_000,
+    windowsHide: true,
+    env: HEADROOM_PROCESS_ENV
+  });
+  if (!fs.existsSync(managed)) throw new Error("Python virtual environment could not be created.");
+  return managed;
 }
 
 function isPidAlive(pid: number) {
@@ -79,7 +119,7 @@ export function normalizeHeadroomPort(value: unknown): number {
 export async function startHeadroomProxy(opts: StartOptions = {}): Promise<{ pid: number; alreadyRunning: boolean }> {
   const safePort = normalizeHeadroomPort(opts.port);
   const binary = findHeadroomBinary();
-  const python = binary ? null : findPython310();
+  const python = binary ? null : managedHeadroomPython() ?? findPython310();
   const launch = buildHeadroomLaunchSpec(binary, python);
   if (!launch) {
     const err = new Error("Headroom CLI not installed (run `pip install headroom-ai[proxy]`)");
@@ -179,12 +219,13 @@ export async function installHeadroomExtras(extras: HeadroomExtra[] = []) {
   const requested = extras.filter((e) => (HEADROOM_COMPRESSION_EXTRAS as readonly string[]).includes(e));
   const py = findPython310();
   if (!py) { const e = new Error("Python >= 3.10 not found"); (e as any).code = "NO_PYTHON"; throw e; }
+  const installPython = ensureManagedVenv(py);
   const extrasList = ["proxy", ...requested].join(",");
   const spec = `headroom-ai[${extrasList}]`;
   const args = ["-m", "pip", "install", "--upgrade", spec];
   ensureDir();
   const outFd = fs.openSync(INSTALL_LOG_FILE, "w");
-  const child = spawn(py, args, { stdio: ["ignore", outFd, outFd], windowsHide: true, env: { ...process.env } });
+  const child = spawn(installPython, args, { stdio: ["ignore", outFd, outFd], windowsHide: true, env: HEADROOM_PROCESS_ENV });
   return new Promise((resolve, reject) => {
     child.once("error", (e) => { fs.closeSync(outFd); reject(e); });
     child.once("exit", (code) => {
@@ -197,14 +238,14 @@ export async function installHeadroomExtras(extras: HeadroomExtra[] = []) {
 
 export async function uninstallHeadroomExtras(extras: HeadroomExtra[] = []) {
   const requested = extras.filter((e) => (HEADROOM_COMPRESSION_EXTRAS as readonly string[]).includes(e));
-  const py = findPython310();
-  if (!py) { const e = new Error("Python >= 3.10 not found"); (e as any).code = "NO_PYTHON"; throw e; }
+  const py = managedHeadroomPython();
+  if (!py) { const e = new Error("Headroom managed environment is not installed"); (e as any).code = "NOT_INSTALLED"; throw e; }
   const pkgs = [...new Set(requested.flatMap((e) => EXTRA_MARKERS[e] || []))];
   if (!pkgs.length) { const e = new Error("No valid extras to remove"); (e as any).code = "INVALID_EXTRAS"; throw e; }
   const args = ["-m", "pip", "uninstall", "-y", ...pkgs];
   ensureDir();
   const outFd = fs.openSync(INSTALL_LOG_FILE, "w");
-  const child = spawn(py, args, { stdio: ["ignore", outFd, outFd], windowsHide: true, env: { ...process.env } });
+  const child = spawn(py, args, { stdio: ["ignore", outFd, outFd], windowsHide: true, env: HEADROOM_PROCESS_ENV });
   return new Promise((resolve, reject) => {
     child.once("error", (e) => { fs.closeSync(outFd); reject(e); });
     child.once("exit", (code) => {

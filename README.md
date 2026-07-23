@@ -198,7 +198,7 @@ Response headers may include routing and saver metadata such as `x-nesa-cache` a
 - **Keys**: create/revoke client Bearer keys for `/v1` (preview only after create). These are gateway client keys, not upstream provider key quotas.
 - **MCP**: bridge configured stdio servers over SSE and RPC (trusted binaries only).
 - **Tunnel**: optional Cloudflare quick tunnel or Tailscale for controlled remote access.
-- **Headroom / CLI**: optional compression proxy and CLI config helpers.
+- **Headroom / CLI**: optional compression proxy and CLI config helpers. Headroom is not started with NesaRouter automatically: open **Headroom**, install `headroom-ai[proxy]`, start the proxy, enable compression, and save. Docker installs it into the persistent `/app/data/headroom/venv` environment, so container upgrades do not require root-level pip writes.
 
 Do not expose the dashboard publicly without a reverse proxy, TLS, and an access policy you trust.
 
@@ -207,6 +207,8 @@ Do not expose the dashboard publicly without a reverse proxy, TLS, and an access
 ```powershell
 npm run typecheck
 npm test
+npm run test:coverage
+npm run test:e2e
 npm run build
 npm run start
 # In another terminal after the production server is ready:

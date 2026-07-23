@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildHeadroomLaunchSpec } from "@/lib/headroom/detect";
-import { normalizeHeadroomPort } from "@/lib/headroom/process";
+import { headroomVenvPython, normalizeHeadroomPort } from "@/lib/headroom/process";
 
 describe("Headroom process launch", () => {
   it("uses the CLI executable when it is on PATH", () => {
@@ -26,5 +26,10 @@ describe("Headroom process launch", () => {
     expect(normalizeHeadroomPort(9000.5)).toBe(8787);
     expect(normalizeHeadroomPort(0)).toBe(8787);
     expect(normalizeHeadroomPort(65536)).toBe(8787);
+  });
+
+  it("uses a persistent per-data-dir Python environment", () => {
+    expect(headroomVenvPython("/data/headroom/venv", "linux")).toBe("/data/headroom/venv/bin/python");
+    expect(headroomVenvPython("C:\\data\\headroom\\venv", "win32")).toMatch(/Scripts[\\/]python\.exe$/);
   });
 });

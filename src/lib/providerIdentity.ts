@@ -38,6 +38,13 @@ export function providerIdentity(input: ProviderIdentityInput | ProviderConfig):
   // Prefer the configured provider brand over a model hosted by that provider.
   // More specific variants first so sibling brands do not share one mark.
 
+  if (
+    has(providerText, /nesa.?router|router\.kliimora\.id|nesarouter\.com/) ||
+    has(text, /(?:^|\s)nesarouter\//)
+  ) {
+    return { key: "nesarouter", label: "N", title, iconPath: "/providers/nesarouter.svg" };
+  }
+
   if (has(providerText, /alibaba-coding|bailian|alicode/)) {
     return { key: "alibaba", label: "AB", title, iconPath: "/providers/alibaba-cloud.png" };
   }
