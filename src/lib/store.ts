@@ -1735,13 +1735,17 @@ export type DevicePendingState = {
   codeVerifier?: string;
 };
 
-export async function saveDevicePending(providerId: string, data: DevicePendingState, accountId?: string) {
+export async function saveDevicePending(providerId: string, data: DevicePendingState, pendingId?: string) {
   const database = getDb();
   purgeExpiredOAuthPending(database);
-  const key = accountId ? `devicePending:${providerId}:${accountId}` : `devicePending:${providerId}`;
+  const key = pendingId ? `devicePending:${providerId}:${pendingId}` : `devicePending:${providerId}`;
   writeSetting(database, key, {
     ...data,
-    accountId: data.accountId ?? accountId,
+    // pendingId only isolates concurrent flows. A newly-created account has no
+    // accountId until saveProviderOAuthTokens creates it after authorization.
+    // Treating `new-<uuid>` as an account id makes completion try to update an
+    // account that cannot exist yet.
+    accountId: data.accountId,
     deviceCode: encryptSecret(data.deviceCode),
     clientSecret: data.clientSecret ? encryptSecret(data.clientSecret) : undefined,
     codeVerifier: data.codeVerifier ? encryptSecret(data.codeVerifier) : undefined

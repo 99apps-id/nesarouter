@@ -2,6 +2,12 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## Unreleased
+
+### Fixed
+
+- Keep temporary device-flow IDs separate from OAuth account IDs so Kiro and other device OAuth providers can add a second account successfully.
+
 ## 0.1.46 - 2026-07-23
 
 ### Added
