@@ -30,7 +30,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "socks-proxy-agent": "^8.0.5",
-    "undici": "^6.27.0"
+    "undici": "^6.27.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
