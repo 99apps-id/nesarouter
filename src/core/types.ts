@@ -224,6 +224,21 @@ export interface NesaStore {
   aliases?: ModelAlias[];
 }
 
+export type AuditAction =
+  | "provider.create" | "provider.delete" | "provider.update"
+  | "key.add" | "key.remove"
+  | "oauth.connect" | "oauth.disconnect"
+  | "settings.change"
+  | "admin.password_change";
+
+export interface AuditLogEntry {
+  id: string;
+  createdAt: string;
+  action: AuditAction;
+  detail: string;
+  metadataJson?: string;
+}
+
 export interface RouteDecision {
   provider: ProviderConfig;
   taskType: TaskType;

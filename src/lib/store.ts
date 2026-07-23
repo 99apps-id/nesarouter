@@ -24,7 +24,7 @@ function resolveLegacyStorePath(dir = resolveDataDir()) {
   return path.join(dir, "nesa-store.json");
 }
 
-function getDb() {
+export function getDb() {
   const dataDir = resolveDataDir();
   const dbPath = resolveDbPath(dataDir);
   if (db && activeDbPath !== dbPath) {
@@ -155,7 +155,18 @@ function migrate(database: Database.Database) {
       args TEXT NOT NULL DEFAULT '[]',
       env TEXT NOT NULL DEFAULT '{}'
     );
+
+    CREATE TABLE IF NOT EXISTS admin_audit_log (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      action TEXT NOT NULL,
+      detail TEXT NOT NULL,
+      metadata_json TEXT
+    );
   `);
+
+  // Index for fast audit log ordering
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON admin_audit_log(created_at)`);
 
   ensureColumn(database, "providers", "connection_status", "TEXT NOT NULL DEFAULT 'unknown'");
   ensureColumn(database, "providers", "last_checked_at", "TEXT");

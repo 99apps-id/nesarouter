@@ -21,10 +21,12 @@ export const SESSION_TTL_MS = readSessionTtlHours() * 60 * 60 * 1000;
 export const COOKIE_PREFIX = "nesa1";
 
 function sessionHmacSecret() {
-  const fromEnv = process.env.NESA_ADMIN_SESSION_SECRET?.trim() || process.env.NESA_ENCRYPTION_KEY?.trim();
+  const fromEnv = process.env.NESA_ADMIN_SESSION_SECRET?.trim();
   if (fromEnv) return fromEnv;
+  const fallback = process.env.NESA_ENCRYPTION_KEY?.trim();
+  if (fallback) return fallback;
   if (process.env.NODE_ENV === "production") {
-    throw new Error("NESA_ENCRYPTION_KEY (or NESA_ADMIN_SESSION_SECRET) is required in production.");
+    throw new Error("NESA_ADMIN_SESSION_SECRET (or NESA_ENCRYPTION_KEY) is required in production.");
   }
   return "nesa-router-dev";
 }
