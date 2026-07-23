@@ -19,7 +19,7 @@ describe("provider identity", () => {
     ]) {
       const identity = providerIdentity(input);
       expect(identity.key).toBe("nesarouter");
-      expect(identity.iconPath).toBe("/providers/nesarouter.svg");
+      expect(identity.iconPath).toBe("/icons/nesarouter.svg");
       expect(fs.existsSync(path.join(process.cwd(), "public", identity.iconPath!))).toBe(true);
     }
   });
@@ -39,15 +39,15 @@ describe("provider identity", () => {
     ]) {
       expect(providerIdentity({ id, name: id }).key).not.toBe("custom");
     }
-    expect(providerIdentity({ id: "zhipu-glm", name: "zhipu-glm" }).iconPath).toBe("/providers/zhipu.png");
-    expect(providerIdentity({ id: "openrouter", name: "OpenRouter" }).iconPath).toBe("/providers/openrouter.png");
+    expect(providerIdentity({ id: "zhipu-glm", name: "zhipu-glm" }).iconPath).toBe("/icons/zhipu.png");
+    expect(providerIdentity({ id: "openrouter", name: "OpenRouter" }).iconPath).toBe("/icons/openrouter.png");
   });
 
   it("keeps KIMI and Moonshot visually distinct", () => {
     const kimi = providerIdentity({ id: "kimi-coding", name: "Kimi Coding" });
     const moonshot = providerIdentity({ id: "moonshot", name: "Moonshot" });
-    expect(kimi.iconPath).toBe("/providers/kimi.png");
-    expect(moonshot.iconPath).toBe("/providers/moonshot.png");
+    expect(kimi.iconPath).toBe("/icons/kimi.png");
+    expect(moonshot.iconPath).toBe("/icons/moonshot.png");
     expect(kimi.iconPath).not.toBe(moonshot.iconPath);
     expect(fs.readFileSync(path.join(process.cwd(), "public", kimi.iconPath!))).not.toEqual(
       fs.readFileSync(path.join(process.cwd(), "public", moonshot.iconPath!))
@@ -57,8 +57,8 @@ describe("provider identity", () => {
   it("keeps Hyperbolic distinct from OpenRouter", () => {
     const hyperbolic = providerIdentity({ id: "hyperbolic", name: "Hyperbolic" });
     const openrouter = providerIdentity({ id: "openrouter", name: "OpenRouter" });
-    expect(hyperbolic.iconPath).toBe("/providers/hyperbolic.png");
-    expect(openrouter.iconPath).toBe("/providers/openrouter.png");
+    expect(hyperbolic.iconPath).toBe("/icons/hyperbolic.png");
+    expect(openrouter.iconPath).toBe("/icons/openrouter.png");
     expect(fs.readFileSync(path.join(process.cwd(), "public", hyperbolic.iconPath!))).not.toEqual(
       fs.readFileSync(path.join(process.cwd(), "public", openrouter.iconPath!))
     );
@@ -66,40 +66,40 @@ describe("provider identity", () => {
 
   it("separates sibling brand variants", () => {
     expect(providerIdentity({ id: "alibaba-coding", name: "Alibaba Coding" }).iconPath).toBe(
-      "/providers/alibaba-cloud.png"
+      "/icons/alibaba-cloud.png"
     );
     expect(providerIdentity({ id: "alibaba-dashscope", name: "Alibaba DashScope (Qwen)" }).iconPath).toBe(
-      "/providers/qwen.png"
+      "/icons/qwen.png"
     );
     expect(providerIdentity({ id: "oauth-github-copilot", name: "GitHub Copilot" }).iconPath).toBe(
-      "/providers/copilot.svg"
+      "/icons/copilot.svg"
     );
-    expect(providerIdentity({ id: "github-models", name: "GitHub Models" }).iconPath).toBe("/providers/github.png");
-    expect(providerIdentity({ id: "oauth-gemini-cli", name: "Gemini CLI" }).iconPath).toBe("/providers/gemini-cli.png");
-    expect(providerIdentity({ id: "gemini-flash", name: "Gemini API" }).iconPath).toBe("/providers/gemini.png");
-    expect(providerIdentity({ id: "opencode-go", name: "OpenCode Go" }).iconPath).toBe("/providers/opencode-go.svg");
-    expect(providerIdentity({ id: "opencode-free", name: "OpenCode Free" }).iconPath).toBe("/providers/opencode.png");
+    expect(providerIdentity({ id: "github-models", name: "GitHub Models" }).iconPath).toBe("/icons/github.png");
+    expect(providerIdentity({ id: "oauth-gemini-cli", name: "Gemini CLI" }).iconPath).toBe("/icons/gemini-cli.png");
+    expect(providerIdentity({ id: "gemini-flash", name: "Gemini API" }).iconPath).toBe("/icons/gemini.png");
+    expect(providerIdentity({ id: "opencode-go", name: "OpenCode Go" }).iconPath).toBe("/icons/opencode-go.svg");
+    expect(providerIdentity({ id: "opencode-free", name: "OpenCode Free" }).iconPath).toBe("/icons/opencode.png");
     expect(providerIdentity({ id: "cloudflare-workers-ai", name: "Cloudflare Workers AI" }).iconPath).toBe(
-      "/providers/cloudflare.svg"
+      "/icons/cloudflare.svg"
     );
-    expect(providerIdentity({ id: "azure-openai", name: "Azure OpenAI" }).iconPath).toBe("/providers/azure.png");
-    expect(providerIdentity({ id: "blackbox", name: "Blackbox AI" }).iconPath).toBe("/providers/blackbox.png");
-    expect(providerIdentity({ id: "iflow", name: "iFlow AI" }).iconPath).toBe("/providers/iflow.png");
-    expect(providerIdentity({ id: "kilocode", name: "Kilo Code" }).iconPath).toBe("/providers/kilocode.png");
-    expect(providerIdentity({ id: "cline", name: "Cline" }).iconPath).toBe("/providers/cline.png");
-    expect(providerIdentity({ id: "clinepass", name: "ClinePass" }).iconPath).toBe("/providers/clinepass.png");
-    expect(providerIdentity({ id: "codebuddy-cn", name: "CodeBuddy CN" }).iconPath).toBe("/providers/codebuddy-cn.png");
-    expect(providerIdentity({ id: "gitlab-duo", name: "GitLab Duo" }).iconPath).toBe("/providers/gitlab.svg");
+    expect(providerIdentity({ id: "azure-openai", name: "Azure OpenAI" }).iconPath).toBe("/icons/azure.png");
+    expect(providerIdentity({ id: "blackbox", name: "Blackbox AI" }).iconPath).toBe("/icons/blackbox.png");
+    expect(providerIdentity({ id: "iflow", name: "iFlow AI" }).iconPath).toBe("/icons/iflow.png");
+    expect(providerIdentity({ id: "kilocode", name: "Kilo Code" }).iconPath).toBe("/icons/kilocode.png");
+    expect(providerIdentity({ id: "cline", name: "Cline" }).iconPath).toBe("/icons/cline.png");
+    expect(providerIdentity({ id: "clinepass", name: "ClinePass" }).iconPath).toBe("/icons/clinepass.png");
+    expect(providerIdentity({ id: "codebuddy-cn", name: "CodeBuddy CN" }).iconPath).toBe("/icons/codebuddy-cn.png");
+    expect(providerIdentity({ id: "gitlab-duo", name: "GitLab Duo" }).iconPath).toBe("/icons/gitlab.svg");
     expect(providerIdentity({ id: "xiaomi-tokenplan", name: "Xiaomi Token Plan" }).iconPath).toBe(
-      "/providers/xiaomi-tokenplan.svg"
+      "/icons/xiaomi-tokenplan.svg"
     );
-    expect(providerIdentity({ id: "xiaomi-mimo", name: "Xiaomi MiMo" }).iconPath).toBe("/providers/xiaomi.png");
+    expect(providerIdentity({ id: "xiaomi-mimo", name: "Xiaomi MiMo" }).iconPath).toBe("/icons/xiaomi.png");
   });
 
   it("uses official brand PNG marks for major providers", () => {
-    expect(providerIdentity({ id: "openrouter", name: "OpenRouter" }).iconPath).toBe("/providers/openrouter.png");
-    expect(providerIdentity({ id: "runware", name: "Runware" }).iconPath).toBe("/providers/runware.svg");
-    expect(providerIdentity({ id: "cerebras", name: "Cerebras" }).iconPath).toBe("/providers/cerebras.svg");
+    expect(providerIdentity({ id: "openrouter", name: "OpenRouter" }).iconPath).toBe("/icons/openrouter.png");
+    expect(providerIdentity({ id: "runware", name: "Runware" }).iconPath).toBe("/icons/runware.svg");
+    expect(providerIdentity({ id: "cerebras", name: "Cerebras" }).iconPath).toBe("/icons/cerebras.svg");
   });
 
   it("resolves the newer catalog brands to bundled icon files", () => {

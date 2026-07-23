@@ -4,9 +4,21 @@ All notable changes to NesaRouter are documented in this file.
 
 ## Unreleased
 
+## 0.1.47 - 2026-07-24
+
+### Added
+
+- Strengthen dashboard web metadata: a `%s · NesaRouter` title template, explicit application/description, OpenGraph/Twitter cards, an `apple-touch-icon`, and a web app manifest (`/manifest.webmanifest`) so installs and link previews use the official N mark.
+- Generate 192/512 PNG app icons and a 180px Apple touch icon from the OSS NesaRouter N mark.
+
+### Changed
+
+- Move all provider brand marks from `public/providers/` to `public/icons/` and resolve every reference (provider identity, tests, E2E selector, and the README attribution link) to the new path.
+
 ### Fixed
 
 - Keep temporary device-flow IDs separate from OAuth account IDs so Kiro and other device OAuth providers can add a second account successfully.
+- Read and write the admin password hash as a raw value so JSON-persisted legacy hashes migrate cleanly instead of double-encoding.
 
 ## 0.1.46 - 2026-07-23
 

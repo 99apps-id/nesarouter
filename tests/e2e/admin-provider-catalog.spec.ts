@@ -27,5 +27,5 @@ test("admin can unlock the dashboard and find the NesaRouter provider", async ({
   await expect(page.getByRole("heading", { level: 1, name: "Providers" })).toBeVisible();
   const provider = page.locator('a[href="/providers/nesarouter"]');
   await expect(provider).toContainText("NesaRouter");
-  await expect(provider.locator('img[src="/providers/nesarouter.svg"]')).toBeAttached();
+  await expect(provider.locator('img[src="/icons/nesarouter.svg"]')).toBeAttached();
 });
