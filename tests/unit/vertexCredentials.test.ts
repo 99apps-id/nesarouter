@@ -41,7 +41,7 @@ describe("vertex credentials", () => {
   });
 
   it("resolves Vertex brand icon", () => {
-    expect(providerIdentity({ id: "vertex-ai", name: "Vertex AI" }).iconPath).toBe("/providers/vertex.png");
+    expect(providerIdentity({ id: "vertex-ai", name: "Vertex AI" }).iconPath).toBe("/icons/vertex.png");
     expect(providerIdentity({ id: "vertex-partner", name: "Vertex Partner" }).key).toBe("vertex");
   });
 });

@@ -1192,7 +1192,13 @@ export async function writeStore(store: NesaStore) {
 }
 
 export async function readAdminPasswordHash() {
-  return readSetting<string | null>(getDb(), "adminPasswordHash", null);
+  const row = getDb().prepare("SELECT value FROM settings WHERE key = ?").get("adminPasswordHash") as { value: string } | undefined;
+  if (!row) return null;
+  try {
+    return JSON.parse(row.value);
+  } catch {
+    return row.value;
+  }
 }
 
 /** Sync read of dashboard public base URL (used by OAuth redirect helpers). */
@@ -1207,7 +1213,7 @@ export function readPublicBaseUrlSync(): string | undefined {
 }
 
 export async function writeAdminPasswordHash(hash: string) {
-  writeSetting(getDb(), "adminPasswordHash", hash);
+  getDb().prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run("adminPasswordHash", hash);
 }
 
 export async function createAdminSessionRecord(session: {

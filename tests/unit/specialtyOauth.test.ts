@@ -46,14 +46,14 @@ describe("specialty OAuth helpers", () => {
   });
 
   it("resolves OAuth specialty brand icons", () => {
-    expect(providerIdentity({ id: "oauth-qwen-code", name: "Qwen Code" }).iconPath).toBe("/providers/qwen.png");
-    expect(providerIdentity({ id: "oauth-grok-cli", name: "Grok CLI" }).iconPath).toBe("/providers/xai.png");
-    expect(providerIdentity({ id: "oauth-kimchi", name: "Kimchi" }).iconPath).toBe("/providers/kimchi.png");
-    expect(providerIdentity({ id: "oauth-iflow", name: "iFlow" }).iconPath).toBe("/providers/iflow.png");
+    expect(providerIdentity({ id: "oauth-qwen-code", name: "Qwen Code" }).iconPath).toBe("/icons/qwen.png");
+    expect(providerIdentity({ id: "oauth-grok-cli", name: "Grok CLI" }).iconPath).toBe("/icons/xai.png");
+    expect(providerIdentity({ id: "oauth-kimchi", name: "Kimchi" }).iconPath).toBe("/icons/kimchi.png");
+    expect(providerIdentity({ id: "oauth-iflow", name: "iFlow" }).iconPath).toBe("/icons/iflow.png");
     expect(providerIdentity({ id: "oauth-codebuddy-cn", name: "CodeBuddy CN" }).iconPath).toBe(
-      "/providers/codebuddy-cn.png"
+      "/icons/codebuddy-cn.png"
     );
-    expect(providerIdentity({ id: "oauth-cline", name: "Cline" }).iconPath).toBe("/providers/cline.png");
-    expect(providerIdentity({ id: "oauth-kilocode", name: "Kilo Code" }).iconPath).toBe("/providers/kilocode.png");
+    expect(providerIdentity({ id: "oauth-cline", name: "Cline" }).iconPath).toBe("/icons/cline.png");
+    expect(providerIdentity({ id: "oauth-kilocode", name: "Kilo Code" }).iconPath).toBe("/icons/kilocode.png");
   });
 });

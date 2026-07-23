@@ -225,7 +225,7 @@ Do not run `npm run dev` while `npm run build` or `npm run start` uses the same 
 - [Product notes](PRODUCT.md)
 - [Design notes](DESIGN.md)
 - [Code of conduct](CODE_OF_CONDUCT.md)
-- [Provider asset attribution](public/providers/ATTRIBUTION.md)
+- [Provider asset attribution](public/icons/ATTRIBUTION.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 ## License
