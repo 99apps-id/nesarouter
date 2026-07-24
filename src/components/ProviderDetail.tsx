@@ -296,7 +296,7 @@ export default function ProviderDetail({
       setTimeout(() => setSaved(false), 1500);
     } else {
       const result = await response.json().catch(() => ({}));
-      setError(result.error ?? "Failed to save provider.");
+      setError(result.error ?? `Failed to save provider (HTTP ${response.status}).`);
     }
   }
 

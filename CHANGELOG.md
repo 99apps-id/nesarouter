@@ -2,7 +2,23 @@
 
 All notable changes to NesaRouter are documented in this file.
 
-## Unreleased
+## 0.1.48 - 2026-07-25
+
+### Added
+
+- Add Pollinations (`gen.pollinations.ai/v1`) as a free OpenAI-compatible provider preset; keep brand icons for Qoder / AgentRouter / ZenMux / Felo for custom providers.
+- Wire Zod validation into combo and MCP admin routes; rate-limit provider create/delete.
+
+### Changed
+
+- Strip unknown provider POST fields (including secrets) instead of passthrough mass-assignment; map costs with the UI's `inputCostPerMTok` / `outputCostPerMTok` names.
+
+### Fixed
+
+- Correct Felo provider-identity word-boundary matching so the Felo icon resolves.
+- Fix provider save failures from Zod field-name mismatch (`inputCostPerMTok`), NaN cost/priority values, and accidental clearing of `oauthProfile` when unknown body fields were stripped.
+- Make favicon / app icons circular with transparent corners so browser tabs no longer show a black square badge.
+- Swallow transient SessionKeeper network errors so HMR/reconnect no longer pops a "Failed to fetch" overlay, and allow `/manifest.webmanifest` through middleware without a login redirect.
 
 ## 0.1.47 - 2026-07-24
 

@@ -9,7 +9,9 @@ const REFRESH_MS = 10 * 60_000;
 export default function SessionKeeper() {
   useEffect(() => {
     const refresh = () => {
-      void adminFetch("/api/auth/session");
+      // Ignore transient network / HMR failures so the overlay never surfaces
+      // "Failed to fetch" from a background keepalive ping.
+      void adminFetch("/api/auth/session").catch(() => {});
     };
 
     refresh();

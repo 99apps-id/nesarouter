@@ -18,6 +18,12 @@ Provider names and marks are used only to identify configured upstream services.
 | `together.svg` | Together AI official brand asset package |
 | `runware.svg` | [Runware Brand Center](https://brand.runware.ai/) |
 | `cerebras.svg` | [Wikimedia Commons Cerebras logo](https://commons.wikimedia.org/wiki/File:Cerebras_logo.svg) (PD-textlogo) |
+| `pollinations.svg` | [@lobehub/icons-static-svg](https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg/icons/pollinations.svg) |
+| `qoder.svg` | [@lobehub/icons-static-svg](https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg/icons/qoder-color.svg) |
+| `agentrouter.png` | [diegosouzapw/OmniRoute](https://github.com/diegosouzapw/OmniRoute) `public/providers/agentrouter.png` |
+| `zenmux.svg` | [@lobehub/icons-static-svg](https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg/icons/zenmux.svg) |
+| `felo.svg` | Local distinct badge — derived from [Felo](https://felo.ai) brand |
+
 
 ## Refresh
 
