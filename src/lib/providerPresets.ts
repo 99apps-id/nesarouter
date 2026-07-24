@@ -123,6 +123,31 @@ export const providerPresets: ProviderConfig[] = [
     inputCostPerMTok: 0,
     outputCostPerMTok: 0
   }),
+  // Pollinations OpenAI-compatible gateway (legacy text.pollinations.ai is retired).
+  // Chat requires a free API key from https://enter.pollinations.ai — /v1/models is public.
+  preset({
+    id: "pollinations-free",
+    name: "Pollinations",
+    type: "openai_compatible",
+    tier: "free",
+    baseUrl: "https://gen.pollinations.ai/v1",
+    model: "openai",
+    models: [
+      "openai",
+      "openai-fast",
+      "openai-large",
+      "mistral",
+      "qwen-coder",
+      "deepseek",
+      "grok",
+      "gemini-flash-lite-3.5",
+      "perplexity-fast"
+    ],
+    supportsTools: true,
+    priority: 20,
+    inputCostPerMTok: 0,
+    outputCostPerMTok: 0
+  }),
   preset({
     id: "alibaba-dashscope",
     name: "Alibaba DashScope (Qwen)",
@@ -1155,7 +1180,7 @@ export const providerPresetGroups: Array<{ label: string; ids: string[] }> = [
   },
   {
     label: "Free / local",
-    ids: ["openrouter-free", "ollama-local", "opencode-free", "mimo-code-free", "opencode-go"]
+    ids: ["openrouter-free", "ollama-local", "opencode-free", "mimo-code-free", "opencode-go", "pollinations-free"]
   },
   {
     label: "China / Asia API key",

@@ -198,6 +198,22 @@ export function providerIdentity(input: ProviderIdentityInput | ProviderConfig):
   if (has(providerText, /opencode.?go|opencode-go/)) {
     return { key: "opencode-go", label: "OG", title, iconPath: "/icons/opencode-go.svg" };
   }
+  // --- OmniRoute free provider icons ---
+  if (has(providerText, /pollinations/)) {
+    return { key: "pollinations", label: "PO", title, iconPath: "/icons/pollinations.svg" };
+  }
+  if (has(providerText, /qoder/)) {
+    return { key: "qoder", label: "QD", title, iconPath: "/icons/qoder.svg" };
+  }
+  if (has(providerText, /agentrouter/)) {
+    return { key: "agentrouter", label: "AR", title, iconPath: "/icons/agentrouter.png" };
+  }
+  if (has(providerText, /zenmux/)) {
+    return { key: "zenmux", label: "ZM", title, iconPath: "/icons/zenmux.svg" };
+  }
+  if (has(providerText, /\bfelo\b/)) {
+    return { key: "felo", label: "FL", title, iconPath: "/icons/felo.svg" };
+  }
   if (has(text, /opencode/)) {
     return { key: "opencode", label: "OC", title, iconPath: "/icons/opencode.png" };
   }

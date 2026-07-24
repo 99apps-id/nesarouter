@@ -1283,8 +1283,8 @@ function preserveOptionalSecret(
 
 export async function updateProvider(provider: ProviderConfig) {
   const database = getDb();
-  const existing = database.prepare("SELECT api_key_encrypted, api_keys, models, connection_status, last_checked_at, last_error, oauth_access_token_encrypted, oauth_refresh_token_encrypted, oauth_copilot_token_encrypted, oauth_copilot_token_expires_at, oauth_project_id, oauth_device_client_id, oauth_device_client_secret_encrypted, oauth_machine_id, oauth_profile_arn, proxy_url, vertex_location, key_quotas, oauth_accounts, oauth_token_expires_at, oauth_last_refresh_at, rate_limited_until FROM providers WHERE id = ?").get(provider.id) as
-    | { api_key_encrypted: string; api_keys?: string; models?: string; connection_status?: string; last_checked_at?: string; last_error?: string; oauth_access_token_encrypted?: string; oauth_refresh_token_encrypted?: string; oauth_copilot_token_encrypted?: string; oauth_copilot_token_expires_at?: string; oauth_project_id?: string; oauth_device_client_id?: string; oauth_device_client_secret_encrypted?: string; oauth_machine_id?: string; oauth_profile_arn?: string; proxy_url?: string; vertex_location?: string; key_quotas?: string; oauth_accounts?: string; oauth_token_expires_at?: string; oauth_last_refresh_at?: string; rate_limited_until?: string }
+  const existing = database.prepare("SELECT api_key_encrypted, api_keys, models, connection_status, last_checked_at, last_error, oauth_profile, oauth_access_token_encrypted, oauth_refresh_token_encrypted, oauth_copilot_token_encrypted, oauth_copilot_token_expires_at, oauth_project_id, oauth_device_client_id, oauth_device_client_secret_encrypted, oauth_machine_id, oauth_profile_arn, proxy_url, vertex_location, key_quotas, oauth_accounts, oauth_token_expires_at, oauth_last_refresh_at, rate_limited_until FROM providers WHERE id = ?").get(provider.id) as
+    | { api_key_encrypted: string; api_keys?: string; models?: string; connection_status?: string; last_checked_at?: string; last_error?: string; oauth_profile?: string; oauth_access_token_encrypted?: string; oauth_refresh_token_encrypted?: string; oauth_copilot_token_encrypted?: string; oauth_copilot_token_expires_at?: string; oauth_project_id?: string; oauth_device_client_id?: string; oauth_device_client_secret_encrypted?: string; oauth_machine_id?: string; oauth_profile_arn?: string; proxy_url?: string; vertex_location?: string; key_quotas?: string; oauth_accounts?: string; oauth_token_expires_at?: string; oauth_last_refresh_at?: string; rate_limited_until?: string }
     | undefined;
   const incomingApiKeys =
     provider.apiKeys === undefined
@@ -1322,6 +1322,10 @@ export async function updateProvider(provider: ProviderConfig) {
   );
   const incomingApiKey =
     provider.apiKey === undefined || isRedactedSecret(provider.apiKey) ? undefined : provider.apiKey;
+  const preserveOauthProfile =
+    provider.oauthProfile === undefined
+      ? (existing?.oauth_profile as ProviderConfig["oauthProfile"] | undefined)
+      : provider.oauthProfile;
   const incomingStatus = provider.connectionStatus;
   const preserveConnection =
     !incomingStatus || incomingStatus === "unknown"
@@ -1340,6 +1344,7 @@ export async function updateProvider(provider: ProviderConfig) {
     apiKey: incomingApiKey ?? (existing?.api_key_encrypted ? decryptSecret(existing.api_key_encrypted) : provider.apiKey ?? ""),
     apiKeys: preserveApiKeys,
     models: preserveModels,
+    oauthProfile: preserveOauthProfile,
     oauthAccounts: preserveOauthAccounts,
     oauthAccessToken: preserveOauthAccess,
     oauthRefreshToken: preserveOauthRefresh,
@@ -1353,6 +1358,9 @@ export async function updateProvider(provider: ProviderConfig) {
     proxyUrl: preserveProxyUrl,
     vertexLocation: preserveVertexLocation,
     keyQuotas: preserveKeyQuotas,
+    inputCostPerMTok: Number.isFinite(provider.inputCostPerMTok) ? provider.inputCostPerMTok : 0,
+    outputCostPerMTok: Number.isFinite(provider.outputCostPerMTok) ? provider.outputCostPerMTok : 0,
+    priority: Number.isFinite(provider.priority) ? provider.priority : 50,
     ...preserveConnection
   };
   writeProviderToDb(database, merged, existing?.api_key_encrypted ?? "");
