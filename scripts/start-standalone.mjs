@@ -64,8 +64,45 @@ export function resolveStandaloneDataDir(root, dataDir) {
   return raw ? (isAbsolute(raw) ? raw : resolve(root, raw)) : resolve(root, "data");
 }
 
+export function productionEnvironmentErrors(env = process.env) {
+  if (env.NODE_ENV !== "production") return [];
+
+  const errors = [];
+  const encryptionKey = env.NESA_ENCRYPTION_KEY?.trim() ?? "";
+  const adminPassword = env.NESA_ADMIN_PASSWORD?.trim() ?? "";
+
+  if (
+    encryptionKey.length < 32 ||
+    encryptionKey === "replace-with-long-random-secret" ||
+    encryptionKey === "nesa-router-local-dev-key-change-in-production"
+  ) {
+    errors.push("NESA_ENCRYPTION_KEY must be a unique secret of at least 32 characters.");
+  }
+  if (
+    adminPassword.length < 8 ||
+    adminPassword === "nesa123456" ||
+    adminPassword === "change-me"
+  ) {
+    errors.push("NESA_ADMIN_PASSWORD must be unique, at least 8 characters, and not a development placeholder.");
+  }
+  return errors;
+}
+
 function main() {
 const root = process.cwd();
+// This launcher only serves a prebuilt standalone bundle, so an unset
+// NODE_ENV is production for validation purposes as well.
+const environmentErrors = productionEnvironmentErrors({
+  ...process.env,
+  NODE_ENV: process.env.NODE_ENV || "production"
+});
+if (environmentErrors.length) {
+  console.error("NesaRouter production configuration is invalid:");
+  for (const error of environmentErrors) console.error(`- ${error}`);
+  console.error("Update .env before starting. Secret values are never printed.");
+  process.exit(1);
+}
+
 const resolved = resolveStandaloneServer(root);
 
 if (!resolved) {
