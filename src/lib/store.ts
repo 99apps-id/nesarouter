@@ -449,6 +449,21 @@ function ensureDefaultProviders(database: Database.Database): string[] {
             WHERE id = 'mimo-code-free'
           `).run();
         }
+        if (provider.id === "pollinations-free") {
+          // v0.1.48 incorrectly seeded Pollinations as zero-cost/free. Update
+          // only the untouched catalog values so operator customizations win.
+          database.prepare(`
+            UPDATE providers
+            SET tier = 'cheap',
+                input_cost_per_mtok = 0.15,
+                output_cost_per_mtok = 0.9375
+            WHERE id = 'pollinations-free'
+              AND base_url = 'https://gen.pollinations.ai/v1'
+              AND tier = 'free'
+              AND input_cost_per_mtok = 0
+              AND output_cost_per_mtok = 0
+          `).run();
+        }
         if (provider.id === "anthropic-messages") {
           database.prepare(`
             UPDATE providers

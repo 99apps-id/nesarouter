@@ -6,7 +6,7 @@ All notable changes to NesaRouter are documented in this file.
 
 ### Added
 
-- Add Pollinations (`gen.pollinations.ai/v1`) as a free OpenAI-compatible provider preset; keep brand icons for Qoder / AgentRouter / ZenMux / Felo for custom providers.
+- Add Pollinations (`gen.pollinations.ai/v1`) as an API-key OpenAI-compatible provider preset; keep brand icons for Qoder / AgentRouter / ZenMux / Felo for custom providers.
 - Wire Zod validation into combo and MCP admin routes; rate-limit provider create/delete.
 
 ### Changed
