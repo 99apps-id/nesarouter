@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminJson, requireAdmin } from "@/lib/adminApi";
+import { adminJson, readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { getBudgetStatus } from "@/core/budget";
 import { keyRows } from "@/lib/keyIdentity";
 import { redactCacheEntryForClient, redactProviderForClient } from "@/lib/providerRedact";
@@ -36,7 +36,9 @@ export async function GET(request: Request) {
 export async function PUT(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
-  const rawPatch = await request.json().catch(() => null);
+  const parsedBody = await readAdminJson(request);
+  if (parsedBody.response) return parsedBody.response;
+  const rawPatch = parsedBody.data;
   const validationError = validateStatePatch(rawPatch);
   if (validationError) return NextResponse.json({ error: validationError }, { status: 400 });
   const patch = rawPatch as Record<string, any>;

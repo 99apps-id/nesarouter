@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { finalizeAdminResponse, requireAdmin } from "@/lib/adminApi";
+import { finalizeAdminResponse, readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { redactProviderForClient } from "@/lib/providerRedact";
 import { deleteProvider, readProviderById, readStore, updateProvider } from "@/lib/store";
 import { ProviderSchema, DeleteProviderSchema, toProviderConfig } from "@/lib/validation";
@@ -24,10 +24,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Rate limited. Try again later." }, { status: 429 });
   }
 
-  let body: unknown;
-  try { body = await request.json(); } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
+  const parsedBody = await readAdminJson(request);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
 
   const parsed = ProviderSchema.safeParse(body);
   if (!parsed.success) {
@@ -54,10 +53,9 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: "Rate limited. Try again later." }, { status: 429 });
   }
 
-  let body: unknown;
-  try { body = await request.json(); } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
+  const parsedBody = await readAdminJson(request);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
 
   const parsed = DeleteProviderSchema.safeParse(body);
   if (!parsed.success) {
