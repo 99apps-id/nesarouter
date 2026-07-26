@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { Combo } from "@/core/types";
 import { deleteCombo, readStore, upsertCombo } from "@/lib/store";
 import { ComboSchema } from "@/lib/validation";
@@ -19,10 +19,9 @@ export async function POST(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
 
-  let body: unknown;
-  try { body = await request.json(); } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
+  const parsedBody = await readAdminJson(request);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
 
   const parsed = ComboSchema.safeParse(body);
   if (!parsed.success) {
@@ -70,10 +69,9 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
-  let body: unknown;
-  try { body = await request.json(); } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
+  const parsedBody = await readAdminJson(request);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   const id = typeof body === "object" && body && "id" in body ? String((body as { id?: unknown }).id ?? "") : "";
   if (!id) return NextResponse.json({ error: "Combo id required." }, { status: 400 });
   await deleteCombo(id);

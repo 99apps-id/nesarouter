@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { killBridge } from "@/core/mcpBridge";
 import { McpServer } from "@/core/types";
 import { deleteMcpServer, getMcpServer, readMcpServers, redactMcpServer, upsertMcpServer } from "@/lib/store";
@@ -19,10 +19,9 @@ export async function POST(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
 
-  let body: unknown;
-  try { body = await request.json(); } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
+  const parsedBody = await readAdminJson(request);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
 
   const parsed = McpServerSchema.safeParse(body);
   if (!parsed.success) {
@@ -55,10 +54,9 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
-  let body: unknown;
-  try { body = await request.json(); } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
+  const parsedBody = await readAdminJson(request);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   const id = typeof body === "object" && body && "id" in body ? String((body as { id?: unknown }).id ?? "") : "";
   if (!id) return NextResponse.json({ error: "MCP server id required." }, { status: 400 });
   killBridge(id);

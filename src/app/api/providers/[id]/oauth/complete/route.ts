@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { parseOAuthCallbackPaste } from "@/core/oauthCallbackPaste";
 import { exchangeCode, loadAntigravityProjectId, resolveIflowApiKey } from "@/core/oauthPkce";
 import { getPreset } from "@/core/oauthProviderPresets";
@@ -15,7 +15,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
   const { id } = await context.params;
-  const body = (await request.json().catch(() => ({}))) as { code?: string; state?: string; callbackUrl?: string };
+  const parsedBody = await readAdminJson<{ code?: string; state?: string; callbackUrl?: string }>(request, 64 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   const raw = (body.callbackUrl ?? body.code ?? "").trim();
   const parsed = parseOAuthCallbackPaste(raw, body.state);
   if (!parsed.code || !parsed.state) {

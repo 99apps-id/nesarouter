@@ -17,8 +17,9 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "check:public-boundary": "node scripts/check-public-boundary.mjs",
-    "test": "npm run check:public-boundary && vitest run",
-    "test:coverage": "npm run check:public-boundary && vitest run --coverage",
+    "check:route-security": "node scripts/check-route-security.mjs",
+    "test": "npm run check:public-boundary && npm run check:route-security && vitest run",
+    "test:coverage": "npm run check:public-boundary && npm run check:route-security && vitest run --coverage",
     "pretest:e2e": "node scripts/prepare-e2e.mjs",
     "test:e2e": "playwright test",
     "test:watch": "vitest"
