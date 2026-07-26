@@ -2,6 +2,27 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.49 - 2026-07-26
+
+### Security
+
+- Bound authenticated admin JSON requests and reject malformed or oversized payloads consistently across privileged routes.
+- Reject unsafe bootstrap credentials when starting in production and preserve the documented local-development password behavior.
+
+### Changed
+
+- Isolate admin-security, pending OAuth, OAuth credential-codec, and provider OAuth persistence behind focused storage interfaces.
+- Keep encrypted multi-account OAuth state synchronized with legacy primary credential columns while reducing coupling in the central store.
+
+### Fixed
+
+- Account for metered Pollinations usage with the current provider tier and default token costs.
+- Preserve correct routing status across usable, errored, and unsubscribed OAuth accounts.
+
+### Validation
+
+- ESLint, TypeScript validation, 364 unit tests across 69 files, admin route-security checks, OSS public-boundary checks, and the production build pass.
+
 ## 0.1.48 - 2026-07-25
 
 ### Added

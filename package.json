@@ -1,6 +1,6 @@
 {
   "name": "nesa-router",
-  "version": "0.1.48",
+  "version": "0.1.49",
   "private": true,
   "license": "MIT",
   "description": "NesaRouter - Next Smart Adaptive Router",
@@ -48,6 +48,7 @@
     "vitest": "^4.1.10"
   },
   "overrides": {
+    "brace-expansion": "^5.0.8",
     "postcss": "^8.5.10",
     "sharp": "^0.35.3"
   }
