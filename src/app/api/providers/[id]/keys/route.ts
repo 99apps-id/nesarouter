@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { alignKeyQuotas, spliceKeyQuotas } from "@/core/quota";
 import { keyPreview } from "@/lib/providerLabels";
 import { clearProviderApiKeys, readProviderById, updateProvider } from "@/lib/store";
@@ -20,10 +20,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   const { id } = await context.params;
-  let body: unknown;
-  try { body = await request.json(); } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
+  const parsedBody = await readAdminJson(request);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
 
   const parsed = AddKeySchema.safeParse(body);
   if (!parsed.success) {
@@ -57,7 +56,9 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
   const { id } = await context.params;
-  const body = (await request.json().catch(() => ({}))) as { index?: number; quotaLimitTokens?: number | null };
+  const parsedBody = await readAdminJson<{ index?: number; quotaLimitTokens?: number | null }>(request, 16 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   const index = Number(body.index);
   if (!Number.isInteger(index) || index < 0) {
     return NextResponse.json({ error: "Valid key index required." }, { status: 400 });
@@ -82,7 +83,9 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
   const { id } = await context.params;
-  const body = (await request.json().catch(() => ({}))) as { index?: number };
+  const parsedBody = await readAdminJson<{ index?: number }>(request, 16 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   const index = Number(body.index);
   if (!Number.isInteger(index) || index < 0) {
     return NextResponse.json({ error: "Valid key index required." }, { status: 400 });

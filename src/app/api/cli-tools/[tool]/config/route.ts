@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { publicOrigin } from "@/core/publicUrl";
 import {
   buildCliInstallScripts,
@@ -104,12 +104,14 @@ export async function POST(request: Request, context: { params: Promise<{ tool: 
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
   const { tool } = await context.params;
-  const body = (await request.json().catch(() => ({}))) as {
+  const parsedBody = await readAdminJson<{
     modelTarget?: string;
     createKey?: boolean;
     savePreference?: boolean;
     baseUrl?: string;
-  };
+  }>(request, 16 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
 
   try {
     const payload = await buildSetup(request, tool, {

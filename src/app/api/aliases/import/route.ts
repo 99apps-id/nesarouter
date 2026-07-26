@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminJson, requireAdmin } from "@/lib/adminApi";
+import { adminJson, readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { mergeNineRouterAliases } from "@/core/nineRouterImport";
 import { readStore, writeStore } from "@/lib/store";
 
@@ -10,12 +10,9 @@ export async function POST(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
 
-  let payload: unknown;
-  try {
-    payload = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
-  }
+  const parsedBody = await readAdminJson(request);
+  if (parsedBody.response) return parsedBody.response;
+  const payload = parsedBody.data;
 
   const store = await readStore();
   const result = mergeNineRouterAliases(store.aliases, payload);

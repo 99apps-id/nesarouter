@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { addLocalApiKey, deleteLocalApiKey, readStore } from "@/lib/store";
 import { keyId, keyPreview } from "@/lib/keyIdentity";
 
@@ -27,7 +27,9 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
-  const body = (await request.json()) as { id?: string; token?: string };
+  const parsedBody = await readAdminJson<{ id?: string; token?: string }>(request, 16 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   if (!body.id && !body.token) {
     return NextResponse.json({ error: "Key id or token required." }, { status: 400 });
   }

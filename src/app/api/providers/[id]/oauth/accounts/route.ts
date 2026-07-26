@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { finalizeAdminResponse, requireAdmin } from "@/lib/adminApi";
+import { finalizeAdminResponse, readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { clearOAuthAccount } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -9,7 +9,9 @@ export async function DELETE(request: Request, context: { params: Promise<{ id: 
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
   const { id } = await context.params;
-  const body = (await request.json().catch(() => ({}))) as { accountId?: string };
+  const parsedBody = await readAdminJson<{ accountId?: string }>(request, 16 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   if (!body.accountId) {
     return finalizeAdminResponse(NextResponse.json({ ok: false, error: "accountId is required." }, { status: 400 }), request);
   }

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { restartHeadroomProxy, startHeadroomProxy, stopHeadroomProxy } from "@/lib/headroom/process";
 
 export const runtime = "nodejs";
@@ -10,7 +10,9 @@ export async function POST(request: Request) {
   if (unauthorized) return unauthorized;
   const url = new URL(request.url);
   const action = url.searchParams.get("action") ?? "start";
-  const body = (await request.json().catch(() => ({}))) as { port?: number; codeAware?: boolean; kompress?: boolean };
+  const parsedBody = await readAdminJson<{ port?: number; codeAware?: boolean; kompress?: boolean }>(request, 16 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   try {
     if (action === "stop") {
       return NextResponse.json(stopHeadroomProxy());

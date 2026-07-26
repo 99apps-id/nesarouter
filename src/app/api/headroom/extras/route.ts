@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { HeadroomExtra } from "@/lib/headroom/detect";
 import { installHeadroomExtras, uninstallHeadroomExtras } from "@/lib/headroom/process";
 
@@ -9,7 +9,9 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
-  const body = (await request.json().catch(() => ({}))) as { extras?: HeadroomExtra[]; action?: "install" | "uninstall" };
+  const parsedBody = await readAdminJson<{ extras?: HeadroomExtra[]; action?: "install" | "uninstall" }>(request, 16 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   const extras = Array.isArray(body.extras) ? body.extras : [];
   try {
     const result = body.action === "uninstall"

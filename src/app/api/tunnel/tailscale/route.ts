@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { TailscaleSetupError, disableTailscale, enableTailscale } from "@/lib/tunnel/tailscale";
 import { normalizeTunnelPort } from "@/lib/tunnel/port";
 import { readTunnelSettings } from "@/lib/store";
@@ -10,7 +10,9 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
-  const body = (await request.json().catch(() => ({}))) as { port?: number; mode?: "serve" | "funnel" };
+  const parsedBody = await readAdminJson<{ port?: number; mode?: "serve" | "funnel" }>(request, 16 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   const settings = await readTunnelSettings();
   try {
     const port = normalizeTunnelPort(

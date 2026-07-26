@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { authorizeRequest } from "@/core/auth";
 import { keyId } from "@/lib/keyIdentity";
 import { readStore } from "@/lib/store";
@@ -20,13 +20,15 @@ export async function POST(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
 
-  const body = (await request.json().catch(() => ({}))) as {
+  const parsedBody = await readAdminJson<{
     token?: string;
     keyId?: string;
     model?: string;
     chat?: boolean;
     toolProbe?: boolean;
-  };
+  }>(request, 16 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   const store = await readStore();
   const token = resolveToken(store, body);
   const model = body.model?.trim() || "auto";

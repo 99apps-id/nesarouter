@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { cursorAccessTokenExpiresAt } from "@/core/cursorTokenImport";
-import { requireAdmin } from "@/lib/adminApi";
+import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { readProviderById, saveProviderOAuthTokens } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -20,14 +20,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ error: "Provider has no OAuth profile." }, { status: 400 });
   }
 
-  const body = (await request.json().catch(() => ({}))) as {
+  const parsedBody = await readAdminJson<{
     accessToken?: string;
     refreshToken?: string;
     expiresIn?: number;
     machineId?: string;
     accountId?: string;
     createNew?: boolean;
-  };
+  }>(request, 1024 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   const accessToken = (body.accessToken ?? "").trim();
   if (!accessToken) return NextResponse.json({ error: "access_token is required." }, { status: 400 });
   const refreshToken = (body.refreshToken ?? "").trim() || undefined;

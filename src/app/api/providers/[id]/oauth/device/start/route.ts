@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
-import { finalizeAdminResponse, requireAdmin } from "@/lib/adminApi";
+import { finalizeAdminResponse, readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { generatePkce, registerKiroOidcClient, startDeviceFlow, startKiroDeviceFlow } from "@/core/oauthPkce";
 import { getPreset, usesOAuthDeviceFlow } from "@/core/oauthProviderPresets";
 import { deleteDevicePending, readProviderById, saveDevicePending } from "@/lib/store";
@@ -16,7 +16,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
   const { id } = await context.params;
-  const body = (await request.json().catch(() => ({}))) as { accountId?: string; createNew?: boolean };
+  const parsedBody = await readAdminJson<{ accountId?: string; createNew?: boolean }>(request, 16 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   const provider = await readProviderById(id);
   if (!provider) return NextResponse.json({ error: "Provider not found." }, { status: 404 });
   const preset = getPreset(provider.oauthProfile);
