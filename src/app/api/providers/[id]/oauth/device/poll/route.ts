@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { finalizeAdminResponse, readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { pollDeviceFlow, pollKiroDeviceFlow } from "@/core/oauthPkce";
 import { getPreset, usesOAuthDeviceFlow } from "@/core/oauthProviderPresets";
-import { readProviderById, saveProviderOAuthTokens } from "@/lib/store";
+import { readProviderById } from "@/lib/store";
+import { saveProviderOAuthTokens } from "@/lib/providerOAuthPersistence";
 import { deleteDevicePending, readDevicePending } from "@/lib/oauthPendingPersistence";
 
 export const runtime = "nodejs";

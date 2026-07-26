@@ -3,7 +3,8 @@ import { refreshCodebuddyToken, refreshCursorToken, refreshKiroToken, refreshTok
 import { configuredOAuthAccounts, providerForOAuthAccount } from "@/core/oauthAccounts";
 import { cursorAccessTokenExpiresAt } from "@/core/cursorTokenImport";
 import { ProviderConfig } from "@/core/types";
-import { readProviderById, saveProviderOAuthTokens, markOAuthAccountConnection } from "@/lib/store";
+import { readProviderById } from "@/lib/store";
+import { markOAuthAccountConnection, saveProviderOAuthTokens } from "@/lib/providerOAuthPersistence";
 
 const UNKNOWN_EXPIRY_REFRESH_INTERVAL_MS = 45 * 60_000;
 

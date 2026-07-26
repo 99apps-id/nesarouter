@@ -3,7 +3,8 @@ import { configuredOAuthAccounts, providerWithFreshOAuthToken } from "@/core/oau
 import { isOAuthAccountFatalError, isOAuthAccountRoutable, oauthAccountStatusLabel } from "@/core/oauthAccountHealth";
 import { testProviderConnection, UpstreamProviderError } from "@/core/providerClient";
 import { ProviderConfig } from "@/core/types";
-import { clearProviderCooldown, markOAuthAccountConnection } from "@/lib/store";
+import { clearProviderCooldown } from "@/lib/store";
+import { markOAuthAccountConnection } from "@/lib/providerOAuthPersistence";
 
 export interface OAuthAccountStatusResult {
   id: string;

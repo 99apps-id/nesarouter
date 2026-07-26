@@ -7,7 +7,8 @@ import { applyFreshOAuthToken, configuredOAuthAccounts, providerWithFreshOAuthTo
 import { ensureFreshAccessToken } from "@/core/providerOAuthFlow";
 import { ProviderConfig } from "@/core/types";
 import { keyPreview } from "@/lib/providerLabels";
-import { clearProviderCooldown, markOAuthAccountConnection, markProviderConnection, readStore } from "@/lib/store";
+import { clearProviderCooldown, markProviderConnection, readStore } from "@/lib/store";
+import { markOAuthAccountConnection } from "@/lib/providerOAuthPersistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

@@ -18,7 +18,8 @@ import { clearKeyCooldown, markKeyCooldown, pickActiveKeys, rememberKeyUse } fro
 import { acquireGate, GateAbortedError, GateTicket, QueueTimeoutError } from "@/core/requestGate";
 import { recordCacheHit, recordError, recordQueueTimeout, recordRequest } from "@/core/runtimeMetrics";
 import { peekStickyProvider, rememberStickyProvider, stickySessionKey } from "@/core/stickyRouting";
-import { appendUsage, clearProviderCooldown, markProviderFailure, markOAuthAccountConnection, readStore, saveCacheEntry } from "@/lib/store";
+import { appendUsage, clearProviderCooldown, markProviderFailure, readStore, saveCacheEntry } from "@/lib/store";
+import { markOAuthAccountConnection } from "@/lib/providerOAuthPersistence";
 import { Combo, NesaStore, ProviderConfig, RouteDecision, UsageLog } from "@/core/types";
 import { withProviderRequestSignal } from "@/core/providers/shared";
 
