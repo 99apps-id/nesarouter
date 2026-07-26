@@ -3,7 +3,8 @@ import crypto from "node:crypto";
 import { finalizeAdminResponse, readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { generatePkce, registerKiroOidcClient, startDeviceFlow, startKiroDeviceFlow } from "@/core/oauthPkce";
 import { getPreset, usesOAuthDeviceFlow } from "@/core/oauthProviderPresets";
-import { deleteDevicePending, readProviderById, saveDevicePending } from "@/lib/store";
+import { readProviderById } from "@/lib/store";
+import { deleteDevicePending, saveDevicePending } from "@/lib/oauthPendingPersistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
