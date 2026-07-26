@@ -7,7 +7,8 @@ import { clearKeyCooldown, markKeyCooldown, pickActiveKeys, rememberKeyUse } fro
 import { baseUrl, cleanApiKey, openRouterHeaders, proxyFetch, upstreamError, UpstreamProviderError } from "@/core/providers/shared";
 import { chooseMediaProvider } from "@/core/mediaRouting";
 import { ProviderConfig, RouteDecision } from "@/core/types";
-import { appendUsage, clearProviderCooldown, markProviderFailure, markOAuthAccountConnection, readStore } from "@/lib/store";
+import { appendUsage, clearProviderCooldown, markProviderFailure, readStore } from "@/lib/store";
+import { markOAuthAccountConnection } from "@/lib/providerOAuthPersistence";
 import { estimateCost } from "@/core/estimation";
 import { UsageLog } from "@/core/types";
 

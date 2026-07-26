@@ -2,7 +2,8 @@
 import { exchangeCode, loadAntigravityProjectId, resolveIflowApiKey } from "@/core/oauthPkce";
 import { getPreset } from "@/core/oauthProviderPresets";
 import { publicUrl } from "@/core/publicUrl";
-import { readProviderById, saveProviderOAuthTokens } from "@/lib/store";
+import { readProviderById } from "@/lib/store";
+import { saveProviderOAuthTokens } from "@/lib/providerOAuthPersistence";
 import { deleteOAuthPending, readOAuthPending } from "@/lib/oauthPendingPersistence";
 
 export const runtime = "nodejs";

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { cursorAccessTokenExpiresAt } from "@/core/cursorTokenImport";
 import { readAdminJson, requireAdmin } from "@/lib/adminApi";
-import { readProviderById, saveProviderOAuthTokens } from "@/lib/store";
+import { readProviderById } from "@/lib/store";
+import { saveProviderOAuthTokens } from "@/lib/providerOAuthPersistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

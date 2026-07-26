@@ -2,7 +2,6 @@ import Database from "better-sqlite3";
 import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { CacheEntry, Combo, McpServer, NesaStore, OAuthAccount, ProviderConfig, ProviderConnectionStatus, UsageLog } from "@/core/types";
-import { createOAuthAccountId, defaultOAuthAccountName } from "@/core/oauthAccounts";
 import { defaultStore } from "@/lib/defaults";
 import { decryptSecret, encryptSecret, isRedactedSecret } from "@/lib/crypto";
 import {
@@ -11,6 +10,7 @@ import {
   parseOAuthAccounts,
   serializeOAuthAccounts
 } from "@/lib/oauthAccountCodec";
+import { syncPrimaryOAuthColumns, syncProviderOAuthConnectionStatus } from "@/lib/oauthAccountColumns";
 
 const projectDataRoot = process.env.INIT_CWD || process.cwd();
 
@@ -591,36 +591,6 @@ function migrateLegacyOAuthAccounts(database: Database.Database) {
     database.prepare("UPDATE providers SET oauth_accounts = ? WHERE id = ?").run(serializeOAuthAccounts([legacy]), row.id);
   }
   writeSetting(database, "oauthAccountsV1", true);
-}
-
-function syncPrimaryOAuthColumns(database: Database.Database, providerId: string, accounts: OAuthAccount[]) {
-  const primary = accounts[0];
-  database.prepare(`UPDATE providers SET
-    oauth_access_token_encrypted = ?,
-    oauth_refresh_token_encrypted = ?,
-    oauth_token_expires_at = ?,
-    oauth_last_refresh_at = ?,
-    oauth_copilot_token_encrypted = ?,
-    oauth_copilot_token_expires_at = ?,
-    oauth_project_id = ?,
-    oauth_device_client_id = ?,
-    oauth_device_client_secret_encrypted = ?,
-    oauth_machine_id = ?,
-    oauth_profile_arn = ?
-    WHERE id = ?`).run(
-    primary?.oauthAccessToken && !isRedactedSecret(primary.oauthAccessToken) ? encryptSecret(primary.oauthAccessToken.trim()) : null,
-    primary?.oauthRefreshToken && !isRedactedSecret(primary.oauthRefreshToken) ? encryptSecret(primary.oauthRefreshToken.trim()) : null,
-    primary?.oauthTokenExpiresAt ?? null,
-    primary?.oauthLastRefreshAt ?? null,
-    primary?.oauthCopilotToken && !isRedactedSecret(primary.oauthCopilotToken) ? encryptSecret(primary.oauthCopilotToken.trim()) : null,
-    primary?.oauthCopilotTokenExpiresAt ?? null,
-    primary?.oauthProjectId ?? null,
-    primary?.oauthDeviceClientId ?? null,
-    primary?.oauthDeviceClientSecret && !isRedactedSecret(primary.oauthDeviceClientSecret) ? encryptSecret(primary.oauthDeviceClientSecret.trim()) : null,
-    primary?.oauthMachineId ?? null,
-    primary?.oauthProfileArn ?? null,
-    providerId
-  );
 }
 
 function providerFromRow(row: any): ProviderConfig {
@@ -1308,182 +1278,6 @@ export async function deleteMcpServer(serverId: string) {
 export async function getMcpServer(serverId: string): Promise<McpServer | undefined> {
   const row = getDb().prepare("SELECT * FROM mcp_servers WHERE id = ?").get(serverId) as any | undefined;
   return row ? mcpFromRow(row) : undefined;
-}
-
-export async function saveProviderOAuthTokens(providerId: string, tokens: {
-  accessToken: string;
-  refreshToken?: string;
-  expiresAt?: string;
-  copilotToken?: string;
-  copilotTokenExpiresAt?: string;
-  projectId?: string;
-  deviceClientId?: string;
-  deviceClientSecret?: string;
-  machineId?: string;
-  profileArn?: string;
-}, options?: { accountId?: string; createNew?: boolean; accountName?: string }) {
-  const database = getDb();
-  const provider = await readProviderById(providerId);
-  if (!provider) throw new Error("Provider not found.");
-
-  const existingAccounts = Array.isArray(provider.oauthAccounts) && provider.oauthAccounts.length
-    ? [...provider.oauthAccounts]
-    : configuredOAuthAccountsFromProvider(provider);
-
-  const accountId = options?.createNew
-    ? createOAuthAccountId()
-    : options?.accountId ?? existingAccounts[0]?.id ?? "legacy";
-  const existing = existingAccounts.find((account) => account.id === accountId);
-  if (options?.accountId && !options.createNew && !existing) {
-    throw new Error("OAuth account no longer exists. Refresh the page and start Connect again.");
-  }
-  const nextAccount: OAuthAccount = {
-    id: accountId,
-    name: options?.accountName ?? existing?.name ?? defaultOAuthAccountName(options?.createNew ? existingAccounts.length : Math.max(existingAccounts.length - 1, 0)),
-    oauthAccessToken: tokens.accessToken,
-    oauthRefreshToken: tokens.refreshToken ?? existing?.oauthRefreshToken,
-    oauthTokenExpiresAt: tokens.expiresAt ?? existing?.oauthTokenExpiresAt,
-    oauthLastRefreshAt: new Date().toISOString(),
-    oauthCopilotToken: tokens.copilotToken ?? existing?.oauthCopilotToken,
-    oauthCopilotTokenExpiresAt: tokens.copilotTokenExpiresAt ?? existing?.oauthCopilotTokenExpiresAt,
-    oauthProjectId: tokens.projectId ?? existing?.oauthProjectId,
-    oauthDeviceClientId: tokens.deviceClientId ?? existing?.oauthDeviceClientId,
-    oauthDeviceClientSecret: tokens.deviceClientSecret ?? existing?.oauthDeviceClientSecret,
-    oauthMachineId: tokens.machineId ?? existing?.oauthMachineId,
-    oauthProfileArn: tokens.profileArn ?? existing?.oauthProfileArn,
-    connectionStatus: "connected",
-    lastError: undefined,
-    lastCheckedAt: new Date().toISOString(),
-    createdAt: existing?.createdAt ?? new Date().toISOString()
-  };
-
-  const accounts = options?.createNew || !existing
-    ? [...existingAccounts, nextAccount]
-    : existingAccounts.map((account) => (account.id === accountId ? { ...account, ...nextAccount } : account));
-
-  database.prepare(`UPDATE providers SET oauth_accounts = ? WHERE id = ?`).run(serializeOAuthAccounts(accounts), providerId);
-  syncPrimaryOAuthColumns(database, providerId, accounts);
-  syncProviderOAuthConnectionStatus(database, providerId, accounts);
-  // Connecting OAuth should make the provider routable without a separate Active toggle.
-  if (provider.status === "disabled" || provider.status === "cooldown") {
-    database
-      .prepare("UPDATE providers SET status = 'active', rate_limited_until = NULL WHERE id = ?")
-      .run(providerId);
-  }
-  return accountId;
-}
-
-function configuredOAuthAccountsFromProvider(provider: ProviderConfig): OAuthAccount[] {
-  if (Array.isArray(provider.oauthAccounts) && provider.oauthAccounts.length) return [...provider.oauthAccounts];
-  if (!provider.oauthAccessToken && !provider.oauthCopilotToken) return [];
-  return [{
-    id: "legacy",
-    name: "Account 1",
-    oauthAccessToken: provider.oauthAccessToken,
-    oauthRefreshToken: provider.oauthRefreshToken,
-    oauthTokenExpiresAt: provider.oauthTokenExpiresAt,
-    oauthLastRefreshAt: provider.oauthLastRefreshAt,
-    oauthCopilotToken: provider.oauthCopilotToken,
-    oauthCopilotTokenExpiresAt: provider.oauthCopilotTokenExpiresAt,
-    oauthProjectId: provider.oauthProjectId,
-    oauthDeviceClientId: provider.oauthDeviceClientId,
-    oauthDeviceClientSecret: provider.oauthDeviceClientSecret,
-    oauthMachineId: provider.oauthMachineId,
-    oauthProfileArn: provider.oauthProfileArn,
-    connectionStatus: provider.connectionStatus,
-    lastError: provider.lastError,
-    rateLimitedUntil: provider.rateLimitedUntil
-  }];
-}
-
-export async function updateProviderOAuthAccountTokens(providerId: string, accountId: string, patch: Partial<OAuthAccount>) {
-  const provider = await readProviderById(providerId);
-  if (!provider) throw new Error("Provider not found.");
-  const accounts = configuredOAuthAccountsFromProvider(provider).map((account) =>
-    account.id === accountId ? { ...account, ...patch } : account
-  );
-  const database = getDb();
-  database.prepare("UPDATE providers SET oauth_accounts = ? WHERE id = ?").run(serializeOAuthAccounts(accounts), providerId);
-  syncPrimaryOAuthColumns(database, providerId, accounts);
-}
-
-export async function clearProviderOAuthTokens(providerId: string) {
-  const database = getDb();
-  database
-    .prepare(`UPDATE providers SET oauth_accounts = NULL, oauth_access_token_encrypted = NULL, oauth_refresh_token_encrypted = NULL, oauth_token_expires_at = NULL, oauth_last_refresh_at = NULL, oauth_copilot_token_encrypted = NULL, oauth_copilot_token_expires_at = NULL, oauth_project_id = NULL, oauth_device_client_id = NULL, oauth_device_client_secret_encrypted = NULL, oauth_machine_id = NULL, oauth_profile_arn = NULL WHERE id = ?`)
-    .run(providerId);
-}
-
-export async function clearOAuthAccount(providerId: string, accountId: string) {
-  const provider = await readProviderById(providerId);
-  if (!provider) return;
-  const accounts = configuredOAuthAccountsFromProvider(provider).filter((account) => account.id !== accountId);
-  const database = getDb();
-  if (!accounts.length) {
-    await clearProviderOAuthTokens(providerId);
-    return;
-  }
-  database.prepare("UPDATE providers SET oauth_accounts = ? WHERE id = ?").run(serializeOAuthAccounts(accounts), providerId);
-  syncPrimaryOAuthColumns(database, providerId, accounts);
-  syncProviderOAuthConnectionStatus(database, providerId, accounts);
-}
-
-function syncProviderOAuthConnectionStatus(database: Database.Database, providerId: string, accounts: OAuthAccount[]) {
-  const withToken = accounts.filter((account) => Boolean(account.oauthAccessToken || account.oauthCopilotToken));
-  const routable = withToken.filter(
-    (account) => account.connectionStatus !== "error" && account.connectionStatus !== "no_subscription"
-  );
-  const onlyNoSub =
-    !routable.length &&
-    withToken.length > 0 &&
-    withToken.every((account) => account.connectionStatus === "no_subscription");
-  const anyNoSub = withToken.some((account) => account.connectionStatus === "no_subscription");
-  const status = routable.length
-    ? "connected"
-    : onlyNoSub || (anyNoSub && !withToken.some((account) => account.connectionStatus === "error"))
-      ? "no_subscription"
-      : withToken.length
-        ? "error"
-        : "unknown";
-  const lastError =
-    routable.length ? null : withToken.find((account) => account.lastError)?.lastError ?? null;
-  database
-    .prepare("UPDATE providers SET connection_status = ?, last_checked_at = ?, last_error = ? WHERE id = ?")
-    .run(status, new Date().toISOString(), lastError, providerId);
-}
-
-export async function markOAuthAccountConnection(
-  providerId: string,
-  accountId: string,
-  ok: boolean,
-  message?: string,
-  options?: { rateLimitedUntil?: string; status?: ProviderConnectionStatus }
-) {
-  const provider = await readProviderById(providerId);
-  if (!provider) return;
-  const status: ProviderConnectionStatus = options?.status ?? (ok ? "connected" : "error");
-  const accounts = configuredOAuthAccountsFromProvider(provider).map((account) =>
-    account.id === accountId
-      ? {
-          ...account,
-          connectionStatus: status,
-          lastError: status === "connected" ? undefined : message?.slice(0, 500),
-          lastCheckedAt: new Date().toISOString(),
-          rateLimitedUntil: options?.rateLimitedUntil ?? (status === "connected" ? undefined : account.rateLimitedUntil)
-        }
-      : account
-  );
-  const database = getDb();
-  database.prepare("UPDATE providers SET oauth_accounts = ? WHERE id = ?").run(serializeOAuthAccounts(accounts), providerId);
-  syncPrimaryOAuthColumns(database, providerId, accounts);
-  syncProviderOAuthConnectionStatus(database, providerId, accounts);
-}
-
-export async function writeOAuthAccounts(providerId: string, accounts: OAuthAccount[]) {
-  const database = getDb();
-  database.prepare("UPDATE providers SET oauth_accounts = ? WHERE id = ?").run(serializeOAuthAccounts(accounts), providerId);
-  syncPrimaryOAuthColumns(database, providerId, accounts);
-  syncProviderOAuthConnectionStatus(database, providerId, accounts);
 }
 
 export async function readProviderById(providerId: string): Promise<ProviderConfig | undefined> {

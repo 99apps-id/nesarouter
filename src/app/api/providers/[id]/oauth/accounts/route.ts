@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { finalizeAdminResponse, readAdminJson, requireAdmin } from "@/lib/adminApi";
-import { clearOAuthAccount } from "@/lib/store";
+import { clearOAuthAccount } from "@/lib/providerOAuthPersistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
