@@ -124,12 +124,13 @@ export const providerPresets: ProviderConfig[] = [
     outputCostPerMTok: 0
   }),
   // Pollinations OpenAI-compatible gateway (legacy text.pollinations.ai is retired).
-  // Chat requires a free API key from https://enter.pollinations.ai — /v1/models is public.
+  // Generation consumes Pollen credit and requires a key from https://enter.pollinations.ai.
+  // Keep the historical id for existing SQLite rows and saved routing references.
   preset({
     id: "pollinations-free",
     name: "Pollinations",
     type: "openai_compatible",
-    tier: "free",
+    tier: "cheap",
     baseUrl: "https://gen.pollinations.ai/v1",
     model: "openai",
     models: [
@@ -145,8 +146,8 @@ export const providerPresets: ProviderConfig[] = [
     ],
     supportsTools: true,
     priority: 20,
-    inputCostPerMTok: 0,
-    outputCostPerMTok: 0
+    inputCostPerMTok: 0.15,
+    outputCostPerMTok: 0.9375
   }),
   preset({
     id: "alibaba-dashscope",
@@ -1180,7 +1181,7 @@ export const providerPresetGroups: Array<{ label: string; ids: string[] }> = [
   },
   {
     label: "Free / local",
-    ids: ["openrouter-free", "ollama-local", "opencode-free", "mimo-code-free", "opencode-go", "pollinations-free"]
+    ids: ["openrouter-free", "ollama-local", "opencode-free", "mimo-code-free", "opencode-go"]
   },
   {
     label: "China / Asia API key",
@@ -1215,6 +1216,7 @@ export const providerPresetGroups: Array<{ label: string; ids: string[] }> = [
     label: "Global API key",
     ids: [
       "nesarouter",
+      "pollinations-free",
       "runware",
       "perplexity",
       "perplexity-agent",
