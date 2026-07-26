@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { adminCookieName, buildAdminSessionCookie } from "@/core/adminSessionCookie";
 import { adminLoginPasswordHint, adminTokenFromRequest, loginRateLimitKey, readAdminSessionTokenCandidates } from "@/core/adminAuth";
-import { createAdminSessionRecord, writeAdminPasswordHash } from "@/lib/store";
+import { createAdminSessionRecord, writeAdminPasswordHash } from "@/lib/adminPersistence";
 
 describe("admin session token resolution", () => {
   const previousTrustProxy = process.env.NESA_TRUST_PROXY;

@@ -8,7 +8,7 @@ import {
   verifyAdminPassword
 } from "@/core/adminAuth";
 import { readAdminJson, requireAdmin } from "@/lib/adminApi";
-import { writeAdminPasswordHash } from "@/lib/store";
+import { writeAdminPasswordHash } from "@/lib/adminPersistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

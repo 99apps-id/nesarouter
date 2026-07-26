@@ -10,7 +10,7 @@ import {
   readLoginLockState,
   touchAdminSessionExpiry,
   writeLoginLockState
-} from "@/lib/store";
+} from "@/lib/adminPersistence";
 import {
   adminCookieName,
   buildAdminSessionCookie,
