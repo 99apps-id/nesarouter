@@ -1206,16 +1206,6 @@ export async function writeStore(store: NesaStore) {
   writeStoreToDb(getDb(), store);
 }
 
-export async function readAdminPasswordHash() {
-  const row = getDb().prepare("SELECT value FROM settings WHERE key = ?").get("adminPasswordHash") as { value: string } | undefined;
-  if (!row) return null;
-  try {
-    return JSON.parse(row.value);
-  } catch {
-    return row.value;
-  }
-}
-
 /** Sync read of dashboard public base URL (used by OAuth redirect helpers). */
 export function readPublicBaseUrlSync(): string | undefined {
   try {
@@ -1225,65 +1215,6 @@ export function readPublicBaseUrlSync(): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-export async function writeAdminPasswordHash(hash: string) {
-  getDb().prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run("adminPasswordHash", hash);
-}
-
-export async function createAdminSessionRecord(session: {
-  tokenHash: string;
-  createdAt: string;
-  expiresAt: string;
-}) {
-  const database = getDb();
-  database
-    .prepare(
-      "INSERT INTO admin_sessions (token_hash, created_at, expires_at) VALUES (?, ?, ?) ON CONFLICT(token_hash) DO UPDATE SET created_at = excluded.created_at, expires_at = excluded.expires_at"
-    )
-    .run(session.tokenHash, session.createdAt, session.expiresAt);
-  database.prepare("DELETE FROM admin_sessions WHERE expires_at < ?").run(new Date().toISOString());
-}
-
-export async function findAdminSessionByHash(tokenHash: string) {
-  return (
-    (getDb()
-      .prepare("SELECT token_hash as tokenHash, created_at as createdAt, expires_at as expiresAt FROM admin_sessions WHERE token_hash = ?")
-      .get(tokenHash) as { tokenHash: string; createdAt: string; expiresAt: string } | undefined) ?? null
-  );
-}
-
-export async function deleteAdminSessionByHash(tokenHash: string) {
-  getDb().prepare("DELETE FROM admin_sessions WHERE token_hash = ?").run(tokenHash);
-}
-
-export async function deleteAllAdminSessions() {
-  getDb().prepare("DELETE FROM admin_sessions").run();
-}
-
-export async function touchAdminSessionExpiry(tokenHash: string, expiresAt: string) {
-  getDb().prepare("UPDATE admin_sessions SET expires_at = ? WHERE token_hash = ?").run(expiresAt, tokenHash);
-}
-
-export interface LoginLockState {
-  failedAttempts: number;
-  lockedUntil?: string;
-}
-
-function loginLockSettingKey(lockKey = "default") {
-  return `loginLock:${lockKey}`;
-}
-
-export async function readLoginLockState(lockKey = "default"): Promise<LoginLockState> {
-  return readSetting<LoginLockState>(getDb(), loginLockSettingKey(lockKey), { failedAttempts: 0 });
-}
-
-export async function writeLoginLockState(state: LoginLockState, lockKey = "default") {
-  writeSetting(getDb(), loginLockSettingKey(lockKey), state);
-}
-
-export async function clearLoginLockState(lockKey = "default") {
-  writeSetting(getDb(), loginLockSettingKey(lockKey), { failedAttempts: 0 });
 }
 
 function preserveOptionalSecret(
