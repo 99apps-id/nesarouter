@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 // @ts-expect-error The production launcher is an ESM JavaScript entrypoint.
-import { readRuntimeDistDir, resolveStandaloneDataDir, resolveStandaloneServer } from "../../scripts/start-standalone.mjs";
+import { productionEnvironmentErrors, readRuntimeDistDir, resolveStandaloneDataDir, resolveStandaloneServer } from "../../scripts/start-standalone.mjs";
 
 const root = path.join(os.tmpdir(), `nesarouter-standalone-${process.pid}`);
 
@@ -36,5 +36,26 @@ describe("standalone startup paths", () => {
     expect(resolveStandaloneDataDir(root, undefined)).toBe(path.resolve(root, "data"));
     expect(resolveStandaloneDataDir(root, "data-custom")).toBe(path.resolve(root, "data-custom"));
     expect(resolveStandaloneDataDir(root, path.resolve(root, "absolute"))).toBe(path.resolve(root, "absolute"));
+  });
+
+  it("rejects missing and placeholder production credentials before startup", () => {
+    expect(productionEnvironmentErrors({ NODE_ENV: "production" })).toHaveLength(2);
+    expect(productionEnvironmentErrors({
+      NODE_ENV: "production",
+      NESA_ENCRYPTION_KEY: "replace-with-long-random-secret",
+      NESA_ADMIN_PASSWORD: "change-me"
+    })).toHaveLength(2);
+  });
+
+  it("accepts strong production credentials without exposing their values", () => {
+    expect(productionEnvironmentErrors({
+      NODE_ENV: "production",
+      NESA_ENCRYPTION_KEY: "a".repeat(32),
+      NESA_ADMIN_PASSWORD: "operator-password"
+    })).toEqual([]);
+  });
+
+  it("does not require production credentials during local development", () => {
+    expect(productionEnvironmentErrors({ NODE_ENV: "development" })).toEqual([]);
   });
 });
