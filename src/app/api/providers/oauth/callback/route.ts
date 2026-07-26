@@ -2,7 +2,8 @@
 import { exchangeCode, loadAntigravityProjectId, resolveIflowApiKey } from "@/core/oauthPkce";
 import { getPreset } from "@/core/oauthProviderPresets";
 import { publicUrl } from "@/core/publicUrl";
-import { deleteOAuthPending, readOAuthPending, readProviderById, saveProviderOAuthTokens } from "@/lib/store";
+import { readProviderById, saveProviderOAuthTokens } from "@/lib/store";
+import { deleteOAuthPending, readOAuthPending } from "@/lib/oauthPendingPersistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

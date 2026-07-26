@@ -2,7 +2,8 @@ import http from "node:http";
 import { exchangeCode, resolveIflowApiKey } from "@/core/oauthPkce";
 import { getPreset } from "@/core/oauthProviderPresets";
 import { publicUrl } from "@/core/publicUrl";
-import { deleteOAuthPending, readOAuthPending, readProviderById, readPublicBaseUrlSync, saveProviderOAuthTokens } from "@/lib/store";
+import { readProviderById, readPublicBaseUrlSync, saveProviderOAuthTokens } from "@/lib/store";
+import { deleteOAuthPending, readOAuthPending } from "@/lib/oauthPendingPersistence";
 
 type LoopbackEntry = {
   server: http.Server;

@@ -3,7 +3,8 @@ import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { parseOAuthCallbackPaste } from "@/core/oauthCallbackPaste";
 import { exchangeCode, loadAntigravityProjectId, resolveIflowApiKey } from "@/core/oauthPkce";
 import { getPreset } from "@/core/oauthProviderPresets";
-import { deleteOAuthPending, readOAuthPending, readProviderById, saveProviderOAuthTokens } from "@/lib/store";
+import { readProviderById, saveProviderOAuthTokens } from "@/lib/store";
+import { deleteOAuthPending, readOAuthPending } from "@/lib/oauthPendingPersistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

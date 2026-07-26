@@ -4,7 +4,8 @@ import { ensureOauthLoopback } from "@/core/oauthLoopback";
 import { buildAuthorizeUrl, generatePkce, generateState } from "@/core/oauthPkce";
 import { getPreset, usesOAuthDeviceFlow } from "@/core/oauthProviderPresets";
 import { publicOrigin, publicUrl } from "@/core/publicUrl";
-import { readProviderById, readPublicBaseUrlSync, saveOAuthPending } from "@/lib/store";
+import { readProviderById, readPublicBaseUrlSync } from "@/lib/store";
+import { saveOAuthPending } from "@/lib/oauthPendingPersistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
