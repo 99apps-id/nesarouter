@@ -341,6 +341,24 @@ try {
   assert(first.response.ok, "/v1/chat/completions failed");
   assert(first.response.headers.get("x-nesa-provider") === providerId, "provider header mismatch");
   assert(first.json.choices?.[0]?.message?.content === "smoke-ok", "unexpected completion body");
+  assert(first.response.headers.get("x-nesa-routing-reason"), "routing reason header missing");
+  assert(/^\d+$/.test(first.response.headers.get("x-nesa-latency-ms") ?? ""), "latency header missing or not numeric");
+
+  const bypassed = await request("/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json",
+      "x-nesa-token-saver": "off"
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: "user", content: `${prompt} bypass` }],
+      temperature: 0
+    })
+  });
+  assert(bypassed.response.ok, "token-saver bypass request failed");
+  assert(bypassed.response.headers.get("x-nesa-token-saver") === "bypassed", "token-saver bypass header missing");
 
   const second = await request("/v1/chat/completions", {
     method: "POST",

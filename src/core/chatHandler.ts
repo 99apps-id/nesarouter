@@ -47,6 +47,17 @@ function requestId() {
   return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
+/** Keep header values free of control characters and bounded in length. */
+export function sanitizeHeaderValue(value: string, maxLength = 300) {
+  return value.replace(/[\r\n]+/g, " ").slice(0, maxLength);
+}
+
+/** `X-Nesa-Token-Saver: off` lets one request skip Caveman/Ponytail injection without touching global settings. */
+export function tokenSaverBypassed(request: Request) {
+  const header = request.headers.get("x-nesa-token-saver")?.trim().toLowerCase();
+  return header === "off" || header === "0" || header === "false";
+}
+
 function loggedModel(body: any, fallback: string) {
   const requested = typeof body?.model === "string" ? body.model.trim() : "";
   if (!requested) return fallback;
@@ -129,6 +140,7 @@ export interface ChatHandlerResult {
  * format); adapters translate in/out around this.
  */
 export async function handleChat(body: any, request: Request): Promise<ChatHandlerResult> {
+  const startedAt = Date.now();
   const store = await readStore();
 
   if (!authorizeRequest(store, request)) {
@@ -138,6 +150,7 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
   recordRequest();
 
   const combo = findCombo(store, resolveModelAlias(store.aliases, typeof body?.model === "string" ? body.model : ""));
+  const bypassSaver = tokenSaverBypassed(request);
 
   // Token saver → RTK → Headroom run before cache keying so the cache
   // namespace reflects the active transforms. Headroom is fail-open.
@@ -145,7 +158,7 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
     ...body,
     model: resolveModelAlias(store.aliases, typeof body?.model === "string" ? body.model : "")
   };
-  const saverApplied = injectTokenSaver(aliasedBody, store.router.tokenSaver);
+  const saverApplied = injectTokenSaver(aliasedBody, bypassSaver ? undefined : store.router.tokenSaver);
   const rtkApplied = store.router.rtkEnabled ? compressToolResults(saverApplied) : { body: saverApplied, savedChars: 0 };
   const structuredTools = hasStructuredToolProtocol(rtkApplied.body);
   const pxpipeApplied = await compressWithPxpipe(rtkApplied.body, store.router.pxpipeEnabled && !structuredTools);
@@ -188,7 +201,8 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
             "x-nesa-cost-source": "cached",
             "x-nesa-saved-usd": String(cached.savedCostUsd),
             "x-nesa-rtk-saved": String(rtkApplied.savedChars),
-            "x-nesa-headroom": headroomApplied.applied ? "applied" : "skipped"
+            "x-nesa-headroom": headroomApplied.applied ? "applied" : "skipped",
+            ...(bypassSaver ? { "x-nesa-token-saver": "bypassed" } : {})
           }
         }),
         combo
@@ -196,9 +210,9 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
     }
   }
 
-  const response = await runFallbackLoop(store, effectiveBody, key, combo, request);
+  const response = await runFallbackLoop(store, effectiveBody, key, combo, request, startedAt);
   if (response.status >= 400) recordError();
-  if (headroomApplied.applied || rtkApplied.savedChars > 0) {
+  if (headroomApplied.applied || rtkApplied.savedChars > 0 || bypassSaver) {
     const headers = new Headers(response.headers);
     if (rtkApplied.savedChars > 0) headers.set("x-nesa-rtk-saved", String(rtkApplied.savedChars));
     if (headroomApplied.applied) {
@@ -207,6 +221,7 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
         headers.set("x-nesa-headroom-saved", String(headroomApplied.stats.tokens_saved));
       }
     }
+    if (bypassSaver) headers.set("x-nesa-token-saver", "bypassed");
     return {
       response: new Response(response.body, { status: response.status, statusText: response.statusText, headers }),
       combo
@@ -220,7 +235,8 @@ async function runFallbackLoop(
   body: any,
   key: string,
   combo: Combo | undefined,
-  request?: Request
+  request: Request | undefined,
+  startedAt: number
 ): Promise<Response> {
   const failedProviderIds: string[] = [];
   const errors: string[] = [];
@@ -302,10 +318,10 @@ async function runFallbackLoop(
           rememberStickyProvider(stickyKey, decision.provider.id);
 
           if (upstream instanceof ReadableStream) {
-            return finalizeStream(store, decision, upstream, key, body, ticket);
+            return finalizeStream(store, decision, upstream, key, body, startedAt, ticket);
           }
           try {
-            return await finalizeJson(store, decision, upstream, key, body);
+            return await finalizeJson(store, decision, upstream, key, body, startedAt);
           } finally {
             ticket.release();
           }
@@ -357,11 +373,11 @@ async function runFallbackLoop(
           rememberStickyProvider(stickyKey, decision.provider.id);
 
           if (upstream instanceof ReadableStream) {
-            return finalizeStream(store, decision, upstream, key, body, ticket, picked.index);
+            return finalizeStream(store, decision, upstream, key, body, startedAt, ticket, picked.index);
           }
 
           try {
-            return await finalizeJson(store, decision, upstream, key, body, picked.index);
+            return await finalizeJson(store, decision, upstream, key, body, startedAt, picked.index);
           } finally {
             ticket.release();
           }
@@ -427,7 +443,7 @@ function skippedProvidersHeader(skipped: RouteDecision["skippedProviders"] | und
     .slice(0, 700);
 }
 
-async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream: any, key: string, body: any, keyIndex?: number) {
+async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream: any, key: string, body: any, startedAt: number, keyIndex?: number) {
   const structuredTools = hasStructuredToolProtocol(body);
   const usage = upstream?.usage ?? {};
   const inputTokens = safeTokenCount(usage.prompt_tokens, decision.estimatedInputTokens);
@@ -478,6 +494,8 @@ async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream:
       "x-nesa-budget-status": decision.budgetStatus,
       "x-nesa-cost-source": log.costSource,
       "x-nesa-cache": log.cacheStatus,
+      "x-nesa-routing-reason": sanitizeHeaderValue(decision.routingReason),
+      "x-nesa-latency-ms": String(Date.now() - startedAt),
       ...(skippedProvidersHeader(decision.skippedProviders)
         ? { "x-nesa-skipped": skippedProvidersHeader(decision.skippedProviders)! }
         : {})
@@ -491,13 +509,14 @@ async function finalizeStream(
   upstream: ReadableStream<Uint8Array>,
   key: string,
   body: any,
+  startedAt: number,
   ticket?: GateTicket,
   keyIndex?: number
 ) {
   if (body?.stream === false) {
     const completion = await collectSseChatCompletion(upstream, loggedModel(body, decision.provider.model));
     try {
-      return await finalizeJson(store, decision, completion, key, body, keyIndex);
+      return await finalizeJson(store, decision, completion, key, body, startedAt, keyIndex);
     } finally {
       ticket?.release();
     }
@@ -574,6 +593,8 @@ async function finalizeStream(
         "x-nesa-provider": decision.provider.id,
         "x-nesa-budget-status": decision.budgetStatus,
         "x-nesa-cost-source": baseLog.costSource,
+        "x-nesa-routing-reason": sanitizeHeaderValue(decision.routingReason),
+        "x-nesa-latency-ms": String(Date.now() - startedAt),
         ...(skippedProvidersHeader(decision.skippedProviders)
           ? { "x-nesa-skipped": skippedProvidersHeader(decision.skippedProviders)! }
           : {})

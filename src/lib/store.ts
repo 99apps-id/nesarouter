@@ -17,6 +17,31 @@ const projectDataRoot = process.env.INIT_CWD || process.cwd();
 let db: Database.Database | undefined;
 let activeDbPath: string | undefined;
 const defaultProvidersEnsured = new Set<string>();
+let nodeOnlyServicesStarted = false;
+
+/**
+ * Fire the Node-only, DB-backed boot tasks (tunnel restore, auto-backup schedule) exactly once,
+ * right after the SQLite connection first opens. This runs here — not in instrumentation.ts —
+ * because instrumentation.ts's Edge bundle cannot pull in better-sqlite3 (native addon), and the
+ * `webpackIgnore` workaround that keeps it out of that bundle also prevents Node's runtime loader
+ * from resolving the `@/` path alias, so a dynamic import from instrumentation.ts silently fails
+ * in the standalone production build. store.ts is never part of the Edge/middleware graph, so a
+ * plain dynamic import here resolves correctly in both dev and standalone builds.
+ */
+function bootstrapNodeOnlyServices() {
+  if (nodeOnlyServicesStarted) return;
+  nodeOnlyServicesStarted = true;
+  import("@/lib/tunnel/bootRestore")
+    .then((mod) => mod.restoreRemoteAccess())
+    .catch(() => {
+      // Boot restore is best-effort; /api/tunnel/status will retry once.
+    });
+  import("@/lib/dbBackup")
+    .then((mod) => mod.startAutoBackupSchedule())
+    .catch(() => {
+      // Auto-backup is best-effort and must never block server startup.
+    });
+}
 
 function resolveDataDir() {
   return process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(projectDataRoot, "data");
@@ -49,6 +74,7 @@ export function getDb() {
     db.pragma("foreign_keys = ON");
     migrate(db);
     seedIfEmpty(db);
+    bootstrapNodeOnlyServices();
   }
   // Re-check catalog presets once per DB path. Manual seedMissingProviders()
   // still forces a sync without making every request take a write lock.
@@ -79,6 +105,7 @@ export function seedMissingProviders(): string[] {
     db.pragma("foreign_keys = ON");
     migrate(db);
     seedIfEmpty(db);
+    bootstrapNodeOnlyServices();
   }
   const added = ensureDefaultProviders(db);
   defaultProvidersEnsured.add(dbPath);

@@ -3,6 +3,8 @@
  * Resets on process restart — acceptable for single-node deployments.
  */
 
+import { trustProxyHeaders } from "@/core/publicUrl";
+
 interface Bucket {
   windows: number[];  // timestamps in ms
 }
@@ -42,9 +44,14 @@ export function clearRateLimit(key: string) {
   buckets.delete(key);
 }
 
-/** Build a rate-limit key scoped to the caller IP. */
+/**
+ * Build a rate-limit key scoped to the caller IP.
+ * X-Forwarded-For is attacker-controlled unless a trusted reverse proxy sets it, so it is
+ * only honored when NESA_TRUST_PROXY is enabled — otherwise every direct client shares one
+ * bucket, which is safe-by-default (matches loginRateLimitKey in core/adminAuth.ts).
+ */
 export function rateLimitKey(request: Request, suffix: string): string {
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const forwarded = trustProxyHeaders() ? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() : undefined;
   const ip = forwarded || "local";
   return `${ip}:${suffix}`;
 }

@@ -2,6 +2,27 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.50 - 2026-08-04
+
+### Security
+
+- Patch 5 dependency vulnerabilities via `npm audit fix` (undici response desync / CRLF / cookie injection, PostCSS source-map read, `ip-address` SSRF-classification bypass, `brace-expansion` DoS).
+- Stop trusting `X-Forwarded-For` for admin rate limiting unless `NESA_TRUST_PROXY` is enabled, matching the trust-proxy gate already used for login rate limiting and public-URL resolution. Closes a rate-limit bypass on provider create/delete, key add, and OAuth login start.
+
+### Fixed
+
+- Node-only boot tasks (tunnel restore-after-restart, DB auto-backup) now actually run in the standalone production build. A `webpackIgnore`'d dynamic import in `instrumentation.ts` could not resolve the `@/` path alias at Node runtime, so tunnel restore silently never executed despite being documented since 0.1.26. Both tasks now start from `store.ts` on first database open, which is never part of the Edge/middleware bundle.
+
+### Added
+
+- Automatic SQLite backups to `data/backups/` (default: every 24h, keep the newest 7; configurable via `NESA_DB_BACKUP_INTERVAL_HOURS` / `NESA_DB_BACKUP_KEEP`, `0` disables).
+- `X-Nesa-Token-Saver: off` request header bypasses Caveman/Ponytail injection for a single request without touching global Routing settings.
+- `x-nesa-routing-reason` and `x-nesa-latency-ms` response headers on `/v1/chat/completions`, `/v1/messages`, `/v1/responses`, and `/v1/responses/compact`.
+
+### Validation
+
+- ESLint, TypeScript validation, 377 unit tests across 71 files, admin route-security checks, OSS public-boundary checks, production build, and the full smoke suite (including new header and backup assertions) pass.
+
 ## 0.1.49 - 2026-07-26
 
 ### Security

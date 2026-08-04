@@ -29,7 +29,9 @@ export async function POST(request: Request) {
         "content-type": "text/event-stream",
         "cache-control": "no-cache",
         "x-nesa-provider": response.headers.get("x-nesa-provider") ?? "",
-        "x-nesa-budget-status": response.headers.get("x-nesa-budget-status") ?? ""
+        "x-nesa-budget-status": response.headers.get("x-nesa-budget-status") ?? "",
+        "x-nesa-routing-reason": response.headers.get("x-nesa-routing-reason") ?? "",
+        "x-nesa-latency-ms": response.headers.get("x-nesa-latency-ms") ?? ""
       }
     });
   }
@@ -40,7 +42,9 @@ export async function POST(request: Request) {
       "x-nesa-provider": response.headers.get("x-nesa-provider") ?? "",
       "x-nesa-budget-status": response.headers.get("x-nesa-budget-status") ?? "",
       "x-nesa-cost-source": response.headers.get("x-nesa-cost-source") ?? "",
-      "x-nesa-cache": response.headers.get("x-nesa-cache") ?? ""
+      "x-nesa-cache": response.headers.get("x-nesa-cache") ?? "",
+      "x-nesa-routing-reason": response.headers.get("x-nesa-routing-reason") ?? "",
+      "x-nesa-latency-ms": response.headers.get("x-nesa-latency-ms") ?? ""
     }
   });
 }
