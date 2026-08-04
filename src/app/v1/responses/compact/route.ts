@@ -32,6 +32,8 @@ export async function POST(request: Request) {
       "x-nesa-budget-status": response.headers.get("x-nesa-budget-status") ?? "",
       "x-nesa-cost-source": response.headers.get("x-nesa-cost-source") ?? "",
       "x-nesa-cache": response.headers.get("x-nesa-cache") ?? "",
+      "x-nesa-routing-reason": response.headers.get("x-nesa-routing-reason") ?? "",
+      "x-nesa-latency-ms": response.headers.get("x-nesa-latency-ms") ?? "",
       "x-nesa-compact": "1"
     }
   });

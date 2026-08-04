@@ -20,7 +20,7 @@ function readEnv(name: string) {
   return process.env[name]?.trim() || undefined;
 }
 
-function trustProxyHeaders() {
+export function trustProxyHeaders() {
   const value = readEnv("NESA_TRUST_PROXY")?.toLowerCase();
   return value === "1" || value === "true";
 }
