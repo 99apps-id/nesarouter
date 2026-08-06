@@ -2,12 +2,34 @@ import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/core/auth";
 import { listPrefixesForProvider } from "@/core/providerPrefixes";
 import { readStore } from "@/lib/store";
+import {
+  authorizeSaasRequestDetailed,
+  saasAuthFailureMessage
+} from "@/core/saas/saasAuth";
+import { isSaasEnabled } from "@/core/saas/saasConfig";
+import { listSaasModels } from "@/core/saas/saasCatalog";
+import { toPublicModelList } from "@/core/saas/publicModels";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const store = await readStore();
+  const saasEnabled = isSaasEnabled();
+  if (saasEnabled) {
+    const saasAuth = await authorizeSaasRequestDetailed(request);
+    if (!saasAuth.ok) {
+      return NextResponse.json({ error: { message: saasAuthFailureMessage(saasAuth.reason) } }, { status: 401 });
+    }
+    const saas = saasAuth.ctx;
+
+    const publicIds = await listSaasModels(saas.planKind);
+    return NextResponse.json({
+      object: "list",
+      data: toPublicModelList(publicIds)
+    });
+  }
+
   if (!authorizeRequest(store, request)) {
     return NextResponse.json({ error: { message: "Invalid NesaRouter API key." } }, { status: 401 });
   }

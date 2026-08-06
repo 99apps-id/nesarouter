@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { publicOrigin } from "@/core/publicUrl";
 import { applyCliToolConfigLocal, readCliToolStatus, resetCliToolConfigLocal } from "@/lib/cliLocalApply";
 import {
@@ -61,14 +61,16 @@ export async function POST(request: Request, context: { params: Promise<{ tool: 
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
   const { tool } = await context.params;
-  const body = (await request.json().catch(() => ({}))) as {
+  const parsedBody = await readAdminJson<{
     modelTarget?: string;
     createKey?: boolean;
     savePreference?: boolean;
     baseUrl?: string;
     apiKey?: string;
     keyId?: string;
-  };
+  }>(request, 64 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
 
   try {
     const store = await readStore();
@@ -98,6 +100,12 @@ export async function POST(request: Request, context: { params: Promise<{ tool: 
       });
     }
 
+    const publicConfig = created
+      ? config
+      : JSON.parse(JSON.stringify(config).split(apiKey).join("********"));
+    const publicInstallScript = created
+      ? buildCliInstallScripts(config)
+      : Object.fromEntries(Object.entries(buildCliInstallScripts(config)).map(([key, value]) => [key, value.split(apiKey).join("********")]));
     return NextResponse.json({
       ok: true,
       tool: toolId,
@@ -111,8 +119,8 @@ export async function POST(request: Request, context: { params: Promise<{ tool: 
       modelTargets: listCliModelTargets(store),
       local,
       status,
-      installScript: buildCliInstallScripts(config),
-      ...config,
+      installScript: publicInstallScript,
+      ...publicConfig,
       summary: local.skipped
         ? `${config.summary} — this tool has no local file (see instructions).`
         : `Patched on this machine — ${status.configStatus}.`

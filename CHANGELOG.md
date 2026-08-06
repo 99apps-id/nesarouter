@@ -2,6 +2,264 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.50 - 2026-08-04
+
+### Security
+
+- Patch 5 dependency vulnerabilities via `npm audit fix` (undici response desync / CRLF / cookie injection, PostCSS source-map read, `ip-address` SSRF-classification bypass, `brace-expansion` DoS).
+- Stop trusting `X-Forwarded-For` for admin rate limiting unless `NESA_TRUST_PROXY` is enabled, matching the trust-proxy gate already used for login rate limiting and public-URL resolution. Closes a rate-limit bypass on provider create/delete, key add, and OAuth login start.
+
+### Fixed
+
+- Node-only boot tasks (tunnel restore-after-restart, DB auto-backup) now actually run in the standalone production build. A `webpackIgnore`'d dynamic import in `instrumentation.ts` could not resolve the `@/` path alias at Node runtime, so tunnel restore silently never executed despite being documented since 0.1.26. Both tasks now start from `store.ts` on first database open, which is never part of the Edge/middleware bundle.
+
+### Added
+
+- Automatic SQLite backups to `data/backups/` (default: every 24h, keep the newest 7; configurable via `NESA_DB_BACKUP_INTERVAL_HOURS` / `NESA_DB_BACKUP_KEEP`, `0` disables).
+- `X-Nesa-Token-Saver: off` request header bypasses Caveman/Ponytail injection for a single request without touching global Routing settings.
+- `x-nesa-routing-reason` and `x-nesa-latency-ms` response headers on `/v1/chat/completions`, `/v1/messages`, `/v1/responses`, and `/v1/responses/compact`.
+
+### Validation
+
+- ESLint, TypeScript validation, 377 unit tests across 71 files, admin route-security checks, OSS public-boundary checks, production build, and the full smoke suite (including new header and backup assertions) pass.
+
+## 0.1.49 - 2026-07-26
+
+### Security
+
+- Bound authenticated admin JSON requests and reject malformed or oversized payloads consistently across privileged routes.
+- Reject unsafe bootstrap credentials when starting in production and preserve the documented local-development password behavior.
+
+### Changed
+
+- Isolate admin-security, pending OAuth, OAuth credential-codec, and provider OAuth persistence behind focused storage interfaces.
+- Keep encrypted multi-account OAuth state synchronized with legacy primary credential columns while reducing coupling in the central store.
+
+### Fixed
+
+- Account for metered Pollinations usage with the current provider tier and default token costs.
+- Preserve correct routing status across usable, errored, and unsubscribed OAuth accounts.
+
+### Validation
+
+- ESLint, TypeScript validation, 364 unit tests across 69 files, admin route-security checks, OSS public-boundary checks, and the production build pass.
+
+## 0.1.48 - 2026-07-25
+
+### Added
+
+- Add Pollinations (`gen.pollinations.ai/v1`) as an API-key OpenAI-compatible provider preset; keep brand icons for Qoder / AgentRouter / ZenMux / Felo for custom providers.
+- Wire Zod validation into combo and MCP admin routes; rate-limit provider create/delete.
+
+### Changed
+
+- Strip unknown provider POST fields (including secrets) instead of passthrough mass-assignment; map costs with the UI's `inputCostPerMTok` / `outputCostPerMTok` names.
+
+### Fixed
+
+- Correct Felo provider-identity word-boundary matching so the Felo icon resolves.
+- Fix provider save failures from Zod field-name mismatch (`inputCostPerMTok`), NaN cost/priority values, and accidental clearing of `oauthProfile` when unknown body fields were stripped.
+- Make favicon / app icons circular with transparent corners so browser tabs no longer show a black square badge.
+- Swallow transient SessionKeeper network errors so HMR/reconnect no longer pops a "Failed to fetch" overlay, and allow `/manifest.webmanifest` through middleware without a login redirect.
+
+## 0.1.47 - 2026-07-24
+
+### Added
+
+- Strengthen dashboard web metadata: a `%s · NesaRouter` title template, explicit application/description, OpenGraph/Twitter cards, an `apple-touch-icon`, and a web app manifest (`/manifest.webmanifest`) so installs and link previews use the official N mark.
+- Generate 192/512 PNG app icons and a 180px Apple touch icon from the OSS NesaRouter N mark.
+
+### Changed
+
+- Move all provider brand marks from `public/providers/` to `public/icons/` and resolve every reference (provider identity, tests, E2E selector, and the README attribution link) to the new path.
+
+### Fixed
+
+- Keep temporary device-flow IDs separate from OAuth account IDs so Kiro and other device OAuth providers can add a second account successfully.
+- Read and write the admin password hash as a raw value so JSON-persisted legacy hashes migrate cleanly instead of double-encoding.
+
+## 0.1.46 - 2026-07-23
+
+### Added
+
+- Add NesaRouter as an OpenAI-compatible provider preset with its official N mark, public `/v1` endpoint, dynamic model loading, and `nr` / `nesa` routing prefixes.
+- Add enforceable Vitest coverage thresholds and a Chromium E2E flow covering admin login, bootstrap-password change, and the provider catalog.
+
+### Security
+
+- Bound the public admin-login JSON body and reject malformed JSON without consuming a password attempt.
+- Exclude local agent, test, coverage, and report directories from Git and Docker build contexts.
+- Pin a non-vulnerable Sharp release used by the Next.js image pipeline.
+
+### Fixed
+
+- Prevent the Cloudflare quick-tunnel watchdog from spawning a new `cloudflared` process every minute while the managed tunnel is healthy, and serialize recovery attempts after a real exit.
+- Convert malformed successful upstream JSON into a structured 502 provider error instead of leaking a generic parser failure.
+- Prevent overlapping Live Routing refreshes and reduce Live Routing / Usage polling pressure to ten-second intervals.
+- Install Headroom into a persistent, non-root virtual environment and include Python venv support in the production Docker image.
+
+### Validation
+
+- ESLint, TypeScript validation, 336 unit tests across 62 files, coverage thresholds, Chromium E2E, standalone production build/smoke, dependency audit, and OSS public-boundary checks pass.
+
+## 0.1.45 - 2026-07-22
+
+### Security
+
+- Enforce JSON request limits while reading chunked AI, MCP, search, and web-fetch bodies instead of trusting `Content-Length` alone.
+- Treat malformed persisted OAuth expiry timestamps as expired so broken credentials cannot remain routable indefinitely.
+
+### Fixed
+
+- Keep multi-key quota, cooldown, rotation, and usage indexes aligned after blank or duplicate credentials are removed.
+- Compact duplicate OAuth account slots and select the true latest successful provider for global and combo round-robin routing, even when usage rows are unsorted.
+- Sanitize malformed or negative upstream token counts before they reach budgets, quotas, costs, or SQLite usage records.
+- Force usage reporting on OpenAI-compatible, OpenRouter, OpenCode, and GitHub Copilot streams so clients cannot accidentally disable accurate ledger accounting.
+- Deep-merge nested router state, reject ambiguous bulk combo/alias updates, and prevent partial state saves from erasing media, token-saver, or CLI settings.
+- Remove TOML provider tables safely when arrays contain brackets, and reject fractional/out-of-range Headroom proxy ports.
+
+### Validation
+
+- ESLint, TypeScript validation, 326 unit tests across 59 files, dependency audit, OSS public-boundary check, and production build pass.
+
+## 0.1.44 - 2026-07-21
+
+### Fixed
+
+- Stop Live Routing from calling `Date.now()` during the first render so server HTML and browser hydration stay identical.
+- Render request timestamps in a fixed UTC clock to avoid timezone hydration mismatches.
+
+## 0.1.43 - 2026-07-21
+
+### Fixed
+
+- Prevent client-side Application errors on Usage by formatting numbers and times with a fixed `en-US` locale so server HTML and browser hydration always match.
+- Allow Cloudflare Web Analytics beacon under production Content-Security-Policy when the site is served behind Cloudflare.
+
+## 0.1.42 - 2026-07-21
+
+### Fixed
+
+- Remove a stale unit test that referenced a non-exported helper and blocked TypeScript validation of v0.1.41.
+
+## 0.1.41 - 2026-07-21
+
+### Changed
+
+- Redesign Live Routing animations with hub flash/waves, comet trails on the selected path, and a stronger heartbeat on providers with recent traffic.
+
+### Fixed
+
+- Allow Next.js Fast Refresh under Content-Security-Policy in development by permitting `unsafe-eval` only when `NODE_ENV` is not production.
+- Stabilize usage number formatting with an explicit `en-US` locale so theme switches no longer trip hydration mismatches.
+
+### Validation
+
+- Local OSS preview of language/theme toggles and live-map animations; production CSP remains without `unsafe-eval`.
+
+## 0.1.40 - 2026-07-20
+
+### Security
+
+- Stop routing expired OAuth credentials when refresh fails, sanitize upstream OAuth errors, reject stale account targets, isolate concurrent multi-account device flows, and clean up expired pending authorization state.
+- Retain OAuth callback state until token exchange and encrypted persistence succeed, close completed loopback listeners, and prevent iFlow credential-bearing URLs from appearing in application errors or logs.
+
+### Fixed
+
+- Preserve function declarations, forced tool choice, assistant tool calls, tool results, streamed arguments, and tool-call finish reasons across OpenAI Chat, Responses, Anthropic Messages, Gemini, Cursor, Kiro, Vertex, GitHub Copilot, OpenRouter, and OpenCode adapters.
+- Return a real JSON chat completion when `stream:false` is requested from a streaming upstream, without corrupting usage accounting, cache safety, or concurrency tickets.
+- Keep agent continuations on the same upstream account/provider, recognize tool-only continuation turns, and exclude providers that cannot support the requested tool protocol.
+- Validate Cursor, OpenRouter, and OpenCode with representative inference requests so the dashboard no longer reports false-positive connections.
+- Preserve provider-specific tool names and arguments through Cursor/Gemini continuations, strip private router fields before strict upstream calls, and harden incremental SSE/protobuf argument handling against duplicate payloads.
+
+### Validation
+
+- 313 unit tests across 57 files, TypeScript validation, dependency audit, OSS public-boundary check, production build, and OSS/SaaS VPS health checks pass.
+
+## 0.1.39 - 2026-07-20
+
+### Fixed
+
+- Route requests carrying `tools` or `tool_choice` only through upstream adapters that support function calling, while allowing an explicit per-provider capability override.
+- Generate Hermes and OpenClaw configuration with agent context and tool-capability metadata so patched clients can expose file and execution tools reliably.
+- Make the Hermes/OpenClaw connection test require a real, harmless function-call response instead of reporting success after an ordinary chat response.
+
+### Validation
+
+- 287 unit tests across 55 files, TypeScript validation, OSS public-boundary check, production build, VPS health check, and internal/public function-call probes pass.
+
+## 0.1.38 - 2026-07-18
+
+### Fixed
+
+- Redesign Live Routing as a responsive, pannable, auto-fitting provider topology with curved directional flow, bounded provider logos, and reliable zoom controls.
+- Show only routable providers, keep active provider topology visible before the first request, prevent dense provider nodes and dashboard tables from overlapping, and consolidate the request inspector, provider fleet, and event stream into a responsive operator workspace.
+- Filter live events before applying the event limit and reconcile provider activity by stable ID or provider name so fleet counters remain accurate after imports or provider renames.
+- Anchor standalone `DATA_DIR` to the project root, support atomic `.next-new` builds, and copy runtime assets into the dist directory embedded by Next.js.
+- Never redisplay bootstrap-password guidance after an admin password hash exists, and strip private `_nesa*` request metadata before forwarding requests to strict OpenAI-compatible upstreams.
+- Keep the active navigation item visible on compact layouts and prevent local visual-audit/build artifacts from entering public releases.
+
+### Validation
+
+- 285 unit tests across 55 files, TypeScript validation, OSS public-boundary check, production build, isolated end-to-end smoke test, and runtime health/auth-boundary checks pass.
+
+## 0.1.37 - 2026-07-17
+
+### Fixed
+
+- Route CLI connection tests through NesaRouter's internal loopback endpoint so public-tunnel hairpin failures no longer produce false negatives.
+- Generate current Qwen Code provider settings, make unsupported Gemini CLI and Continue integrations explicitly manual, and correct Roo's OpenAI-compatible setup guidance.
+- Merge Codex, Hermes, DeepSeek TUI, and jcode configuration safely without erasing unrelated user settings; persist Bash environment variables for future shells.
+- Reject malformed existing JSON instead of overwriting it, return actionable permission errors, and fully remove NesaRouter references during CLI reset.
+- Report executable detection, configuration presence, and credential readiness separately so a config directory alone is not shown as a connected CLI.
+
+### Validation
+
+- 275 unit tests across 53 files, TypeScript validation, OSS public-boundary check, and production build pass.
+
+## 0.1.36 - 2026-07-17
+
+### Security
+
+- Require client authentication before parsing OpenAI-compatible request bodies and reject oversized JSON/audio payloads.
+- Trust forwarded host, protocol, and client-IP headers only when `NESA_TRUST_PROXY=true`; cap admin session lifetime and strengthen login throttling defaults.
+- Verify downloaded cloudflared assets with the SHA-256 digest published by GitHub Releases, validate managed process identity before signalling a PID, and harden local data permissions on POSIX.
+- Add browser security headers, isolate external tunnel links, redact local credential paths, and avoid redisclosing existing CLI API keys.
+- Bound MCP sessions and RPC payloads, close failed child-process streams, and emit valid multiline SSE framing.
+
+### Fixed
+
+- Preserve concurrently-created API keys and usage records when saving router settings instead of rewriting unrelated SQLite tables from a stale snapshot.
+- Start and stop Headroom/cloudflared safely across Windows, Linux, and macOS without treating a reused PID as a managed process.
+- Stream SOCKS responses, encode multipart uploads correctly, apply upstream timeouts, and propagate client cancellation to provider requests.
+- Coalesce concurrent OAuth token refreshes per account and correct cache keys, output-token estimates, quota accounting, and failed/cancelled stream spend accounting.
+- Handle CRLF and bounded SSE buffers, parallel Claude tool calls, and Responses API function-call input/output translation.
+
+### Validation
+
+- 269 unit tests across 53 files, TypeScript validation, OSS public-boundary check, production build, and cloudflared release-digest availability check pass.
+
+## 0.1.35 - 2026-07-17
+
+### Security
+
+- **Web fetch SSRF**: pin outbound connections to the DNS address that passed validation and block hexadecimal IPv4-mapped IPv6 forms, closing DNS-rebinding and address-encoding bypasses.
+- **Public/private boundary**: CI rejects private SaaS source paths, environment markers, migrations, tests, and PostgreSQL dependencies from the OSS repository.
+
+### Fixed
+
+- **Headroom process**: start through the installed Python module when the CLI launcher is outside `PATH`; include pip user-script locations and report spawn/stop failures correctly.
+- **Cloudflare Tunnel**: Restart now applies changed ports; startup timeout kills the child; old-process exit events no longer clear a newer PID/process; intentional kills are scoped per child.
+- **Tailscale**: never report a public Funnel as private Serve; verify reset before reporting Disable success.
+- **Concurrency queue**: cancel queued upstream work when the client disconnects instead of calling a provider later.
+- **Settings API**: reject malformed JSON, unknown fields, invalid URLs/enums, negative limits, and malformed combo/alias/tool settings.
+- **Dashboard actions**: preserve unsaved Headroom/Tunnel drafts during polling and show backend/network failures for Stop, Disable, Delete, Revoke, alias, and routing actions.
+- **Test isolation**: use a temporary SQLite database per Vitest worker and replace the MCP fixed sleep with a bounded readiness assertion.
+
+### Validation
+
+- 263 unit tests, TypeScript validation, the OSS boundary check, production build, and browser navigation smoke pass.
+
 ## 0.1.34 - 2026-07-16
 
 ### Fixed

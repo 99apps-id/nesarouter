@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/core/auth";
+import { authorizeRequest, readJsonBodyLimited, RequestBodyTooLargeError } from "@/core/auth";
 import { ExternalUrlValidationError, fetchExternalText } from "@/core/safeWebFetch";
 import { readStore } from "@/lib/store";
 
@@ -12,7 +12,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: { message: "Invalid NesaRouter API key." } }, { status: 401 });
   }
 
-  const body = await request.json().catch(() => ({}));
+  let body: any;
+  try {
+    body = await readJsonBodyLimited(request, 1024 * 1024);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return NextResponse.json({ error: { message: error.message } }, { status: 413 });
+    return NextResponse.json({ error: { message: "Request body must be valid JSON." } }, { status: 400 });
+  }
   const rawUrl = typeof body?.url === "string" ? body.url.trim() : "";
   if (!rawUrl) return NextResponse.json({ error: { message: "url is required." } }, { status: 400 });
 

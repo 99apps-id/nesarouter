@@ -3,6 +3,7 @@ import { authorizeRequest } from "@/core/auth";
 import { cacheKeyForBody, findCache } from "@/core/cache";
 import { estimateCost } from "@/core/estimation";
 import { callProvider, testProviderConnection, UpstreamProviderError } from "@/core/providerClient";
+import { collectSseChatCompletion } from "@/core/providers/openaiResponses";
 import { chooseProvider, findCombo } from "@/core/router";
 import { trackOpenAiStreamUsage, withStreamEnd, OpenAiUsage, StreamEndState } from "@/core/streaming";
 import { compressToolResults } from "@/core/rtk";
@@ -14,17 +15,47 @@ import { ensureFreshAccessToken } from "@/core/providerOAuthFlow";
 import { isOAuthAccountFatalError } from "@/core/oauthAccountHealth";
 import { applyFreshOAuthToken, clearOAuthAccountCooldown, markOAuthAccountCooldown, pickActiveOAuthAccounts, providerWithFreshOAuthToken, rememberOAuthAccountUse } from "@/core/oauthAccounts";
 import { clearKeyCooldown, markKeyCooldown, pickActiveKeys, rememberKeyUse } from "@/core/providerKeys";
-import { acquireGate, GateTicket, QueueTimeoutError } from "@/core/requestGate";
+import { acquireGate, GateAbortedError, GateTicket, QueueTimeoutError } from "@/core/requestGate";
 import { recordCacheHit, recordError, recordQueueTimeout, recordRequest } from "@/core/runtimeMetrics";
 import { peekStickyProvider, rememberStickyProvider, stickySessionKey } from "@/core/stickyRouting";
-import { appendUsage, clearProviderCooldown, markProviderFailure, markOAuthAccountConnection, readStore, saveCacheEntry } from "@/lib/store";
+import { appendUsage, clearProviderCooldown, markProviderFailure, readStore, saveCacheEntry } from "@/lib/store";
+import { markOAuthAccountConnection } from "@/lib/providerOAuthPersistence";
 import { Combo, NesaStore, ProviderConfig, RouteDecision, UsageLog } from "@/core/types";
+import { withProviderRequestSignal } from "@/core/providers/shared";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function hasStructuredToolProtocol(body: any) {
+  if ((Array.isArray(body?.tools) && body.tools.length > 0) || body?.tool_choice != null) return true;
+  if (typeof body?.previous_response_id === "string" && body.previous_response_id.trim()) return true;
+  if (Array.isArray(body?.messages) && body.messages.some((message: any) =>
+    message?.role === "tool" || (Array.isArray(message?.tool_calls) && message.tool_calls.length > 0)
+  )) {
+    return true;
+  }
+  if (Array.isArray(body?.input)) {
+    return body.input.some((item: any) => {
+      const type = String(item?.type ?? "");
+      return type === "function_call" || type === "function_call_output" || type.includes("tool");
+    });
+  }
+  return false;
+}
+
 function requestId() {
   return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+/** Keep header values free of control characters and bounded in length. */
+export function sanitizeHeaderValue(value: string, maxLength = 300) {
+  return value.replace(/[\r\n]+/g, " ").slice(0, maxLength);
+}
+
+/** `X-Nesa-Token-Saver: off` lets one request skip Caveman/Ponytail injection without touching global settings. */
+export function tokenSaverBypassed(request: Request) {
+  const header = request.headers.get("x-nesa-token-saver")?.trim().toLowerCase();
+  return header === "off" || header === "0" || header === "false";
 }
 
 function loggedModel(body: any, fallback: string) {
@@ -33,6 +64,13 @@ function loggedModel(body: any, fallback: string) {
   const normalized = requested.toLowerCase();
   if (normalized === "auto" || normalized === "nesa-auto" || normalized === "nesa/router") return fallback;
   return requested;
+}
+
+/** Never let malformed provider usage poison quotas, budgets, or SQLite sums. */
+export function safeTokenCount(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return Math.max(0, Math.floor(fallback));
+  return Math.floor(parsed);
 }
 
 function isQuotaError(error: UpstreamProviderError) {
@@ -70,6 +108,10 @@ function queueTimeoutResponse(error: QueueTimeoutError) {
   );
 }
 
+function gateAbortedResponse() {
+  return NextResponse.json({ error: { message: "Request cancelled." } }, { status: 499 });
+}
+
 async function revalidateQuotaCooldown(provider: ProviderConfig): Promise<boolean> {
   try {
     if (provider.oauthProfile) {
@@ -98,6 +140,7 @@ export interface ChatHandlerResult {
  * format); adapters translate in/out around this.
  */
 export async function handleChat(body: any, request: Request): Promise<ChatHandlerResult> {
+  const startedAt = Date.now();
   const store = await readStore();
 
   if (!authorizeRequest(store, request)) {
@@ -107,6 +150,7 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
   recordRequest();
 
   const combo = findCombo(store, resolveModelAlias(store.aliases, typeof body?.model === "string" ? body.model : ""));
+  const bypassSaver = tokenSaverBypassed(request);
 
   // Token saver → RTK → Headroom run before cache keying so the cache
   // namespace reflects the active transforms. Headroom is fail-open.
@@ -114,11 +158,12 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
     ...body,
     model: resolveModelAlias(store.aliases, typeof body?.model === "string" ? body.model : "")
   };
-  const saverApplied = injectTokenSaver(aliasedBody, store.router.tokenSaver);
+  const saverApplied = injectTokenSaver(aliasedBody, bypassSaver ? undefined : store.router.tokenSaver);
   const rtkApplied = store.router.rtkEnabled ? compressToolResults(saverApplied) : { body: saverApplied, savedChars: 0 };
-  const pxpipeApplied = await compressWithPxpipe(rtkApplied.body, store.router.pxpipeEnabled);
+  const structuredTools = hasStructuredToolProtocol(rtkApplied.body);
+  const pxpipeApplied = await compressWithPxpipe(rtkApplied.body, store.router.pxpipeEnabled && !structuredTools);
   const headroomApplied = await compressWithHeadroom(pxpipeApplied.body, {
-    enabled: store.router.headroomEnabled,
+    enabled: store.router.headroomEnabled && !structuredTools,
     url: store.router.headroomUrl,
     model: typeof aliasedBody?.model === "string" ? aliasedBody.model : undefined,
     compressUserMessages: store.router.headroomCompressUserMessages
@@ -126,7 +171,7 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
   const effectiveBody = headroomApplied.body;
 
   const key = cacheKeyForBody(effectiveBody);
-  if (store.router.cacheEnabled && !body?.stream) {
+  if (store.router.cacheEnabled && !body?.stream && !structuredTools) {
     const cached = findCache(store, key);
     if (cached) {
       const log: UsageLog = {
@@ -156,7 +201,8 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
             "x-nesa-cost-source": "cached",
             "x-nesa-saved-usd": String(cached.savedCostUsd),
             "x-nesa-rtk-saved": String(rtkApplied.savedChars),
-            "x-nesa-headroom": headroomApplied.applied ? "applied" : "skipped"
+            "x-nesa-headroom": headroomApplied.applied ? "applied" : "skipped",
+            ...(bypassSaver ? { "x-nesa-token-saver": "bypassed" } : {})
           }
         }),
         combo
@@ -164,9 +210,9 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
     }
   }
 
-  const response = await runFallbackLoop(store, effectiveBody, key, combo, request);
+  const response = await runFallbackLoop(store, effectiveBody, key, combo, request, startedAt);
   if (response.status >= 400) recordError();
-  if (headroomApplied.applied || rtkApplied.savedChars > 0) {
+  if (headroomApplied.applied || rtkApplied.savedChars > 0 || bypassSaver) {
     const headers = new Headers(response.headers);
     if (rtkApplied.savedChars > 0) headers.set("x-nesa-rtk-saved", String(rtkApplied.savedChars));
     if (headroomApplied.applied) {
@@ -175,6 +221,7 @@ export async function handleChat(body: any, request: Request): Promise<ChatHandl
         headers.set("x-nesa-headroom-saved", String(headroomApplied.stats.tokens_saved));
       }
     }
+    if (bypassSaver) headers.set("x-nesa-token-saver", "bypassed");
     return {
       response: new Response(response.body, { status: response.status, statusText: response.statusText, headers }),
       combo
@@ -188,7 +235,8 @@ async function runFallbackLoop(
   body: any,
   key: string,
   combo: Combo | undefined,
-  request?: Request
+  request: Request | undefined,
+  startedAt: number
 ): Promise<Response> {
   const failedProviderIds: string[] = [];
   const errors: string[] = [];
@@ -254,13 +302,14 @@ async function runFallbackLoop(
         const oauthProvider = providerWithFreshOAuthToken(decision.provider, account, fresh);
         let ticket: GateTicket | undefined;
         try {
-          ticket = await acquireGate(decision.provider.id, gateLimits(store));
+          ticket = await acquireGate(decision.provider.id, gateLimits(store), request?.signal);
         } catch (error) {
           if (error instanceof QueueTimeoutError) return queueTimeoutResponse(error);
+          if (error instanceof GateAbortedError) return gateAbortedResponse();
           throw error;
         }
         try {
-          const upstream = await callProvider(oauthProvider, body);
+          const upstream = await withProviderRequestSignal(request?.signal, () => callProvider(oauthProvider, body));
           rememberOAuthAccountUse(decision.provider.id, account.index);
           clearOAuthAccountCooldown(decision.provider.id, account.index);
           await markOAuthAccountConnection(decision.provider.id, account.id, true);
@@ -269,10 +318,10 @@ async function runFallbackLoop(
           rememberStickyProvider(stickyKey, decision.provider.id);
 
           if (upstream instanceof ReadableStream) {
-            return finalizeStream(store, decision, upstream, key, body, ticket);
+            return finalizeStream(store, decision, upstream, key, body, startedAt, ticket);
           }
           try {
-            return await finalizeJson(store, decision, upstream, key, body);
+            return await finalizeJson(store, decision, upstream, key, body, startedAt);
           } finally {
             ticket.release();
           }
@@ -309,13 +358,14 @@ async function runFallbackLoop(
       for (const picked of keys) {
         let ticket: GateTicket | undefined;
         try {
-          ticket = await acquireGate(decision.provider.id, gateLimits(store));
+          ticket = await acquireGate(decision.provider.id, gateLimits(store), request?.signal);
         } catch (error) {
           if (error instanceof QueueTimeoutError) return queueTimeoutResponse(error);
+          if (error instanceof GateAbortedError) return gateAbortedResponse();
           throw error;
         }
         try {
-          const upstream = await callProvider(decision.provider, body, picked.key);
+          const upstream = await withProviderRequestSignal(request?.signal, () => callProvider(decision.provider, body, picked.key));
           rememberKeyUse(decision.provider.id, picked.index);
           clearKeyCooldown(decision.provider.id, picked.index);
           await clearProviderCooldown(decision.provider.id);
@@ -323,11 +373,11 @@ async function runFallbackLoop(
           rememberStickyProvider(stickyKey, decision.provider.id);
 
           if (upstream instanceof ReadableStream) {
-            return finalizeStream(store, decision, upstream, key, body, ticket, picked.index);
+            return finalizeStream(store, decision, upstream, key, body, startedAt, ticket, picked.index);
           }
 
           try {
-            return await finalizeJson(store, decision, upstream, key, body, picked.index);
+            return await finalizeJson(store, decision, upstream, key, body, startedAt, picked.index);
           } finally {
             ticket.release();
           }
@@ -393,10 +443,11 @@ function skippedProvidersHeader(skipped: RouteDecision["skippedProviders"] | und
     .slice(0, 700);
 }
 
-async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream: any, key: string, body: any, keyIndex?: number) {
+async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream: any, key: string, body: any, startedAt: number, keyIndex?: number) {
+  const structuredTools = hasStructuredToolProtocol(body);
   const usage = upstream?.usage ?? {};
-  const inputTokens = Number(usage.prompt_tokens ?? decision.estimatedInputTokens);
-  const outputTokens = Number(usage.completion_tokens ?? decision.estimatedOutputTokens);
+  const inputTokens = safeTokenCount(usage.prompt_tokens, decision.estimatedInputTokens);
+  const outputTokens = safeTokenCount(usage.completion_tokens, decision.estimatedOutputTokens);
   const totalCostUsd =
     decision.provider.tier === "free"
       ? 0
@@ -415,7 +466,7 @@ async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream:
     outputTokens,
     totalCostUsd,
     costSource: decision.provider.tier === "free" ? "free" : costSource,
-    cacheStatus: store.router.cacheEnabled ? "miss" : "skipped",
+    cacheStatus: store.router.cacheEnabled && !structuredTools ? "miss" : "skipped",
     budgetStatus: decision.budgetStatus,
     routingReason: decision.routingReason,
     status: "success",
@@ -423,7 +474,7 @@ async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream:
     keyIndex
   };
 
-  if (store.router.cacheEnabled) {
+  if (store.router.cacheEnabled && !structuredTools) {
     await saveCacheEntry({
       key,
       createdAt: new Date().toISOString(),
@@ -443,6 +494,8 @@ async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream:
       "x-nesa-budget-status": decision.budgetStatus,
       "x-nesa-cost-source": log.costSource,
       "x-nesa-cache": log.cacheStatus,
+      "x-nesa-routing-reason": sanitizeHeaderValue(decision.routingReason),
+      "x-nesa-latency-ms": String(Date.now() - startedAt),
       ...(skippedProvidersHeader(decision.skippedProviders)
         ? { "x-nesa-skipped": skippedProvidersHeader(decision.skippedProviders)! }
         : {})
@@ -450,18 +503,30 @@ async function finalizeJson(store: NesaStore, decision: RouteDecision, upstream:
   });
 }
 
-function finalizeStream(
+async function finalizeStream(
   store: NesaStore,
   decision: RouteDecision,
   upstream: ReadableStream<Uint8Array>,
   key: string,
   body: any,
+  startedAt: number,
   ticket?: GateTicket,
   keyIndex?: number
 ) {
+  if (body?.stream === false) {
+    const completion = await collectSseChatCompletion(upstream, loggedModel(body, decision.provider.model));
+    try {
+      return await finalizeJson(store, decision, completion, key, body, startedAt, keyIndex);
+    } finally {
+      ticket?.release();
+    }
+  }
   let capturedUsage: OpenAiUsage | null = null;
+  let observedOutputCharacters = 0;
   const tracked = trackOpenAiStreamUsage(upstream, (usage) => {
     capturedUsage = usage;
+  }, (text) => {
+    observedOutputCharacters += text.length;
   });
 
   const baseLog: UsageLog = {
@@ -486,8 +551,13 @@ function finalizeStream(
 
   const finalizeLog = (streamEnd: StreamEndState) => {
     ticket?.release();
-    const inputTokens = capturedUsage?.prompt_tokens ?? baseLog.inputTokens;
-    const outputTokens = capturedUsage?.completion_tokens ?? baseLog.outputTokens;
+    const inputTokens = safeTokenCount(capturedUsage?.prompt_tokens, baseLog.inputTokens);
+    // `estimatedOutputTokens` can be the client's very large max_tokens value.
+    // It is suitable for admission reservation, never for actual usage ledger.
+    const outputTokens = safeTokenCount(
+      capturedUsage?.completion_tokens,
+      Math.ceil(observedOutputCharacters / 4)
+    );
     const totalCostUsd =
       decision.provider.tier === "free"
         ? 0
@@ -515,8 +585,7 @@ function finalizeStream(
   };
 
   const withEnd = withStreamEnd(tracked, finalizeLog);
-  return Promise.resolve(
-    new Response(withEnd, {
+  return new Response(withEnd, {
       status: 200,
       headers: {
         "content-type": "text/event-stream",
@@ -524,10 +593,11 @@ function finalizeStream(
         "x-nesa-provider": decision.provider.id,
         "x-nesa-budget-status": decision.budgetStatus,
         "x-nesa-cost-source": baseLog.costSource,
+        "x-nesa-routing-reason": sanitizeHeaderValue(decision.routingReason),
+        "x-nesa-latency-ms": String(Date.now() - startedAt),
         ...(skippedProvidersHeader(decision.skippedProviders)
           ? { "x-nesa-skipped": skippedProvidersHeader(decision.skippedProviders)! }
           : {})
       }
-    })
-  );
+    });
 }

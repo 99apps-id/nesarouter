@@ -1,6 +1,27 @@
 import crypto from "node:crypto";
 import { OAuthPreset } from "@/core/oauthProviderPresets";
 
+export function sanitizeOAuthErrorBody(raw: string): string {
+  let message = raw.trim();
+  try {
+    const parsed = JSON.parse(message);
+    message = [parsed?.error, parsed?.error_description, parsed?.message]
+      .filter((value) => typeof value === "string" && value.trim())
+      .join(": ") || "upstream rejected the request";
+  } catch {
+    // Plain-text OAuth errors are still sanitized below.
+  }
+  return message
+    .replace(/((?:access|refresh|id)[_-]?token|client_secret|code)\s*[=:]\s*[^\s,;&]+/gi, "$1=[redacted]")
+    .replace(/\b(?:Bearer\s+)?[A-Za-z0-9_-]{40,}\b/g, "[redacted]")
+    .slice(0, 240);
+}
+
+async function oauthHttpError(prefix: string, response: Response) {
+  const detail = sanitizeOAuthErrorBody(await response.text());
+  return new Error(`${prefix} (HTTP ${response.status})${detail ? `: ${detail}` : ""}`);
+}
+
 function base64Url(buffer: Buffer) {
   return buffer.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
@@ -97,7 +118,7 @@ export async function exchangeCode(
       : { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
     body: preset.tokenEncoding === "json" ? JSON.stringify(body) : new URLSearchParams(body).toString()
   });
-  if (!response.ok) throw new Error(`OAuth token exchange failed: ${await response.text()}`);
+  if (!response.ok) throw await oauthHttpError("OAuth token exchange failed", response);
   return await response.json();
 }
 
@@ -118,18 +139,22 @@ async function exchangeIflowCode(preset: OAuthPreset, code: string, redirectUri:
       client_secret: preset.clientSecret ?? ""
     }).toString()
   });
-  if (!response.ok) throw new Error(`iFlow token exchange failed: ${await response.text()}`);
+  if (!response.ok) throw await oauthHttpError("iFlow token exchange failed", response);
   return await response.json();
 }
 
 /** Resolve iFlow upstream API key from userInfo (preferred over OAuth access token for chat). */
 export async function resolveIflowApiKey(preset: OAuthPreset, accessToken: string): Promise<string> {
   if (!preset.iflowUserInfoUrl) return accessToken;
+  // iFlow's published/observed contract requires accessToken in the query.
+  // Construct it locally and never include the URL in errors or logs.
+  const userInfoUrl = new URL(preset.iflowUserInfoUrl);
+  userInfoUrl.searchParams.set("accessToken", accessToken);
   const response = await fetch(
-    `${preset.iflowUserInfoUrl}?accessToken=${encodeURIComponent(accessToken)}`,
+    userInfoUrl,
     { headers: { accept: "application/json" } }
   );
-  if (!response.ok) throw new Error(`iFlow userInfo failed: ${await response.text()}`);
+  if (!response.ok) throw await oauthHttpError("iFlow userInfo failed", response);
   const result = await response.json();
   const apiKey = result?.data?.apiKey;
   if (typeof apiKey !== "string" || !apiKey.trim()) throw new Error("Empty API key returned from iFlow");
@@ -162,7 +187,7 @@ async function exchangeClineCode(preset: OAuthPreset, code: string, redirectUri:
         redirect_uri: redirectUri
       })
     });
-    if (!response.ok) throw new Error(`Cline token exchange failed: ${await response.text()}`);
+    if (!response.ok) throw await oauthHttpError("Cline token exchange failed", response);
     const data = await response.json();
     const access = data.data?.accessToken || data.accessToken;
     const refresh = data.data?.refreshToken || data.refreshToken;
@@ -192,7 +217,7 @@ export async function refreshToken(preset: OAuthPreset, refreshTokenValue: strin
       : { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
     body: preset.tokenEncoding === "json" ? JSON.stringify(body) : new URLSearchParams(body).toString()
   });
-  if (!response.ok) throw new Error(`OAuth token refresh failed: ${await response.text()}`);
+  if (!response.ok) throw await oauthHttpError("OAuth token refresh failed", response);
   return await response.json();
 }
 
@@ -270,7 +295,7 @@ export async function startDeviceFlow(preset: OAuthPreset, codeChallenge?: strin
     headers,
     body: body.toString()
   });
-  if (!response.ok) throw new Error(`Device code request failed: ${await response.text()}`);
+  if (!response.ok) throw await oauthHttpError("Device code request failed", response);
   return await response.json();
 }
 
@@ -331,7 +356,7 @@ async function startCodebuddyDeviceFlow(preset: OAuthPreset): Promise<DeviceCode
     },
     body: "{}"
   });
-  if (!response.ok) throw new Error(`CodeBuddy state request failed: ${await response.text()}`);
+  if (!response.ok) throw await oauthHttpError("CodeBuddy state request failed", response);
   const data = await response.json();
   if (data.code !== 0 || !data.data?.state || !data.data?.authUrl) {
     throw new Error(`CodeBuddy state error: ${data.msg || "missing state/authUrl"}`);
@@ -387,7 +412,7 @@ export async function refreshCodebuddyToken(preset: OAuthPreset, refreshTokenVal
     },
     body: JSON.stringify({ refreshToken: refreshTokenValue })
   });
-  if (!response.ok) throw new Error(`CodeBuddy refresh failed: ${await response.text()}`);
+  if (!response.ok) throw await oauthHttpError("CodeBuddy refresh failed", response);
   const data = await response.json();
   const access = data.data?.accessToken || data.accessToken || data.access_token;
   if (!access) throw new Error("CodeBuddy refresh returned no access token.");
@@ -407,7 +432,7 @@ async function startKiloDeviceFlow(preset: OAuthPreset): Promise<DeviceCodeInfo>
   });
   if (!response.ok) {
     if (response.status === 429) throw new Error("Too many pending Kilo authorization requests. Try again later.");
-    throw new Error(`Kilo device auth initiation failed: ${await response.text()}`);
+    throw await oauthHttpError("Kilo device auth initiation failed", response);
   }
   const data = await response.json();
   return {
@@ -452,7 +477,7 @@ export async function registerKiroOidcClient(preset: OAuthPreset): Promise<{ cli
       issuerUrl: preset.kiroIssuerUrl
     })
   });
-  if (!response.ok) throw new Error(`Kiro OIDC register failed: ${await response.text()}`);
+  if (!response.ok) throw await oauthHttpError("Kiro OIDC register failed", response);
   const data = await response.json();
   if (!data?.clientId || !data?.clientSecret) throw new Error("Kiro OIDC register returned no client credentials.");
   return { clientId: data.clientId, clientSecret: data.clientSecret };
@@ -473,7 +498,7 @@ export async function startKiroDeviceFlow(
       startUrl: preset.kiroStartUrl ?? "https://view.awsapps.com/start"
     })
   });
-  if (!response.ok) throw new Error(`Kiro device authorization failed: ${await response.text()}`);
+  if (!response.ok) throw await oauthHttpError("Kiro device authorization failed", response);
   const data = await response.json();
   return {
     device_code: data.deviceCode,
@@ -540,7 +565,7 @@ export async function refreshKiroToken(
       grantType: "refresh_token"
     })
   });
-  if (!response.ok) throw new Error(`Kiro token refresh failed: ${await response.text()}`);
+  if (!response.ok) throw await oauthHttpError("Kiro token refresh failed", response);
   return normalizeAwsTokens(await response.json());
 }
 

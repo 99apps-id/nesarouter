@@ -1,6 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import { UsageLog } from "@/core/types";
-import { money } from "@/lib/format";
+import { money, formatTime } from "@/lib/format";
 import ProviderIcon from "@/components/ProviderIcon";
 
 export default function RequestInspector({ usage }: { usage: UsageLog[] }) {
@@ -29,7 +29,7 @@ export default function RequestInspector({ usage }: { usage: UsageLog[] }) {
               <details key={item.id} className="inspector-row">
                 <summary className="inspector-summary">
                   <ChevronRight size={14} className="inspector-chevron" />
-                  <span className="inspector-time">{new Date(item.createdAt).toLocaleTimeString()}</span>
+                  <span className="inspector-time">{formatTime(item.createdAt)}</span>
                   <span className="provider-cell">
                     <ProviderIcon
                       provider={{ providerName: item.providerName, model: item.model }}

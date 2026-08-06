@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { parseOAuthCallbackPaste } from "@/core/oauthCallbackPaste";
 import { exchangeCode, loadAntigravityProjectId, resolveIflowApiKey } from "@/core/oauthPkce";
 import { getPreset } from "@/core/oauthProviderPresets";
-import { deleteOAuthPending, readOAuthPending, readProviderById, saveProviderOAuthTokens } from "@/lib/store";
+import { readProviderById } from "@/lib/store";
+import { saveProviderOAuthTokens } from "@/lib/providerOAuthPersistence";
+import { deleteOAuthPending, readOAuthPending } from "@/lib/oauthPendingPersistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +17,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
   const { id } = await context.params;
-  const body = (await request.json().catch(() => ({}))) as { code?: string; state?: string; callbackUrl?: string };
+  const parsedBody = await readAdminJson<{ code?: string; state?: string; callbackUrl?: string }>(request, 64 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   const raw = (body.callbackUrl ?? body.code ?? "").trim();
   const parsed = parseOAuthCallbackPaste(raw, body.state);
   if (!parsed.code || !parsed.state) {
@@ -33,7 +37,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     return NextResponse.json({ error: "Invalid or expired OAuth state. Click Connect again." }, { status: 400 });
   }
   const pendingAgeMs = Date.now() - new Date(pending.createdAt).getTime();
-  if (pendingAgeMs > 30 * 60_000) {
+  if (pendingAgeMs > 10 * 60_000) {
     await deleteOAuthPending(parsed.state);
     return NextResponse.json({ error: "OAuth state expired. Click Connect again." }, { status: 400 });
   }
@@ -44,7 +48,6 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!preset) return NextResponse.json({ error: "Provider has no OAuth profile." }, { status: 400 });
 
   try {
-    await deleteOAuthPending(parsed.state);
     if (preset.tokenInCallback) {
       let token = parsed.code;
       try {
@@ -58,6 +61,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         accountId: pending.accountId,
         createNew: !pending.accountId
       });
+      await deleteOAuthPending(parsed.state);
       return NextResponse.json({ ok: true });
     }
 
@@ -84,6 +88,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         createNew: !pending.accountId
       }
     );
+    await deleteOAuthPending(parsed.state);
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "OAuth exchange failed.";

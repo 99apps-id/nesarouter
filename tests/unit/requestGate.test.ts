@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { acquireGate, getGateSnapshot, QueueTimeoutError, resetGateForTests } from "@/core/requestGate";
+import { acquireGate, GateAbortedError, getGateSnapshot, QueueTimeoutError, resetGateForTests } from "@/core/requestGate";
 
 afterEach(() => {
   resetGateForTests();
@@ -53,5 +53,16 @@ describe("requestGate", () => {
     );
     held.release();
     expect(getGateSnapshot().waiting).toBe(0);
+  });
+
+  it("removes a queued request when its client aborts", async () => {
+    const held = await acquireGate("x", { maxGlobal: 1, maxPerProvider: 0, waitMs: 1000 });
+    const controller = new AbortController();
+    const waiting = acquireGate("y", { maxGlobal: 1, maxPerProvider: 0, waitMs: 1000 }, controller.signal);
+    expect(getGateSnapshot().waiting).toBe(1);
+    controller.abort();
+    await expect(waiting).rejects.toBeInstanceOf(GateAbortedError);
+    expect(getGateSnapshot().waiting).toBe(0);
+    held.release();
   });
 });

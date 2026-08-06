@@ -113,6 +113,9 @@ Copy `.env.example` to `.env`. The important production variables are:
 | `NESA_PUBLIC_URL` | Recommended behind proxy | Public origin (`https://host` or `http://ip:20129`) used for OAuth redirects and post-login URLs. |
 | `NESA_COOKIE_SECURE` | Optional | Force `Secure` cookies on/off (`true`/`false`). Default: on for https public URL or production. |
 | `NESA_METRICS_TOKEN` | Optional (required to scrape) | Enables `GET /api/metrics`. Without it, metrics return 401. |
+| `NESA_TRUST_PROXY` | Optional | Set `true` behind a reverse proxy that sets `X-Forwarded-*` headers, so real client IPs are used for rate limiting and public-URL resolution instead of one shared bucket. |
+| `NESA_DB_BACKUP_INTERVAL_HOURS` | Optional | Auto-backup interval for the SQLite database, written to `data/backups/`. Default `24`; `0` disables. |
+| `NESA_DB_BACKUP_KEEP` | Optional | Number of newest backups to keep; older ones are pruned. Default `7`. |
 
 Generate an encryption key:
 
@@ -166,7 +169,7 @@ Common endpoints:
 - `POST /v1/images/generations`
 - `POST /v1/audio/speech`
 - `POST /v1/audio/transcriptions`
-- `POST /v1/web/fetch` (SSRF-guarded)
+- `POST /v1/web/fetch` (SSRF-guarded; DNS is validated and the connection is pinned to that approved address)
 
 All `/v1` endpoints require a NesaRouter client key created in **Keys**. The dashboard has separate admin authentication (cookie session), not the client Bearer key.
 
@@ -182,14 +185,15 @@ All `/v1` endpoints require a NesaRouter client key created in **Keys**. The das
 
 Common prefixes: `cx`/`codex`, `cc`/`claude`, `gemini`/`gcli`, `copilot`, `kiro`, `cursor`, `oc`/`opencode`, `or`/`openrouter`, `ollama`, `ds`/`deepseek`.
 
-Response headers may include routing and saver metadata such as `x-nesa-cache` and `x-nesa-rtk-saved`.
+Response headers may include routing and saver metadata such as `x-nesa-cache`, `x-nesa-rtk-saved`, `x-nesa-routing-reason`, and `x-nesa-latency-ms`. Send `X-Nesa-Token-Saver: off` on a request to bypass Caveman/Ponytail injection for that call only (response echoes `x-nesa-token-saver: bypassed`).
 
 ## Operations
 
 - **Health**: `GET /api/health` returns liveness (`ok: true`) plus readiness (`ready`, `checks.db`, app `version` from `package.json`). HTTP **503** when the database check fails (usable as a readiness probe). Docker liveness can keep checking for process up / TCP.
 - **Metrics**: `GET /api/metrics` exposes Prometheus text (`nesa_requests_total`, queue gauges, budget spend, …). **Deny-by-default** — set `NESA_METRICS_TOKEN` and scrape with `Authorization: Bearer …` or `?token=`. Without the env var, the endpoint returns 401.
+- **Backups**: the SQLite database is backed up automatically to `data/backups/` (default: every 24h, newest 7 kept) starting shortly after the first request touches the database. Configure with `NESA_DB_BACKUP_INTERVAL_HOURS` / `NESA_DB_BACKUP_KEEP`; `NESA_DB_BACKUP_INTERVAL_HOURS=0` disables it.
 - **Aliases import**: paste 9router `GET /api/models/alias` JSON on the Aliases page (or `POST /api/aliases/import`) to migrate shorthand model maps.
-- **Concurrency queue**: under Routing settings, set global / per-provider max concurrent upstream calls (`0` = unlimited). Queue wait timeouts return HTTP 503 with `code: queue_timeout`.
+- **Concurrency queue**: under Routing settings, set global / per-provider max concurrent upstream calls (`0` = unlimited). Queue wait timeouts return HTTP 503 with `code: queue_timeout`; disconnected clients are removed from the queue.
 - **Routing**: mode, strategy, fallback, cache, budget, token savers (Caveman / RTK), and admin password.
 - **Combos**: named fallback or round-robin chains; aliases map friendly model names to targets.
 - **Usage**: live provider-flow map (NesaRouter hub with spaced provider ring). It polls real request logs and animates the provider used by a recent request; idle links do not animate. The Usage page also shows daily **provider + per-key token quota** bars.
@@ -198,7 +202,7 @@ Response headers may include routing and saver metadata such as `x-nesa-cache` a
 - **Keys**: create/revoke client Bearer keys for `/v1` (preview only after create). These are gateway client keys, not upstream provider key quotas.
 - **MCP**: bridge configured stdio servers over SSE and RPC (trusted binaries only).
 - **Tunnel**: optional Cloudflare quick tunnel or Tailscale for controlled remote access.
-- **Headroom / CLI**: optional compression proxy and CLI config helpers.
+- **Headroom / CLI**: optional compression proxy and CLI config helpers. Headroom is not started with NesaRouter automatically: open **Headroom**, install `headroom-ai[proxy]`, start the proxy, enable compression, and save. Docker installs it into the persistent `/app/data/headroom/venv` environment, so container upgrades do not require root-level pip writes.
 
 Do not expose the dashboard publicly without a reverse proxy, TLS, and an access policy you trust.
 
@@ -207,6 +211,8 @@ Do not expose the dashboard publicly without a reverse proxy, TLS, and an access
 ```powershell
 npm run typecheck
 npm test
+npm run test:coverage
+npm run test:e2e
 npm run build
 npm run start
 # In another terminal after the production server is ready:
@@ -223,7 +229,7 @@ Do not run `npm run dev` while `npm run build` or `npm run start` uses the same 
 - [Product notes](PRODUCT.md)
 - [Design notes](DESIGN.md)
 - [Code of conduct](CODE_OF_CONDUCT.md)
-- [Provider asset attribution](public/providers/ATTRIBUTION.md)
+- [Provider asset attribution](public/icons/ATTRIBUTION.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
 ## License

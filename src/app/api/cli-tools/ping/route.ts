@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { authorizeRequest } from "@/core/auth";
 import { keyId } from "@/lib/keyIdentity";
 import { readStore } from "@/lib/store";
@@ -20,12 +20,15 @@ export async function POST(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
 
-  const body = (await request.json().catch(() => ({}))) as {
+  const parsedBody = await readAdminJson<{
     token?: string;
     keyId?: string;
     model?: string;
     chat?: boolean;
-  };
+    toolProbe?: boolean;
+  }>(request, 16 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   const store = await readStore();
   const token = resolveToken(store, body);
   const model = body.model?.trim() || "auto";
@@ -40,7 +43,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid client key." }, { status: 401 });
   }
 
-  const origin = new URL(request.url).origin;
+  // This is a server-side routing probe, so never hairpin through the public
+  // tunnel/reverse proxy. Public DNS may not resolve back into the same VPS.
+  const port = Number(process.env.PORT) > 0 ? Number(process.env.PORT) : 20129;
+  const origin = process.env.NESA_INTERNAL_URL?.trim().replace(/\/$/, "") || `http://127.0.0.1:${port}`;
   try {
     const modelsResponse = await fetch(`${origin}/v1/models`, {
       method: "GET",
@@ -77,8 +83,24 @@ export async function POST(request: Request) {
       },
       body: JSON.stringify({
         model,
-        max_tokens: 8,
-        messages: [{ role: "user", content: "ping" }]
+        max_tokens: body.toolProbe ? 64 : 8,
+        messages: [{ role: "user", content: body.toolProbe ? "Call nesa_connectivity_probe with value ok." : "ping" }],
+        ...(body.toolProbe ? {
+          tools: [{
+            type: "function",
+            function: {
+              name: "nesa_connectivity_probe",
+              description: "Verify function calling without executing a system command.",
+              parameters: {
+                type: "object",
+                properties: { value: { type: "string" } },
+                required: ["value"],
+                additionalProperties: false
+              }
+            }
+          }],
+          tool_choice: { type: "function", function: { name: "nesa_connectivity_probe" } }
+        } : {})
       }),
       signal: AbortSignal.timeout(20_000)
     });
@@ -97,13 +119,30 @@ export async function POST(request: Request) {
         { status: 502 }
       );
     }
+    if (body.toolProbe) {
+      const toolCalls = payload?.choices?.[0]?.message?.tool_calls;
+      if (!Array.isArray(toolCalls) || toolCalls[0]?.function?.name !== "nesa_connectivity_probe") {
+        return NextResponse.json(
+          {
+            ok: false,
+            step: "tools",
+            status: 502,
+            error: "Provider menjawab chat tetapi tidak mengembalikan function call. Pilih model/provider yang mendukung tools.",
+            provider: response.headers.get("x-nesa-provider") ?? undefined
+          },
+          { status: 502 }
+        );
+      }
+    }
     return NextResponse.json({
       ok: true,
       step: "chat",
       provider: response.headers.get("x-nesa-provider") ?? undefined,
       model: payload?.model ?? model,
       skipped: response.headers.get("x-nesa-skipped") ?? undefined,
-      message: `NesaRouter routed ping → ${response.headers.get("x-nesa-provider") ?? "provider"}`
+      message: body.toolProbe
+        ? `NesaRouter tool calling OK -> ${response.headers.get("x-nesa-provider") ?? "provider"}`
+        : `NesaRouter routed ping -> ${response.headers.get("x-nesa-provider") ?? "provider"}`
     });
   } catch (error) {
     return NextResponse.json(

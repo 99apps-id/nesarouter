@@ -10,7 +10,7 @@ import {
   readLoginLockState,
   touchAdminSessionExpiry,
   writeLoginLockState
-} from "@/lib/store";
+} from "@/lib/adminPersistence";
 import {
   adminCookieName,
   buildAdminSessionCookie,
@@ -27,14 +27,19 @@ export { adminCookieName, peekAdminCookie, timingSafeEqualString } from "@/core/
 export const defaultAdminPassword = "nesa123456";
 export const MAX_LOGIN_ATTEMPTS = 5;
 
+function trustProxyHeaders() {
+  const value = process.env.NESA_TRUST_PROXY?.trim().toLowerCase();
+  return value === "1" || value === "true";
+}
+
 export function loginRateLimitKey(request: Request) {
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  const address =
-    request.headers.get("cf-connecting-ip")?.trim() ||
-    request.headers.get("x-real-ip")?.trim() ||
-    forwarded;
-  const userAgent = request.headers.get("user-agent")?.slice(0, 256) || "unknown";
-  const identity = address ? `ip:${address.toLowerCase()}` : `local:${userAgent}`;
+  const forwarded = trustProxyHeaders()
+    ? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
+    : undefined;
+  const address = trustProxyHeaders()
+    ? request.headers.get("cf-connecting-ip")?.trim() || request.headers.get("x-real-ip")?.trim() || forwarded
+    : undefined;
+  const identity = address ? `ip:${address.toLowerCase()}` : "direct";
   return crypto.createHash("sha256").update(identity).digest("hex").slice(0, 32);
 }
 
@@ -58,10 +63,11 @@ export async function adminPasswordMustChange() {
  * Login hint mode while no password hash exists yet.
  * - default: show well-known local bootstrap password
  * - env: custom NESA_ADMIN_PASSWORD is set (do not echo it; point at .env)
- * - null: password already changed (hash stored)
+ * - null: password already changed (hash stored) — NEVER show bootstrap UI
  */
 export async function adminLoginPasswordHint(): Promise<"default" | "env" | null> {
-  if (await readAdminPasswordHash()) return null;
+  const stored = await readAdminPasswordHash();
+  if (typeof stored === "string" && stored.trim().length > 0) return null;
   const fromEnv = process.env.NESA_ADMIN_PASSWORD?.trim();
   if (!fromEnv || fromEnv === defaultAdminPassword) return "default";
   return "env";
@@ -93,7 +99,7 @@ export async function recordLoginFailure(lockKey = "default") {
   const failedAttempts = state.failedAttempts + 1;
   const lockedUntil = failedAttempts >= MAX_LOGIN_ATTEMPTS ? new Date(Date.now() + 30 * 60_000).toISOString() : undefined;
   await writeLoginLockState({ failedAttempts, lockedUntil }, lockKey);
-  return readLoginLock(lockKey);
+  return await readLoginLock(lockKey);
 }
 
 export async function recordLoginSuccess(lockKey = "default") {

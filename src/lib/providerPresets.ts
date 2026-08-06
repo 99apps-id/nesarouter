@@ -50,6 +50,18 @@ export const providerPresets: ProviderConfig[] = [
 
   // --- Free / local ---
   preset({
+    id: "nesarouter",
+    name: "NesaRouter",
+    type: "openai_compatible",
+    tier: "balanced",
+    baseUrl: "https://nesarouter.com/v1",
+    model: "nesarouter/nesa-free",
+    models: ["nesarouter/nesa-free"],
+    priority: 34,
+    inputCostPerMTok: 0,
+    outputCostPerMTok: 0
+  }),
+  preset({
     id: "openrouter-free",
     name: "OpenRouter Free",
     type: "openai_compatible",
@@ -106,9 +118,36 @@ export const providerPresets: ProviderConfig[] = [
     baseUrl: "https://api.xiaomimimo.com/api/free-ai/openai/chat",
     model: "mimo-auto",
     models: ["mimo-auto"],
+    supportsTools: false,
     priority: 18,
     inputCostPerMTok: 0,
     outputCostPerMTok: 0
+  }),
+  // Pollinations OpenAI-compatible gateway (legacy text.pollinations.ai is retired).
+  // Generation consumes Pollen credit and requires a key from https://enter.pollinations.ai.
+  // Keep the historical id for existing SQLite rows and saved routing references.
+  preset({
+    id: "pollinations-free",
+    name: "Pollinations",
+    type: "openai_compatible",
+    tier: "cheap",
+    baseUrl: "https://gen.pollinations.ai/v1",
+    model: "openai",
+    models: [
+      "openai",
+      "openai-fast",
+      "openai-large",
+      "mistral",
+      "qwen-coder",
+      "deepseek",
+      "grok",
+      "gemini-flash-lite-3.5",
+      "perplexity-fast"
+    ],
+    supportsTools: true,
+    priority: 20,
+    inputCostPerMTok: 0.15,
+    outputCostPerMTok: 0.9375
   }),
   preset({
     id: "alibaba-dashscope",
@@ -1176,6 +1215,8 @@ export const providerPresetGroups: Array<{ label: string; ids: string[] }> = [
   {
     label: "Global API key",
     ids: [
+      "nesarouter",
+      "pollinations-free",
       "runware",
       "perplexity",
       "perplexity-agent",

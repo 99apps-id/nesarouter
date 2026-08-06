@@ -50,6 +50,8 @@ export interface ProviderConfig {
   model: string;
   /** All models this provider can serve (model is the primary/first entry). */
   models?: string[];
+  /** Whether this upstream can preserve function/tool calling payloads. */
+  supportsTools?: boolean;
   priority: number;
   inputCostPerMTok: number;
   outputCostPerMTok: number;
@@ -220,6 +222,21 @@ export interface NesaStore {
   localApiKeys: string[];
   combos: Combo[];
   aliases?: ModelAlias[];
+}
+
+export type AuditAction =
+  | "provider.create" | "provider.delete" | "provider.update"
+  | "key.add" | "key.remove"
+  | "oauth.connect" | "oauth.disconnect"
+  | "settings.change"
+  | "admin.password_change";
+
+export interface AuditLogEntry {
+  id: string;
+  createdAt: string;
+  action: AuditAction;
+  detail: string;
+  metadataJson?: string;
 }
 
 export interface RouteDecision {

@@ -69,11 +69,13 @@ export function toGeminiRequest(body: any) {
     .flatMap((message: any) => partsFromContent(message.content))
     .filter((part: any) => part.text || part.inlineData);
 
+  const toolNameById = new Map<string, string>();
   const contents: any[] = [];
   for (const message of messages) {
     if (message?.role === "system") continue;
     if (message?.role === "tool") {
-      const name = message.name || message.tool_call_id || "tool";
+      const id = typeof message.tool_call_id === "string" ? message.tool_call_id : "";
+      const name = message.name || (id ? toolNameById.get(id) : undefined) || "tool";
       const response = textFromContent(message.content);
       contents.push({
         role: "user",
@@ -84,18 +86,22 @@ export function toGeminiRequest(body: any) {
     if (message?.role === "assistant" && Array.isArray(message.tool_calls) && message.tool_calls.length) {
       const parts = [
         ...partsFromContent(message.content),
-        ...message.tool_calls.map((tc: any) => ({
-          functionCall: {
-            name: tc?.function?.name ?? "tool",
-            args: (() => {
-              try {
-                return JSON.parse(tc?.function?.arguments || "{}");
-              } catch {
-                return { raw: tc?.function?.arguments ?? "" };
-              }
-            })()
-          }
-        }))
+        ...message.tool_calls.map((tc: any) => {
+          const name = tc?.function?.name ?? "tool";
+          if (typeof tc?.id === "string" && tc.id) toolNameById.set(tc.id, String(name));
+          return {
+            functionCall: {
+              name,
+              args: (() => {
+                try {
+                  return JSON.parse(tc?.function?.arguments || "{}");
+                } catch {
+                  return { raw: tc?.function?.arguments ?? "" };
+                }
+              })()
+            }
+          };
+        })
       ];
       contents.push({ role: "model", parts: parts.length ? parts : [{ text: "" }] });
       continue;

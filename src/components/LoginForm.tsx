@@ -16,6 +16,13 @@ function minutesLeft(ms = 0) {
   return Math.max(1, Math.ceil(ms / 60_000));
 }
 
+const ADMIN_HOME = "/overview";
+
+/**
+ * Bootstrap instructional boxes are ONLY allowed when passwordHint is set by the
+ * server (no stored adminPasswordHash yet). Once a custom password hash exists,
+ * passwordHint is omitted — never show NESA_ADMIN_PASSWORD / nesa123456 copy.
+ */
 export default function LoginForm({
   defaultPassword,
   passwordHint,
@@ -25,8 +32,8 @@ export default function LoginForm({
 }: {
   /** Only set while still on the temporary local bootstrap password. */
   defaultPassword?: string;
-  /** default = show nesa123456; env = point at .env without revealing the value */
-  passwordHint?: "default" | "env";
+  /** default = show nesa123456; env = point at .env without revealing the value; omit when customized */
+  passwordHint?: "default" | "env" | null;
   initialLock?: LoginLock;
   oauthProviders: OAuthProviderInfo[];
   oauthError?: string;
@@ -37,10 +44,12 @@ export default function LoginForm({
   );
   const [locked, setLocked] = useState(Boolean(initialLock?.locked));
   const [loading, setLoading] = useState(false);
+  const showBootstrapHint = passwordHint === "default" || passwordHint === "env";
   const nextPath = useMemo(() => {
-    if (typeof window === "undefined") return "/";
+    if (typeof window === "undefined") return ADMIN_HOME;
     const next = new URLSearchParams(window.location.search).get("next")?.trim();
-    if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/login")) return "/";
+    if (!next || !next.startsWith("/") || next.startsWith("//") || next.startsWith("/login")) return ADMIN_HOME;
+    if (next === "/") return ADMIN_HOME;
     return next;
   }, []);
 
@@ -82,14 +91,14 @@ export default function LoginForm({
             <span>Admin access</span>
           </div>
         </div>
-        {passwordHint === "default" && defaultPassword ? (
+        {showBootstrapHint && passwordHint === "default" && defaultPassword ? (
           <div className="default-password-box">
             <span>Temporary default password</span>
             <code>{defaultPassword}</code>
             <small>Shown only until you change it under Routing → Password.</small>
           </div>
         ) : null}
-        {passwordHint === "env" ? (
+        {showBootstrapHint && passwordHint === "env" ? (
           <div className="default-password-box">
             <span>Bootstrap password from server .env</span>
             <small>

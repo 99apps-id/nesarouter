@@ -7,6 +7,14 @@ export class QueueTimeoutError extends Error {
   }
 }
 
+export class GateAbortedError extends Error {
+  readonly code = "request_aborted" as const;
+  constructor() {
+    super("Request was cancelled while waiting for an upstream slot.");
+    this.name = "GateAbortedError";
+  }
+}
+
 export interface GateLimits {
   maxGlobal: number;
   maxPerProvider: number;
@@ -30,6 +38,8 @@ interface Waiter {
   resolve: (ticket: GateTicket) => void;
   reject: (error: QueueTimeoutError) => void;
   timer: ReturnType<typeof setTimeout>;
+  signal?: AbortSignal;
+  abort?: () => void;
 }
 
 const inFlightByProvider = new Map<string, number>();
@@ -74,6 +84,7 @@ function drainQueue() {
     }
     waitQueue.splice(i, 1);
     clearTimeout(waiter.timer);
+    if (waiter.abort) waiter.signal?.removeEventListener("abort", waiter.abort);
     waiter.resolve(takeSlot(waiter.providerId));
   }
 }
@@ -82,13 +93,15 @@ function drainQueue() {
  * Acquire an upstream concurrency slot. `maxGlobal` / `maxPerProvider` of 0 mean unlimited.
  * When both are 0, resolves immediately without tracking.
  */
-export async function acquireGate(providerId: string, limits: GateLimits): Promise<GateTicket> {
+export async function acquireGate(providerId: string, limits: GateLimits, signal?: AbortSignal): Promise<GateTicket> {
   const normalized = providerId.trim() || "unknown";
   const effective: GateLimits = {
     maxGlobal: Math.max(0, Math.floor(limits.maxGlobal)),
     maxPerProvider: Math.max(0, Math.floor(limits.maxPerProvider)),
     waitMs: Math.max(0, Math.floor(limits.waitMs))
   };
+
+  if (signal?.aborted) throw new GateAbortedError();
 
   if (effective.maxGlobal <= 0 && effective.maxPerProvider <= 0) {
     return { providerId: normalized, release() {} };
@@ -111,9 +124,21 @@ export async function acquireGate(providerId: string, limits: GateLimits): Promi
       timer: setTimeout(() => {
         const idx = waitQueue.indexOf(waiter);
         if (idx >= 0) waitQueue.splice(idx, 1);
+        if (waiter.abort) signal?.removeEventListener("abort", waiter.abort);
         reject(new QueueTimeoutError());
-      }, effective.waitMs)
+      }, effective.waitMs),
+      signal
     };
+    if (signal) {
+      waiter.abort = () => {
+        const idx = waitQueue.indexOf(waiter);
+        if (idx < 0) return;
+        waitQueue.splice(idx, 1);
+        clearTimeout(waiter.timer);
+        reject(new GateAbortedError());
+      };
+      signal.addEventListener("abort", waiter.abort, { once: true });
+    }
     waitQueue.push(waiter);
   });
 }
@@ -132,6 +157,9 @@ export function getGateSnapshot(): GateSnapshot {
 export function resetGateForTests() {
   inFlightTotal = 0;
   inFlightByProvider.clear();
-  for (const waiter of waitQueue) clearTimeout(waiter.timer);
+  for (const waiter of waitQueue) {
+    clearTimeout(waiter.timer);
+    if (waiter.abort) waiter.signal?.removeEventListener("abort", waiter.abort);
+  }
   waitQueue.length = 0;
 }

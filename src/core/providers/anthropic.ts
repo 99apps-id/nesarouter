@@ -1,7 +1,7 @@
 import { ProviderConfig } from "@/core/types";
 import { getPreset } from "@/core/oauthProviderPresets";
 import { claudeResponseToOpenAi, claudeSseToOpenAiSse, openAiChatToClaudeRequest } from "@/core/translatorReverse";
-import { baseUrl, cleanApiKey, ProviderExecutor, proxyFetch, UpstreamProviderError, upstreamError } from "@/core/providers/shared";
+import { baseUrl, cleanApiKey, ProviderExecutor, proxyFetch, upstreamJson, UpstreamProviderError, upstreamError } from "@/core/providers/shared";
 
 function anthropicMessagesUrl(provider: ProviderConfig): string {
   const root = baseUrl(provider).replace(/\/$/, "");
@@ -46,7 +46,7 @@ export class AnthropicMessagesExecutor implements ProviderExecutor {
       if (!response.body) throw new UpstreamProviderError(`${provider.name} returned no stream body.`, 502);
       return claudeSseToOpenAiSse(response.body, provider.model);
     }
-    const payload = await response.json();
+    const payload = await upstreamJson(provider, response, "Anthropic message");
     return claudeResponseToOpenAi(payload, provider.model);
   }
 

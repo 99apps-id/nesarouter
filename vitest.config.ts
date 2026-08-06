@@ -10,6 +10,18 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/unit/**/*.test.ts"],
-    globals: false
+    setupFiles: ["tests/setup.ts"],
+    globals: false,
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json-summary", "html"],
+      reportsDirectory: "coverage",
+      thresholds: {
+        statements: 44,
+        branches: 38,
+        functions: 53,
+        lines: 47
+      }
+    }
   }
 });

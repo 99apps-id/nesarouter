@@ -11,6 +11,7 @@ import {
   recordLoginSuccess,
   verifyAdminPassword
 } from "@/core/adminAuth";
+import { readJsonBodyLimited, RequestBodyTooLargeError } from "@/core/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,7 +32,15 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = (await request.json().catch(() => ({}))) as { password?: string };
+  let body: { password?: string };
+  try {
+    body = await readJsonBodyLimited<{ password?: string }>(request, 16 * 1024);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) {
+      return NextResponse.json({ ok: false, error: error.message }, { status: 413 });
+    }
+    return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
+  }
   if (!(await verifyAdminPassword(body.password ?? ""))) {
     const nextLock = await recordLoginFailure(lockKey);
     return NextResponse.json(

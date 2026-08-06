@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight, KeyRound, Layers } from "lucide-react";
 import { ProviderConfig } from "@/core/types";
+import { formatTime } from "@/lib/format";
 import { tierLabel } from "@/lib/providerLabels";
 import ProviderIcon from "@/components/ProviderIcon";
 
@@ -78,7 +79,7 @@ export default function ProviderCard({
           </span>
         </div>
         {provider.status === "cooldown" && provider.rateLimitedUntil ? (
-          <small>Cooldown until {new Date(provider.rateLimitedUntil).toLocaleTimeString()}</small>
+          <small>Cooldown until {formatTime(provider.rateLimitedUntil)}</small>
         ) : null}
         {provider.lastError ? <small title={provider.lastError}>Last error</small> : null}
       </div>

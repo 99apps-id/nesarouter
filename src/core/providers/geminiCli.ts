@@ -4,7 +4,7 @@ import { geminiStreamToOpenAiSse } from "@/core/streaming";
 import { ProviderConfig } from "@/core/types";
 import { fromGeminiResponse, toGeminiRequest } from "@/core/providers/gemini";
 import { baseUrl, cleanApiKey, ProviderExecutor, proxyFetch, UpstreamProviderError, upstreamError } from "@/core/providers/shared";
-import { saveProviderOAuthTokens } from "@/lib/store";
+import { saveProviderOAuthTokens } from "@/lib/providerOAuthPersistence";
 
 /**
  * Gemini CLI / Antigravity executor — calls cloudcode-pa.googleapis.com/v1internal

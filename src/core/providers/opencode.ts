@@ -1,7 +1,7 @@
 import { ProviderConfig } from "@/core/types";
 import { fromGeminiResponse, toGeminiRequest } from "@/core/providers/gemini";
 import { geminiStreamToOpenAiSse } from "@/core/streaming";
-import { shouldDisableDeepSeekThinking } from "@/core/providers/openaiCompatible";
+import { shouldDisableDeepSeekThinking, stripPrivateRouterFields } from "@/core/providers/openaiCompatible";
 import {
   claudeResponseToOpenAi,
   claudeSseToOpenAiSse,
@@ -114,18 +114,18 @@ export class OpenCodeExecutor implements ProviderExecutor {
 
     let upstreamBody: Record<string, unknown>;
     if (surface === "messages") {
-      upstreamBody = openAiChatToClaudeRequest({ ...body, model });
+      upstreamBody = openAiChatToClaudeRequest({ ...stripPrivateRouterFields(body), model });
     } else if (surface === "responses") {
-      upstreamBody = openAiChatToResponsesRequest({ ...body, model });
+      upstreamBody = openAiChatToResponsesRequest({ ...stripPrivateRouterFields(body), model });
       if (stream && !upstreamBody.stream) upstreamBody = { ...upstreamBody, stream: true };
     } else {
-      upstreamBody = { ...body, model };
+      upstreamBody = { ...stripPrivateRouterFields(body), model };
       if (shouldDisableDeepSeekThinking({ ...provider, model }, { ...body, model })) {
         upstreamBody.thinking = { type: "disabled" };
       }
       if (stream) {
         const streamOptions = body.stream_options && typeof body.stream_options === "object" ? body.stream_options : {};
-        upstreamBody.stream_options = { include_usage: true, ...streamOptions };
+        upstreamBody.stream_options = { ...streamOptions, include_usage: true };
       }
     }
 
@@ -179,6 +179,15 @@ export class OpenCodeExecutor implements ProviderExecutor {
 
   async validate(provider: ProviderConfig) {
     const models = await this.listModels(provider);
-    return { models, message: models.length ? `${models.length} models found.` : "OpenCode connected." };
+    await this.call(provider, {
+      model: provider.model,
+      messages: [{ role: "user", content: "Reply OK" }],
+      max_tokens: 1,
+      stream: false
+    });
+    return {
+      models,
+      message: `OpenCode inference accepted · ${models.length} models found.`
+    };
   }
 }

@@ -24,11 +24,11 @@ function configuredKeyIndexes(provider: ProviderConfig): number[] {
   }
   const seen = new Set<string>();
   const indexes: number[] = [];
-  candidates.forEach((value, index) => {
+  candidates.forEach((value) => {
     const key = typeof value === "string" ? value.trim() : "";
     if (!key || seen.has(key)) return;
     seen.add(key);
-    indexes.push(index);
+    indexes.push(indexes.length);
   });
   return indexes;
 }
@@ -49,7 +49,7 @@ export function getProviderQuotaUsedToday(provider: ProviderConfig, store: Usage
       (item) =>
         usageDayKey(item.createdAt) === today &&
         item.providerId === provider.id &&
-        item.status === "success"
+        (item.status === "success" || /Client cancelled stream|Upstream stream failed/i.test(item.error ?? ""))
     )
     .reduce((sum, item) => sum + item.inputTokens + item.outputTokens, 0);
 }
@@ -59,7 +59,7 @@ export function getKeyQuotaUsedToday(provider: ProviderConfig, store: UsageQuota
   const today = todayKey();
   return store.usage
     .filter((item) => {
-      if (usageDayKey(item.createdAt) !== today || item.providerId !== provider.id || item.status !== "success") {
+      if (usageDayKey(item.createdAt) !== today || item.providerId !== provider.id || (item.status !== "success" && !/Client cancelled stream|Upstream stream failed/i.test(item.error ?? ""))) {
         return false;
       }
       if (typeof item.keyIndex === "number") return item.keyIndex === keyIndex;

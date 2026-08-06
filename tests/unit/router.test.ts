@@ -34,6 +34,64 @@ describe("router", () => {
     expect(decision.provider.id).toBe("free");
   });
 
+  it("skips chat-only providers for tool calling requests", () => {
+    const store = storeWith([
+      provider({ id: "chat-only", type: "grok_web", model: "web", priority: 1 }),
+      provider({ id: "tools", type: "openai_compatible", model: "agent", priority: 2 })
+    ]);
+    const decision = chooseProvider(store, {
+      model: "auto",
+      messages: [{ role: "user", content: "read a file" }],
+      tools: [{ type: "function", function: { name: "read_file", parameters: { type: "object" } } }]
+    });
+    expect(decision.provider.id).toBe("tools");
+    expect(decision.skippedProviders).toContainEqual({
+      providerId: "chat-only",
+      reason: "Provider does not support tool calling."
+    });
+  });
+
+  it("honors an explicit supportsTools override", () => {
+    const store = storeWith([
+      provider({ id: "disabled-tools", supportsTools: false, model: "same" }),
+      provider({ id: "enabled-tools", supportsTools: true, model: "same", priority: 2 })
+    ]);
+    const decision = chooseProvider(store, {
+      model: "same",
+      messages: [],
+      tools: [{ type: "function", function: { name: "exec", parameters: {} } }]
+    });
+    expect(decision.provider.id).toBe("enabled-tools");
+  });
+
+  it("treats mid-loop tool messages as needing tools even without tools array", () => {
+    const store = storeWith([
+      provider({ id: "chat-only", type: "grok_web", model: "web", priority: 1 }),
+      provider({ id: "tools", type: "openai_compatible", model: "agent", priority: 2 })
+    ]);
+    const decision = chooseProvider(store, {
+      model: "auto",
+      messages: [
+        { role: "assistant", tool_calls: [{ id: "t1", type: "function", function: { name: "read", arguments: "{}" } }] },
+        { role: "tool", tool_call_id: "t1", content: "ok" }
+      ]
+    });
+    expect(decision.provider.id).toBe("tools");
+  });
+
+  it("allows gemini_cli for tool calling by default", () => {
+    const store = storeWith([
+      provider({ id: "cli", type: "gemini_cli", model: "gemini-2.5-flash", priority: 1 }),
+      provider({ id: "other", type: "openai_compatible", model: "agent", priority: 2 })
+    ]);
+    const decision = chooseProvider(store, {
+      model: "auto",
+      messages: [{ role: "user", content: "use a tool" }],
+      tools: [{ type: "function", function: { name: "read_file", parameters: { type: "object" } } }]
+    });
+    expect(decision.provider.id).toBe("cli");
+  });
+
   it("matches an explicit model to its provider", () => {
     const store = storeWith([
       provider({ id: "paid", name: "Paid", tier: "premium", model: "gpt-4", priority: 1 }),
@@ -216,6 +274,24 @@ describe("router", () => {
     };
     const decision = chooseProvider(store, { model: "rr-combo", messages: [{ role: "user", content: "hi" }] }, [], combo);
     expect(decision.provider.id).toBe("b");
+  });
+
+  it("round robin uses the newest successful usage even when input rows are unsorted", () => {
+    const combo: Combo = { id: "c1", name: "rr", providerIds: ["a", "b", "c"], strategy: "round_robin" };
+    const usage = [
+      { id: "old", createdAt: "2026-07-20T00:00:00.000Z", providerId: "a" },
+      { id: "new", createdAt: "2026-07-22T00:00:00.000Z", providerId: "b" }
+    ].map((item) => ({
+      ...item, providerName: item.providerId, model: "m", tier: "free" as const,
+      taskType: "chat" as const, inputTokens: 1, outputTokens: 1, totalCostUsd: 0,
+      costSource: "free" as const, cacheStatus: "skipped" as const, budgetStatus: "ok" as const,
+      routingReason: "test", status: "success" as const
+    }));
+    const store = storeWith([
+      provider({ id: "a" }), provider({ id: "b" }), provider({ id: "c" })
+    ], [combo]);
+    store.usage = usage;
+    expect(chooseProvider(store, { model: "rr", messages: [] }, [], combo).provider.id).toBe("c");
   });
 
   it("pins the manual provider and ignores budget prefer_cheaper override", () => {

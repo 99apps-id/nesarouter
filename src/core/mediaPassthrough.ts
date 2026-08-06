@@ -7,7 +7,8 @@ import { clearKeyCooldown, markKeyCooldown, pickActiveKeys, rememberKeyUse } fro
 import { baseUrl, cleanApiKey, openRouterHeaders, proxyFetch, upstreamError, UpstreamProviderError } from "@/core/providers/shared";
 import { chooseMediaProvider } from "@/core/mediaRouting";
 import { ProviderConfig, RouteDecision } from "@/core/types";
-import { appendUsage, clearProviderCooldown, markProviderFailure, markOAuthAccountConnection, readStore } from "@/lib/store";
+import { appendUsage, clearProviderCooldown, markProviderFailure, readStore } from "@/lib/store";
+import { markOAuthAccountConnection } from "@/lib/providerOAuthPersistence";
 import { estimateCost } from "@/core/estimation";
 import { UsageLog } from "@/core/types";
 
@@ -105,7 +106,7 @@ export async function handleMediaPassthrough(
           authorization: `Bearer ${cleanApiKey(bearer)}`,
           ...openRouterHeaders(provider)
         };
-        const init = buildMediaInit(kind, options, provider, headers);
+        const init = { ...buildMediaInit(kind, options, provider, headers), signal: request.signal };
         const response = await proxyFetch(provider, url, init);
         if (!response.ok) throw await upstreamError(provider, response);
         rememberOAuthAccountUse(provider.id, account.index);
@@ -143,7 +144,7 @@ export async function handleMediaPassthrough(
         authorization: `Bearer ${cleanApiKey(picked.key)}`,
         ...openRouterHeaders(provider)
       };
-      const init = buildMediaInit(kind, options, provider, headers);
+      const init = { ...buildMediaInit(kind, options, provider, headers), signal: request.signal };
       const response = await proxyFetch(provider, url, init);
       if (!response.ok) throw await upstreamError(provider, response);
 

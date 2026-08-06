@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { handleChat } from "@/core/chatHandler";
 import { openAiToResponses, responsesStreamFromOpenAiSse, responsesToOpenAi } from "@/core/translator";
+import { authorizeClientRequest, readJsonBodyLimited, RequestBodyTooLargeError } from "@/core/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,10 +12,12 @@ export const dynamic = "force-dynamic";
  * honors the flag by forcing a non-streaming, trimmed response.
  */
 export async function POST(request: Request) {
+  if (!(await authorizeClientRequest(request))) return NextResponse.json({ error: { message: "Invalid NesaRouter API key." } }, { status: 401 });
   let body: any;
   try {
-    body = await request.json();
-  } catch {
+    body = await readJsonBodyLimited(request);
+  } catch (error) {
+    if (error instanceof RequestBodyTooLargeError) return NextResponse.json({ error: { message: error.message } }, { status: 413 });
     return NextResponse.json({ error: { message: "Request body must be valid JSON." } }, { status: 400 });
   }
 
@@ -29,6 +32,8 @@ export async function POST(request: Request) {
       "x-nesa-budget-status": response.headers.get("x-nesa-budget-status") ?? "",
       "x-nesa-cost-source": response.headers.get("x-nesa-cost-source") ?? "",
       "x-nesa-cache": response.headers.get("x-nesa-cache") ?? "",
+      "x-nesa-routing-reason": response.headers.get("x-nesa-routing-reason") ?? "",
+      "x-nesa-latency-ms": response.headers.get("x-nesa-latency-ms") ?? "",
       "x-nesa-compact": "1"
     }
   });

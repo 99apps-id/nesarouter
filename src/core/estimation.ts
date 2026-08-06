@@ -43,6 +43,11 @@ export function estimateOutputTokens(inputTokens: number, taskType: TaskType) {
   return Math.max(128, Math.ceil(inputTokens * multiplier[taskType]));
 }
 
+export function requestedOutputTokens(body: any, fallback: number) {
+  const requested = Number(body?.max_tokens ?? body?.max_output_tokens);
+  return Number.isFinite(requested) && requested > 0 ? Math.ceil(requested) : fallback;
+}
+
 export function estimateCost(inputTokens: number, outputTokens: number, inputCostPerMTok: number, outputCostPerMTok: number) {
   return (inputTokens / 1_000_000) * inputCostPerMTok + (outputTokens / 1_000_000) * outputCostPerMTok;
 }

@@ -1,7 +1,7 @@
-import { BudgetSettings, Combo, NesaStore, ProviderConfig, ProviderTier, RouteDecision, TaskType } from "@/core/types";
+import { BudgetSettings, Combo, NesaStore, ProviderConfig, ProviderTier, RouteDecision, TaskType, UsageLog } from "@/core/types";
 import { resolveModelAlias } from "@/core/aliases";
 import { getBudgetStatus } from "@/core/budget";
-import { detectTaskType, estimateCost, estimateOutputTokens, estimateTokens, extractRequestText } from "@/core/estimation";
+import { detectTaskType, estimateCost, estimateOutputTokens, estimateTokens, extractRequestText, requestedOutputTokens } from "@/core/estimation";
 import { parsePrefixedModel } from "@/core/providerPrefixes";
 import { hasRoutableOAuthConnection } from "@/core/oauthAccounts";
 import { providerHasCredential } from "@/core/providerCredentials";
@@ -33,6 +33,23 @@ function isProviderUsable(provider: ProviderConfig) {
   if (!providerHasKey(provider)) return false;
   if (provider.rateLimitedUntil && new Date(provider.rateLimitedUntil).getTime() > Date.now()) return false;
   return true;
+}
+
+export function providerSupportsTools(provider: ProviderConfig) {
+  if (provider.supportsTools !== undefined) return provider.supportsTools;
+  // grok_web flattens chat to plain text. gemini_cli uses the same Gemini tool
+  // mapping as `gemini` (stream path now maps functionCall → tool_calls).
+  return provider.type !== "grok_web";
+}
+
+function requestNeedsTools(body: any) {
+  if ((Array.isArray(body?.tools) && body.tools.length > 0) || body?.tool_choice != null) return true;
+  const messages = Array.isArray(body?.messages) ? body.messages : [];
+  return messages.some(
+    (message: any) =>
+      message?.role === "tool" ||
+      (Array.isArray(message?.tool_calls) && message.tool_calls.length > 0)
+  );
 }
 
 /** UI / combo health — why a provider would be skipped by the router right now. */
@@ -77,7 +94,17 @@ function sortProviders(providers: ProviderConfig[], mode: NesaStore["router"]["r
 
 function rotateRoundRobin(providers: ProviderConfig[], store: NesaStore) {
   if (providers.length <= 1) return providers;
-  const latestSuccess = store.usage.find((item) => item.status === "success" && providers.some((provider) => provider.id === item.providerId));
+  const providerIds = new Set(providers.map((provider) => provider.id));
+  const latestSuccess = store.usage
+    .filter((item) => item.status === "success" && providerIds.has(item.providerId))
+    .reduce<UsageLog | undefined>((latest, item) => {
+      if (!latest) return item;
+      const itemTime = Date.parse(item.createdAt);
+      const latestTime = Date.parse(latest.createdAt);
+      if (!Number.isFinite(itemTime)) return latest;
+      if (!Number.isFinite(latestTime) || itemTime > latestTime) return item;
+      return latest;
+    }, undefined);
   if (!latestSuccess) return providers;
   const index = providers.findIndex((provider) => provider.id === latestSuccess.providerId);
   if (index < 0) return providers;
@@ -155,7 +182,8 @@ export function chooseProvider(
   const text = extractRequestText(body);
   const taskType = store.router.evaluatorEnabled === false ? "chat" : detectTaskType(text);
   const estimatedInputTokens = estimateTokens(text || JSON.stringify(body).slice(0, 4000));
-  const estimatedOutputTokens = estimateOutputTokens(estimatedInputTokens, taskType);
+  const estimatedOutputTokens = requestedOutputTokens(body, estimateOutputTokens(estimatedInputTokens, taskType));
+  const needsTools = requestNeedsTools(body);
   const skippedProviders: RouteDecision["skippedProviders"] = [];
 
   const activeProviders = store.providers.filter((provider) => {
@@ -170,6 +198,10 @@ export function chooseProvider(
     }
     if (isProviderRoutingQuotaExhausted(provider, store)) {
       skippedProviders.push({ providerId: provider.id, reason: providerRoutingQuotaReason(provider, store) });
+      return false;
+    }
+    if (needsTools && !providerSupportsTools(provider)) {
+      skippedProviders.push({ providerId: provider.id, reason: "Provider does not support tool calling." });
       return false;
     }
     return true;

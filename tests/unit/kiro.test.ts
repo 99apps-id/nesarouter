@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { endpointFor, kiroEventStreamToOpenAiSse, shouldUseKiroAmazonQFallback } from "@/core/providers/kiro";
+import { endpointFor, kiroEventStreamToOpenAiSse, kiroRequest, shouldUseKiroAmazonQFallback } from "@/core/providers/kiro";
 import { ProviderConfig } from "@/core/types";
 
 const encoder = new TextEncoder();
@@ -56,6 +56,51 @@ describe("Kiro event stream", () => {
     expect(result).toContain('"content":"Hello"');
     expect(result).toContain('"prompt_tokens":12');
     expect(result).toContain("data: [DONE]");
+  });
+
+  it("converts tool-use events and finishes with tool_calls", async () => {
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(eventFrame("toolUseEvent", { toolUseId: "call_1", name: "lookup_city", input: { city: "Jakarta" } }));
+        controller.enqueue(eventFrame("messageStopEvent", {}));
+        controller.close();
+      }
+    });
+    const result = await new Response(kiroEventStreamToOpenAiSse(source, "claude-sonnet-4.5")).text();
+    expect(result).toContain('"name":"lookup_city"');
+    expect(result).toContain('"finish_reason":"tool_calls"');
+  });
+
+  it("assigns distinct indices for parallel tool-use events", async () => {
+    const source = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(eventFrame("toolUseEvent", { toolUseId: "call_a", name: "one", input: {} }));
+        controller.enqueue(eventFrame("toolUseEvent", { toolUseId: "call_b", name: "two", input: {} }));
+        controller.enqueue(eventFrame("messageStopEvent", {}));
+        controller.close();
+      }
+    });
+    const result = await new Response(kiroEventStreamToOpenAiSse(source, "claude-sonnet-4.5")).text();
+    expect(result).toContain('"index":0');
+    expect(result).toContain('"index":1');
+    expect(result).toContain('"id":"call_a"');
+    expect(result).toContain('"id":"call_b"');
+  });
+});
+
+describe("Kiro request tools", () => {
+  it("preserves schemas, assistant calls, and tool results", () => {
+    const request = kiroRequest({
+      tools: [{ type: "function", function: { name: "lookup_city", description: "Lookup", parameters: { type: "object" } } }],
+      messages: [
+        { role: "user", content: "Weather?" },
+        { role: "assistant", content: null, tool_calls: [{ id: "call_1", type: "function", function: { name: "lookup_city", arguments: '{"city":"Jakarta"}' } }] },
+        { role: "tool", tool_call_id: "call_1", content: "31 C" }
+      ]
+    }, "claude-sonnet-4.5");
+    expect(request.conversationState.history[1].assistantResponseMessage.toolUses[0].name).toBe("lookup_city");
+    expect(request.conversationState.currentMessage.userInputMessage.userInputMessageContext.toolResults[0].toolUseId).toBe("call_1");
+    expect(request.conversationState.currentMessage.userInputMessage.userInputMessageContext.tools[0].toolSpecification.name).toBe("lookup_city");
   });
 });
 

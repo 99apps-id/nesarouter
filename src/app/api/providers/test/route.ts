@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { finalizeAdminResponse, requireAdmin } from "@/lib/adminApi";
+import { finalizeAdminResponse, readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { isKeylessProvider } from "@/core/providerCredentials";
 import { testProviderConnection } from "@/core/providerClient";
 import { configuredProviderKeys } from "@/core/providerKeys";
@@ -7,7 +7,8 @@ import { applyFreshOAuthToken, configuredOAuthAccounts, providerWithFreshOAuthTo
 import { ensureFreshAccessToken } from "@/core/providerOAuthFlow";
 import { ProviderConfig } from "@/core/types";
 import { keyPreview } from "@/lib/providerLabels";
-import { clearProviderCooldown, markOAuthAccountConnection, markProviderConnection, readStore } from "@/lib/store";
+import { clearProviderCooldown, markProviderConnection, readStore } from "@/lib/store";
+import { markOAuthAccountConnection } from "@/lib/providerOAuthPersistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +16,9 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
-  const body = (await request.json()) as { providerId?: string; provider?: ProviderConfig; allAccounts?: boolean };
+  const parsedBody = await readAdminJson<{ providerId?: string; provider?: ProviderConfig; allAccounts?: boolean }>(request);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   const store = await readStore();
   let provider =
     body.provider ??

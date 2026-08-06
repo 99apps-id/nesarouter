@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { authorizeMetrics } from "@/core/metricsAuth";
 import { renderPrometheusText } from "@/core/runtimeMetrics";
+import { renderSaasPrometheusText } from "@/core/saas/saasMetrics";
+import { isSaasEnabled } from "@/core/saas/saasConfig";
 import { readStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -21,7 +23,7 @@ export async function GET(request: Request) {
 
   try {
     const store = await readStore();
-    const body = renderPrometheusText(store);
+    const body = renderPrometheusText(store) + (isSaasEnabled() ? renderSaasPrometheusText() : "");
     return new NextResponse(body, {
       status: 200,
       headers: {

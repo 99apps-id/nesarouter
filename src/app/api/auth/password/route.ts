@@ -7,8 +7,8 @@ import {
   revokeAllAdminSessions,
   verifyAdminPassword
 } from "@/core/adminAuth";
-import { requireAdmin } from "@/lib/adminApi";
-import { writeAdminPasswordHash } from "@/lib/store";
+import { readAdminJson, requireAdmin } from "@/lib/adminApi";
+import { writeAdminPasswordHash } from "@/lib/adminPersistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,10 +17,12 @@ export async function PUT(request: Request) {
   const unauthorized = await requireAdmin(request, { allowDuringMustChange: true });
   if (unauthorized) return unauthorized;
 
-  const body = (await request.json().catch(() => ({}))) as {
+  const parsedBody = await readAdminJson<{
     currentPassword?: string;
     newPassword?: string;
-  };
+  }>(request, 16 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
 
   if (!(await verifyAdminPassword(body.currentPassword ?? ""))) {
     return NextResponse.json({ error: "Current password is wrong." }, { status: 400 });

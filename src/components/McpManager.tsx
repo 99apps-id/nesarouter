@@ -22,7 +22,7 @@ export default function McpManager({ servers, baseUrl }: { servers: McpServer[];
     if (!id || !draft.name.trim() || !draft.command.trim()) return;
     let args: string[] = [];
     let env: Record<string, string> = {};
-    try { args = argsText.split(/\r?\n/).map((a) => a.trim()).filter(Boolean); } catch {}
+    try { args = argsText.split(/\r?\n/).map((a) => a.trim()).filter(Boolean); } catch (e) { console.error("args parse failed:", e); }
     try {
       env = envText.trim() ? JSON.parse(envText) : {};
       if (typeof env !== "object" || Array.isArray(env)) throw new Error("env must be an object");
@@ -47,12 +47,16 @@ export default function McpManager({ servers, baseUrl }: { servers: McpServer[];
   }
 
   async function remove(id: string) {
-    await fetch("/api/mcp", {
-      method: "DELETE",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id })
-    });
-    window.location.reload();
+    setError("");
+    try {
+      const response = await fetch("/api/mcp", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id })
+      });
+      if (response.ok) window.location.reload();
+      else setError((await response.json().catch(() => ({}))).error ?? "Failed to delete MCP server.");
+    } catch { setError("Failed to reach the server."); }
   }
 
   return (

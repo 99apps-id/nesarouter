@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { adminJson, requireAdmin } from "@/lib/adminApi";
+import { adminJson, readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { loadProviderWithFreshToken } from "@/core/providerOAuthFlow";
 import { listProviderModels } from "@/core/providerClient";
 import { ProviderConfig } from "@/core/types";
@@ -11,7 +11,9 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
-  const body = (await request.json()) as { providerId?: string; provider?: ProviderConfig };
+  const parsedBody = await readAdminJson<{ providerId?: string; provider?: ProviderConfig }>(request);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   const store = await readStore();
   const savedProvider = body.providerId ? store.providers.find((item) => item.id === body.providerId) : undefined;
   let provider = body.provider

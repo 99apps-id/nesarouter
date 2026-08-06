@@ -2,7 +2,9 @@
 import { exchangeCode, loadAntigravityProjectId, resolveIflowApiKey } from "@/core/oauthPkce";
 import { getPreset } from "@/core/oauthProviderPresets";
 import { publicUrl } from "@/core/publicUrl";
-import { deleteOAuthPending, readOAuthPending, readProviderById, saveProviderOAuthTokens } from "@/lib/store";
+import { readProviderById } from "@/lib/store";
+import { saveProviderOAuthTokens } from "@/lib/providerOAuthPersistence";
+import { deleteOAuthPending, readOAuthPending } from "@/lib/oauthPendingPersistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -24,7 +26,6 @@ export async function GET(request: Request) {
   if (!pending) {
     return NextResponse.redirect(publicUrl("/providers?oauth_error=invalid_state", request));
   }
-  await deleteOAuthPending(state);
   const pendingAgeMs = Date.now() - new Date(pending.createdAt).getTime();
   if (pendingAgeMs > 10 * 60_000) {
     return NextResponse.redirect(publicUrl("/providers?oauth_error=state_expired", request));
@@ -58,6 +59,7 @@ export async function GET(request: Request) {
       accountId: pending.accountId,
       createNew: !pending.accountId
     });
+    await deleteOAuthPending(state);
     return NextResponse.redirect(publicUrl("/providers?oauth=connected", request));
   } catch (error) {
     const message = error instanceof Error ? error.message : "exchange failed";

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { chatCompletionsUrl, shouldDisableDeepSeekThinking } from "@/core/providers/openaiCompatible";
+import {
+  chatCompletionsUrl,
+  prepareOpenAiUpstreamBody,
+  shouldDisableDeepSeekThinking,
+  stripPrivateRouterFields
+} from "@/core/providers/openaiCompatible";
 import { ProviderConfig } from "@/core/types";
 
 function deepseek(model = "deepseek-v4-flash"): ProviderConfig {
@@ -29,6 +34,15 @@ describe("DeepSeek thinking defaults", () => {
 
   it("does not disable thinking for reasoner models", () => {
     expect(shouldDisableDeepSeekThinking(deepseek("deepseek-reasoner"), { messages: [] })).toBe(false);
+  });
+
+  it("disables thinking for reasoner models during tool/agent loops", () => {
+    expect(
+      shouldDisableDeepSeekThinking(deepseek("deepseek-reasoner"), {
+        tools: [{ type: "function", function: { name: "read", parameters: {} } }],
+        messages: [{ role: "user", content: "read a file" }]
+      })
+    ).toBe(true);
   });
 
   it("does not inject thinking onto Runware DeepSeek AIR models", () => {
@@ -74,3 +88,25 @@ describe("chat completions URL", () => {
     expect(chatCompletionsUrl(deepseek())).toBe("https://api.deepseek.com/chat/completions");
   });
 });
+
+describe("private router request fields", () => {
+  it("removes Nesa-only metadata without changing standard request fields", () => {
+    const body = { model: "client-model", messages: [{ role: "user", content: "hi" }], _nesaTenant: "private", _nesaRoute: { id: 1 }, stream: true };
+    expect(stripPrivateRouterFields(body)).toEqual({ model: "client-model", messages: body.messages, stream: true });
+    expect(body).toHaveProperty("_nesaTenant", "private");
+  });
+
+  it("removes the unsupported user field only for Mistral", () => {
+    const body = { model: "client-model", messages: [{ role: "user", content: "hi" }], user: "account-123" };
+    expect(prepareOpenAiUpstreamBody(body, deepseekMistral())).toEqual({
+      model: "client-model",
+      messages: body.messages
+    });
+    expect(prepareOpenAiUpstreamBody(body, { ...deepseek(), id: "openai", baseUrl: "https://api.openai.com/v1" })).toEqual(body);
+    expect(body.user).toBe("account-123");
+  });
+});
+
+function deepseekMistral(): ProviderConfig {
+  return { ...deepseek(), id: "mistral", name: "Mistral", baseUrl: "https://api.mistral.ai/v1" };
+}

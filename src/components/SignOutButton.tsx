@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import { adminFetch } from "@/lib/adminFetch";
 
+/** SaaS: after logout return to public marketing landing, not /login. */
 export default function SignOutButton() {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
@@ -17,7 +18,7 @@ export default function SignOutButton() {
     } catch {
       /* still clear the local session view */
     }
-    window.location.assign("/login");
+    window.location.assign("/");
   }
 
   return (

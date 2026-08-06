@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminApi";
+import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { ensureOauthLoopback } from "@/core/oauthLoopback";
 import { buildAuthorizeUrl, generatePkce, generateState } from "@/core/oauthPkce";
 import { getPreset, usesOAuthDeviceFlow } from "@/core/oauthProviderPresets";
 import { publicOrigin, publicUrl } from "@/core/publicUrl";
-import { readProviderById, readPublicBaseUrlSync, saveOAuthPending } from "@/lib/store";
+import { readProviderById, readPublicBaseUrlSync } from "@/lib/store";
+import { saveOAuthPending } from "@/lib/oauthPendingPersistence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -13,7 +14,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
   const { id } = await context.params;
-  const body = (await request.json().catch(() => ({}))) as { accountId?: string; createNew?: boolean };
+  const parsedBody = await readAdminJson<{ accountId?: string; createNew?: boolean }>(request, 16 * 1024);
+  if (parsedBody.response) return parsedBody.response;
+  const body = parsedBody.data;
   const provider = await readProviderById(id);
   if (!provider) return NextResponse.json({ error: "Provider not found." }, { status: 404 });
   const preset = getPreset(provider.oauthProfile);

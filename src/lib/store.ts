@@ -1,16 +1,47 @@
 import Database from "better-sqlite3";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { CacheEntry, Combo, McpServer, NesaStore, OAuthAccount, ProviderConfig, ProviderConnectionStatus, UsageLog } from "@/core/types";
-import { createOAuthAccountId, defaultOAuthAccountName } from "@/core/oauthAccounts";
 import { defaultStore } from "@/lib/defaults";
 import { decryptSecret, encryptSecret, isRedactedSecret } from "@/lib/crypto";
+import {
+  legacyOAuthAccountFromRow,
+  mergeIncomingOAuthAccounts,
+  parseOAuthAccounts,
+  serializeOAuthAccounts
+} from "@/lib/oauthAccountCodec";
+import { syncPrimaryOAuthColumns, syncProviderOAuthConnectionStatus } from "@/lib/oauthAccountColumns";
 
 const projectDataRoot = process.env.INIT_CWD || process.cwd();
 
 let db: Database.Database | undefined;
 let activeDbPath: string | undefined;
 const defaultProvidersEnsured = new Set<string>();
+let nodeOnlyServicesStarted = false;
+
+/**
+ * Fire the Node-only, DB-backed boot tasks (tunnel restore, auto-backup schedule) exactly once,
+ * right after the SQLite connection first opens. This runs here — not in instrumentation.ts —
+ * because instrumentation.ts's Edge bundle cannot pull in better-sqlite3 (native addon), and the
+ * `webpackIgnore` workaround that keeps it out of that bundle also prevents Node's runtime loader
+ * from resolving the `@/` path alias, so a dynamic import from instrumentation.ts silently fails
+ * in the standalone production build. store.ts is never part of the Edge/middleware graph, so a
+ * plain dynamic import here resolves correctly in both dev and standalone builds.
+ */
+function bootstrapNodeOnlyServices() {
+  if (nodeOnlyServicesStarted) return;
+  nodeOnlyServicesStarted = true;
+  import("@/lib/tunnel/bootRestore")
+    .then((mod) => mod.restoreRemoteAccess())
+    .catch(() => {
+      // Boot restore is best-effort; /api/tunnel/status will retry once.
+    });
+  import("@/lib/dbBackup")
+    .then((mod) => mod.startAutoBackupSchedule())
+    .catch(() => {
+      // Auto-backup is best-effort and must never block server startup.
+    });
+}
 
 function resolveDataDir() {
   return process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(projectDataRoot, "data");
@@ -24,7 +55,7 @@ function resolveLegacyStorePath(dir = resolveDataDir()) {
   return path.join(dir, "nesa-store.json");
 }
 
-function getDb() {
+export function getDb() {
   const dataDir = resolveDataDir();
   const dbPath = resolveDbPath(dataDir);
   if (db && activeDbPath !== dbPath) {
@@ -32,15 +63,18 @@ function getDb() {
     db = undefined;
     activeDbPath = undefined;
   }
-  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
+  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  if (process.platform !== "win32") try { chmodSync(dataDir, 0o700); } catch {}
   if (!db) {
     db = new Database(dbPath);
+    if (process.platform !== "win32") try { chmodSync(dbPath, 0o600); } catch {}
     activeDbPath = dbPath;
     db.pragma("busy_timeout = 5000");
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
     migrate(db);
     seedIfEmpty(db);
+    bootstrapNodeOnlyServices();
   }
   // Re-check catalog presets once per DB path. Manual seedMissingProviders()
   // still forces a sync without making every request take a write lock.
@@ -60,15 +94,18 @@ export function seedMissingProviders(): string[] {
     db = undefined;
     activeDbPath = undefined;
   }
-  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
+  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  if (process.platform !== "win32") try { chmodSync(dataDir, 0o700); } catch {}
   if (!db) {
     db = new Database(dbPath);
+    if (process.platform !== "win32") try { chmodSync(dbPath, 0o600); } catch {}
     activeDbPath = dbPath;
     db.pragma("busy_timeout = 5000");
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
     migrate(db);
     seedIfEmpty(db);
+    bootstrapNodeOnlyServices();
   }
   const added = ensureDefaultProviders(db);
   defaultProvidersEnsured.add(dbPath);
@@ -151,7 +188,18 @@ function migrate(database: Database.Database) {
       args TEXT NOT NULL DEFAULT '[]',
       env TEXT NOT NULL DEFAULT '{}'
     );
+
+    CREATE TABLE IF NOT EXISTS admin_audit_log (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      action TEXT NOT NULL,
+      detail TEXT NOT NULL,
+      metadata_json TEXT
+    );
   `);
+
+  // Index for fast audit log ordering
+  database.exec(`CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON admin_audit_log(created_at)`);
 
   ensureColumn(database, "providers", "connection_status", "TEXT NOT NULL DEFAULT 'unknown'");
   ensureColumn(database, "providers", "last_checked_at", "TEXT");
@@ -434,6 +482,21 @@ function ensureDefaultProviders(database: Database.Database): string[] {
             WHERE id = 'mimo-code-free'
           `).run();
         }
+        if (provider.id === "pollinations-free") {
+          // v0.1.48 incorrectly seeded Pollinations as zero-cost/free. Update
+          // only the untouched catalog values so operator customizations win.
+          database.prepare(`
+            UPDATE providers
+            SET tier = 'cheap',
+                input_cost_per_mtok = 0.15,
+                output_cost_per_mtok = 0.9375
+            WHERE id = 'pollinations-free'
+              AND base_url = 'https://gen.pollinations.ai/v1'
+              AND tier = 'free'
+              AND input_cost_per_mtok = 0
+              AND output_cost_per_mtok = 0
+          `).run();
+        }
         if (provider.id === "anthropic-messages") {
           database.prepare(`
             UPDATE providers
@@ -537,168 +600,6 @@ function parseStringArray(raw: any): string[] | undefined {
   return undefined;
 }
 
-type StoredOAuthAccount = {
-  id: string;
-  name?: string;
-  oauthAccessTokenEncrypted?: string;
-  oauthRefreshTokenEncrypted?: string;
-  oauthTokenExpiresAt?: string;
-  oauthLastRefreshAt?: string;
-  oauthCopilotTokenEncrypted?: string;
-  oauthCopilotTokenExpiresAt?: string;
-  oauthProjectId?: string;
-  oauthDeviceClientId?: string;
-  oauthDeviceClientSecretEncrypted?: string;
-  oauthMachineId?: string;
-  oauthProfileArn?: string;
-  connectionStatus?: ProviderConfig["connectionStatus"];
-  lastError?: string;
-  lastCheckedAt?: string;
-  rateLimitedUntil?: string;
-  createdAt?: string;
-};
-
-function oauthAccountFromStored(stored: StoredOAuthAccount): OAuthAccount {
-  return {
-    id: stored.id,
-    name: stored.name,
-    oauthAccessToken: stored.oauthAccessTokenEncrypted ? decryptSecret(stored.oauthAccessTokenEncrypted) : undefined,
-    oauthRefreshToken: stored.oauthRefreshTokenEncrypted ? decryptSecret(stored.oauthRefreshTokenEncrypted) : undefined,
-    oauthTokenExpiresAt: stored.oauthTokenExpiresAt,
-    oauthLastRefreshAt: stored.oauthLastRefreshAt,
-    oauthCopilotToken: stored.oauthCopilotTokenEncrypted ? decryptSecret(stored.oauthCopilotTokenEncrypted) : undefined,
-    oauthCopilotTokenExpiresAt: stored.oauthCopilotTokenExpiresAt,
-    oauthProjectId: stored.oauthProjectId,
-    oauthDeviceClientId: stored.oauthDeviceClientId,
-    oauthDeviceClientSecret: stored.oauthDeviceClientSecretEncrypted ? decryptSecret(stored.oauthDeviceClientSecretEncrypted) : undefined,
-    oauthMachineId: stored.oauthMachineId,
-    oauthProfileArn: stored.oauthProfileArn,
-    connectionStatus: stored.connectionStatus,
-    lastError: stored.lastError,
-    lastCheckedAt: stored.lastCheckedAt,
-    rateLimitedUntil: stored.rateLimitedUntil,
-    createdAt: stored.createdAt
-  };
-}
-
-function oauthAccountToStored(account: OAuthAccount): StoredOAuthAccount {
-  return {
-    id: account.id,
-    name: account.name,
-    oauthAccessTokenEncrypted: account.oauthAccessToken && !isRedactedSecret(account.oauthAccessToken)
-      ? encryptSecret(account.oauthAccessToken.trim())
-      : undefined,
-    oauthRefreshTokenEncrypted: account.oauthRefreshToken && !isRedactedSecret(account.oauthRefreshToken)
-      ? encryptSecret(account.oauthRefreshToken.trim())
-      : undefined,
-    oauthTokenExpiresAt: account.oauthTokenExpiresAt,
-    oauthLastRefreshAt: account.oauthLastRefreshAt,
-    oauthCopilotTokenEncrypted: account.oauthCopilotToken && !isRedactedSecret(account.oauthCopilotToken)
-      ? encryptSecret(account.oauthCopilotToken.trim())
-      : undefined,
-    oauthCopilotTokenExpiresAt: account.oauthCopilotTokenExpiresAt,
-    oauthProjectId: account.oauthProjectId,
-    oauthDeviceClientId: account.oauthDeviceClientId,
-    oauthDeviceClientSecretEncrypted: account.oauthDeviceClientSecret && !isRedactedSecret(account.oauthDeviceClientSecret)
-      ? encryptSecret(account.oauthDeviceClientSecret.trim())
-      : undefined,
-    oauthMachineId: account.oauthMachineId,
-    oauthProfileArn: account.oauthProfileArn,
-    connectionStatus: account.connectionStatus,
-    lastError: account.lastError,
-    lastCheckedAt: account.lastCheckedAt,
-    rateLimitedUntil: account.rateLimitedUntil,
-    createdAt: account.createdAt
-  };
-}
-
-function parseOAuthAccounts(raw: any): OAuthAccount[] | undefined {
-  if (!raw) return undefined;
-  try {
-    const parsed = JSON.parse(raw) as StoredOAuthAccount[];
-    if (!Array.isArray(parsed) || !parsed.length) return undefined;
-    return parsed.map(oauthAccountFromStored).filter((account) => Boolean(account.id));
-  } catch {}
-  return undefined;
-}
-
-function serializeOAuthAccounts(accounts: OAuthAccount[]) {
-  return JSON.stringify(accounts.map(oauthAccountToStored));
-}
-
-/** Keep real secrets when the admin UI posts redacted placeholders (********). */
-function preserveOAuthAccountSecrets(incoming: OAuthAccount, existing?: OAuthAccount): OAuthAccount {
-  const pick = (next?: string, prev?: string) => {
-    if (next !== undefined && next !== "" && !isRedactedSecret(next)) return next;
-    return prev;
-  };
-  return {
-    ...existing,
-    ...incoming,
-    oauthAccessToken: pick(incoming.oauthAccessToken, existing?.oauthAccessToken),
-    oauthRefreshToken: pick(incoming.oauthRefreshToken, existing?.oauthRefreshToken),
-    oauthCopilotToken: pick(incoming.oauthCopilotToken, existing?.oauthCopilotToken),
-    oauthDeviceClientSecret: pick(incoming.oauthDeviceClientSecret, existing?.oauthDeviceClientSecret),
-    oauthMachineId:
-      incoming.oauthMachineId !== undefined && !isRedactedSecret(incoming.oauthMachineId)
-        ? incoming.oauthMachineId
-        : existing?.oauthMachineId ?? incoming.oauthMachineId
-  };
-}
-
-function mergeIncomingOAuthAccounts(
-  incoming: OAuthAccount[] | undefined,
-  existingRaw: string | null | undefined,
-  legacyRow?: {
-    oauth_access_token_encrypted?: string;
-    oauth_refresh_token_encrypted?: string;
-    oauth_copilot_token_encrypted?: string;
-    oauth_copilot_token_expires_at?: string;
-    oauth_token_expires_at?: string;
-    oauth_last_refresh_at?: string;
-    oauth_project_id?: string;
-    oauth_device_client_id?: string;
-    oauth_device_client_secret_encrypted?: string;
-    oauth_machine_id?: string;
-    oauth_profile_arn?: string;
-    connection_status?: string;
-    last_error?: string;
-    rate_limited_until?: string;
-  }
-): OAuthAccount[] | undefined {
-  const existing =
-    parseOAuthAccounts(existingRaw) ??
-    (legacyRow ? [legacyOAuthAccountFromRow(legacyRow)].filter(Boolean) as OAuthAccount[] : []);
-  if (incoming === undefined) return existing.length ? existing : undefined;
-  if (!incoming.length) return existing.length ? existing : undefined;
-  const byId = new Map(existing.map((account) => [account.id, account]));
-  return incoming.map((account, index) =>
-    preserveOAuthAccountSecrets(account, byId.get(account.id) ?? existing[index])
-  );
-}
-
-function legacyOAuthAccountFromRow(row: any): OAuthAccount | null {
-  if (!row.oauth_access_token_encrypted && !row.oauth_copilot_token_encrypted) return null;
-  return {
-    id: "legacy",
-    name: "Account 1",
-    oauthAccessToken: row.oauth_access_token_encrypted ? decryptSecret(row.oauth_access_token_encrypted) : undefined,
-    oauthRefreshToken: row.oauth_refresh_token_encrypted ? decryptSecret(row.oauth_refresh_token_encrypted) : undefined,
-    oauthTokenExpiresAt: row.oauth_token_expires_at ?? undefined,
-    oauthLastRefreshAt: row.oauth_last_refresh_at ?? undefined,
-    oauthCopilotToken: row.oauth_copilot_token_encrypted ? decryptSecret(row.oauth_copilot_token_encrypted) : undefined,
-    oauthCopilotTokenExpiresAt: row.oauth_copilot_token_expires_at ?? undefined,
-    oauthProjectId: row.oauth_project_id ?? undefined,
-    oauthDeviceClientId: row.oauth_device_client_id ?? undefined,
-    oauthDeviceClientSecret: row.oauth_device_client_secret_encrypted ? decryptSecret(row.oauth_device_client_secret_encrypted) : undefined,
-    oauthMachineId: row.oauth_machine_id ?? undefined,
-    oauthProfileArn: row.oauth_profile_arn ?? undefined,
-    connectionStatus: row.connection_status ?? undefined,
-    lastError: row.last_error ?? undefined,
-    rateLimitedUntil: row.rate_limited_until ?? undefined
-  };
-}
-
 function migrateLegacyOAuthAccounts(database: Database.Database) {
   const migrated = readSetting<boolean>(database, "oauthAccountsV1", false);
   if (migrated) return;
@@ -717,36 +618,6 @@ function migrateLegacyOAuthAccounts(database: Database.Database) {
     database.prepare("UPDATE providers SET oauth_accounts = ? WHERE id = ?").run(serializeOAuthAccounts([legacy]), row.id);
   }
   writeSetting(database, "oauthAccountsV1", true);
-}
-
-function syncPrimaryOAuthColumns(database: Database.Database, providerId: string, accounts: OAuthAccount[]) {
-  const primary = accounts[0];
-  database.prepare(`UPDATE providers SET
-    oauth_access_token_encrypted = ?,
-    oauth_refresh_token_encrypted = ?,
-    oauth_token_expires_at = ?,
-    oauth_last_refresh_at = ?,
-    oauth_copilot_token_encrypted = ?,
-    oauth_copilot_token_expires_at = ?,
-    oauth_project_id = ?,
-    oauth_device_client_id = ?,
-    oauth_device_client_secret_encrypted = ?,
-    oauth_machine_id = ?,
-    oauth_profile_arn = ?
-    WHERE id = ?`).run(
-    primary?.oauthAccessToken && !isRedactedSecret(primary.oauthAccessToken) ? encryptSecret(primary.oauthAccessToken.trim()) : null,
-    primary?.oauthRefreshToken && !isRedactedSecret(primary.oauthRefreshToken) ? encryptSecret(primary.oauthRefreshToken.trim()) : null,
-    primary?.oauthTokenExpiresAt ?? null,
-    primary?.oauthLastRefreshAt ?? null,
-    primary?.oauthCopilotToken && !isRedactedSecret(primary.oauthCopilotToken) ? encryptSecret(primary.oauthCopilotToken.trim()) : null,
-    primary?.oauthCopilotTokenExpiresAt ?? null,
-    primary?.oauthProjectId ?? null,
-    primary?.oauthDeviceClientId ?? null,
-    primary?.oauthDeviceClientSecret && !isRedactedSecret(primary.oauthDeviceClientSecret) ? encryptSecret(primary.oauthDeviceClientSecret.trim()) : null,
-    primary?.oauthMachineId ?? null,
-    primary?.oauthProfileArn ?? null,
-    providerId
-  );
 }
 
 function providerFromRow(row: any): ProviderConfig {
@@ -934,27 +805,6 @@ function writeStoreToDb(database: Database.Database, store: NesaStore) {
     writeSetting(database, "budget", store.budget);
     writeSetting(database, "router", store.router);
     writeSetting(database, "aliases", store.aliases ?? []);
-
-    database.prepare("DELETE FROM providers").run();
-    for (const provider of store.providers) writeProviderToDb(database, provider);
-
-    // Catalog presets (OAuth + new API-key seeds) must survive full store rewrites.
-    for (const provider of defaultStore.providers) {
-      const exists = database.prepare("SELECT id FROM providers WHERE id = ?").get(provider.id);
-      if (!exists) writeProviderToDb(database, provider);
-    }
-
-    database.prepare("DELETE FROM local_api_keys").run();
-    for (const token of store.localApiKeys) {
-      const stored = token.startsWith("nesa:v1:") ? token : encryptSecret(token);
-      database.prepare("INSERT OR IGNORE INTO local_api_keys (token) VALUES (?)").run(stored);
-    }
-
-    database.prepare("DELETE FROM usage_logs").run();
-    for (const log of store.usage) writeUsageToDb(database, log);
-
-    database.prepare("DELETE FROM cache_entries").run();
-    for (const entry of store.cache) writeCacheToDb(database, entry);
 
     database.prepare("DELETE FROM combos").run();
     for (const combo of store.combos) writeComboToDb(database, combo);
@@ -1197,10 +1047,6 @@ export async function writeStore(store: NesaStore) {
   writeStoreToDb(getDb(), store);
 }
 
-export async function readAdminPasswordHash() {
-  return readSetting<string | null>(getDb(), "adminPasswordHash", null);
-}
-
 /** Sync read of dashboard public base URL (used by OAuth redirect helpers). */
 export function readPublicBaseUrlSync(): string | undefined {
   try {
@@ -1210,65 +1056,6 @@ export function readPublicBaseUrlSync(): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-export async function writeAdminPasswordHash(hash: string) {
-  writeSetting(getDb(), "adminPasswordHash", hash);
-}
-
-export async function createAdminSessionRecord(session: {
-  tokenHash: string;
-  createdAt: string;
-  expiresAt: string;
-}) {
-  const database = getDb();
-  database
-    .prepare(
-      "INSERT INTO admin_sessions (token_hash, created_at, expires_at) VALUES (?, ?, ?) ON CONFLICT(token_hash) DO UPDATE SET created_at = excluded.created_at, expires_at = excluded.expires_at"
-    )
-    .run(session.tokenHash, session.createdAt, session.expiresAt);
-  database.prepare("DELETE FROM admin_sessions WHERE expires_at < ?").run(new Date().toISOString());
-}
-
-export async function findAdminSessionByHash(tokenHash: string) {
-  return (
-    (getDb()
-      .prepare("SELECT token_hash as tokenHash, created_at as createdAt, expires_at as expiresAt FROM admin_sessions WHERE token_hash = ?")
-      .get(tokenHash) as { tokenHash: string; createdAt: string; expiresAt: string } | undefined) ?? null
-  );
-}
-
-export async function deleteAdminSessionByHash(tokenHash: string) {
-  getDb().prepare("DELETE FROM admin_sessions WHERE token_hash = ?").run(tokenHash);
-}
-
-export async function deleteAllAdminSessions() {
-  getDb().prepare("DELETE FROM admin_sessions").run();
-}
-
-export async function touchAdminSessionExpiry(tokenHash: string, expiresAt: string) {
-  getDb().prepare("UPDATE admin_sessions SET expires_at = ? WHERE token_hash = ?").run(expiresAt, tokenHash);
-}
-
-export interface LoginLockState {
-  failedAttempts: number;
-  lockedUntil?: string;
-}
-
-function loginLockSettingKey(lockKey = "default") {
-  return `loginLock:${lockKey}`;
-}
-
-export async function readLoginLockState(lockKey = "default"): Promise<LoginLockState> {
-  return readSetting<LoginLockState>(getDb(), loginLockSettingKey(lockKey), { failedAttempts: 0 });
-}
-
-export async function writeLoginLockState(state: LoginLockState, lockKey = "default") {
-  writeSetting(getDb(), loginLockSettingKey(lockKey), state);
-}
-
-export async function clearLoginLockState(lockKey = "default") {
-  writeSetting(getDb(), loginLockSettingKey(lockKey), { failedAttempts: 0 });
 }
 
 function preserveOptionalSecret(
@@ -1283,8 +1070,8 @@ function preserveOptionalSecret(
 
 export async function updateProvider(provider: ProviderConfig) {
   const database = getDb();
-  const existing = database.prepare("SELECT api_key_encrypted, api_keys, models, connection_status, last_checked_at, last_error, oauth_access_token_encrypted, oauth_refresh_token_encrypted, oauth_copilot_token_encrypted, oauth_copilot_token_expires_at, oauth_project_id, oauth_device_client_id, oauth_device_client_secret_encrypted, oauth_machine_id, oauth_profile_arn, proxy_url, vertex_location, key_quotas, oauth_accounts, oauth_token_expires_at, oauth_last_refresh_at, rate_limited_until FROM providers WHERE id = ?").get(provider.id) as
-    | { api_key_encrypted: string; api_keys?: string; models?: string; connection_status?: string; last_checked_at?: string; last_error?: string; oauth_access_token_encrypted?: string; oauth_refresh_token_encrypted?: string; oauth_copilot_token_encrypted?: string; oauth_copilot_token_expires_at?: string; oauth_project_id?: string; oauth_device_client_id?: string; oauth_device_client_secret_encrypted?: string; oauth_machine_id?: string; oauth_profile_arn?: string; proxy_url?: string; vertex_location?: string; key_quotas?: string; oauth_accounts?: string; oauth_token_expires_at?: string; oauth_last_refresh_at?: string; rate_limited_until?: string }
+  const existing = database.prepare("SELECT api_key_encrypted, api_keys, models, connection_status, last_checked_at, last_error, oauth_profile, oauth_access_token_encrypted, oauth_refresh_token_encrypted, oauth_copilot_token_encrypted, oauth_copilot_token_expires_at, oauth_project_id, oauth_device_client_id, oauth_device_client_secret_encrypted, oauth_machine_id, oauth_profile_arn, proxy_url, vertex_location, key_quotas, oauth_accounts, oauth_token_expires_at, oauth_last_refresh_at, rate_limited_until FROM providers WHERE id = ?").get(provider.id) as
+    | { api_key_encrypted: string; api_keys?: string; models?: string; connection_status?: string; last_checked_at?: string; last_error?: string; oauth_profile?: string; oauth_access_token_encrypted?: string; oauth_refresh_token_encrypted?: string; oauth_copilot_token_encrypted?: string; oauth_copilot_token_expires_at?: string; oauth_project_id?: string; oauth_device_client_id?: string; oauth_device_client_secret_encrypted?: string; oauth_machine_id?: string; oauth_profile_arn?: string; proxy_url?: string; vertex_location?: string; key_quotas?: string; oauth_accounts?: string; oauth_token_expires_at?: string; oauth_last_refresh_at?: string; rate_limited_until?: string }
     | undefined;
   const incomingApiKeys =
     provider.apiKeys === undefined
@@ -1322,6 +1109,10 @@ export async function updateProvider(provider: ProviderConfig) {
   );
   const incomingApiKey =
     provider.apiKey === undefined || isRedactedSecret(provider.apiKey) ? undefined : provider.apiKey;
+  const preserveOauthProfile =
+    provider.oauthProfile === undefined
+      ? (existing?.oauth_profile as ProviderConfig["oauthProfile"] | undefined)
+      : provider.oauthProfile;
   const incomingStatus = provider.connectionStatus;
   const preserveConnection =
     !incomingStatus || incomingStatus === "unknown"
@@ -1340,6 +1131,7 @@ export async function updateProvider(provider: ProviderConfig) {
     apiKey: incomingApiKey ?? (existing?.api_key_encrypted ? decryptSecret(existing.api_key_encrypted) : provider.apiKey ?? ""),
     apiKeys: preserveApiKeys,
     models: preserveModels,
+    oauthProfile: preserveOauthProfile,
     oauthAccounts: preserveOauthAccounts,
     oauthAccessToken: preserveOauthAccess,
     oauthRefreshToken: preserveOauthRefresh,
@@ -1353,6 +1145,9 @@ export async function updateProvider(provider: ProviderConfig) {
     proxyUrl: preserveProxyUrl,
     vertexLocation: preserveVertexLocation,
     keyQuotas: preserveKeyQuotas,
+    inputCostPerMTok: Number.isFinite(provider.inputCostPerMTok) ? provider.inputCostPerMTok : 0,
+    outputCostPerMTok: Number.isFinite(provider.outputCostPerMTok) ? provider.outputCostPerMTok : 0,
+    priority: Number.isFinite(provider.priority) ? provider.priority : 50,
     ...preserveConnection
   };
   writeProviderToDb(database, merged, existing?.api_key_encrypted ?? "");
@@ -1466,7 +1261,7 @@ export function usageDayKey(iso: string) {
 export function getTodaySpend(store: NesaStore) {
   const today = todayKey();
   return store.usage
-    .filter((item) => usageDayKey(item.createdAt) === today && item.status === "success")
+    .filter((item) => usageDayKey(item.createdAt) === today && (item.status === "success" || /Client cancelled stream|Upstream stream failed/i.test(item.error ?? "")))
     .reduce((sum, item) => sum + item.totalCostUsd, 0);
 }
 
@@ -1512,261 +1307,9 @@ export async function getMcpServer(serverId: string): Promise<McpServer | undefi
   return row ? mcpFromRow(row) : undefined;
 }
 
-export async function saveProviderOAuthTokens(providerId: string, tokens: {
-  accessToken: string;
-  refreshToken?: string;
-  expiresAt?: string;
-  copilotToken?: string;
-  copilotTokenExpiresAt?: string;
-  projectId?: string;
-  deviceClientId?: string;
-  deviceClientSecret?: string;
-  machineId?: string;
-  profileArn?: string;
-}, options?: { accountId?: string; createNew?: boolean; accountName?: string }) {
-  const database = getDb();
-  const provider = await readProviderById(providerId);
-  if (!provider) throw new Error("Provider not found.");
-
-  const existingAccounts = Array.isArray(provider.oauthAccounts) && provider.oauthAccounts.length
-    ? [...provider.oauthAccounts]
-    : configuredOAuthAccountsFromProvider(provider);
-
-  const accountId = options?.createNew
-    ? createOAuthAccountId()
-    : options?.accountId ?? existingAccounts[0]?.id ?? "legacy";
-  const existing = existingAccounts.find((account) => account.id === accountId);
-  const nextAccount: OAuthAccount = {
-    id: accountId,
-    name: options?.accountName ?? existing?.name ?? defaultOAuthAccountName(options?.createNew ? existingAccounts.length : Math.max(existingAccounts.length - 1, 0)),
-    oauthAccessToken: tokens.accessToken,
-    oauthRefreshToken: tokens.refreshToken ?? existing?.oauthRefreshToken,
-    oauthTokenExpiresAt: tokens.expiresAt ?? existing?.oauthTokenExpiresAt,
-    oauthLastRefreshAt: new Date().toISOString(),
-    oauthCopilotToken: tokens.copilotToken ?? existing?.oauthCopilotToken,
-    oauthCopilotTokenExpiresAt: tokens.copilotTokenExpiresAt ?? existing?.oauthCopilotTokenExpiresAt,
-    oauthProjectId: tokens.projectId ?? existing?.oauthProjectId,
-    oauthDeviceClientId: tokens.deviceClientId ?? existing?.oauthDeviceClientId,
-    oauthDeviceClientSecret: tokens.deviceClientSecret ?? existing?.oauthDeviceClientSecret,
-    oauthMachineId: tokens.machineId ?? existing?.oauthMachineId,
-    oauthProfileArn: tokens.profileArn ?? existing?.oauthProfileArn,
-    connectionStatus: "connected",
-    lastError: undefined,
-    lastCheckedAt: new Date().toISOString(),
-    createdAt: existing?.createdAt ?? new Date().toISOString()
-  };
-
-  const accounts = options?.createNew || !existing
-    ? [...existingAccounts, nextAccount]
-    : existingAccounts.map((account) => (account.id === accountId ? { ...account, ...nextAccount } : account));
-
-  database.prepare(`UPDATE providers SET oauth_accounts = ? WHERE id = ?`).run(serializeOAuthAccounts(accounts), providerId);
-  syncPrimaryOAuthColumns(database, providerId, accounts);
-  syncProviderOAuthConnectionStatus(database, providerId, accounts);
-  // Connecting OAuth should make the provider routable without a separate Active toggle.
-  if (provider.status === "disabled" || provider.status === "cooldown") {
-    database
-      .prepare("UPDATE providers SET status = 'active', rate_limited_until = NULL WHERE id = ?")
-      .run(providerId);
-  }
-  return accountId;
-}
-
-function configuredOAuthAccountsFromProvider(provider: ProviderConfig): OAuthAccount[] {
-  if (Array.isArray(provider.oauthAccounts) && provider.oauthAccounts.length) return [...provider.oauthAccounts];
-  if (!provider.oauthAccessToken && !provider.oauthCopilotToken) return [];
-  return [{
-    id: "legacy",
-    name: "Account 1",
-    oauthAccessToken: provider.oauthAccessToken,
-    oauthRefreshToken: provider.oauthRefreshToken,
-    oauthTokenExpiresAt: provider.oauthTokenExpiresAt,
-    oauthLastRefreshAt: provider.oauthLastRefreshAt,
-    oauthCopilotToken: provider.oauthCopilotToken,
-    oauthCopilotTokenExpiresAt: provider.oauthCopilotTokenExpiresAt,
-    oauthProjectId: provider.oauthProjectId,
-    oauthDeviceClientId: provider.oauthDeviceClientId,
-    oauthDeviceClientSecret: provider.oauthDeviceClientSecret,
-    oauthMachineId: provider.oauthMachineId,
-    oauthProfileArn: provider.oauthProfileArn,
-    connectionStatus: provider.connectionStatus,
-    lastError: provider.lastError,
-    rateLimitedUntil: provider.rateLimitedUntil
-  }];
-}
-
-export async function updateProviderOAuthAccountTokens(providerId: string, accountId: string, patch: Partial<OAuthAccount>) {
-  const provider = await readProviderById(providerId);
-  if (!provider) throw new Error("Provider not found.");
-  const accounts = configuredOAuthAccountsFromProvider(provider).map((account) =>
-    account.id === accountId ? { ...account, ...patch } : account
-  );
-  const database = getDb();
-  database.prepare("UPDATE providers SET oauth_accounts = ? WHERE id = ?").run(serializeOAuthAccounts(accounts), providerId);
-  syncPrimaryOAuthColumns(database, providerId, accounts);
-}
-
-export async function clearProviderOAuthTokens(providerId: string) {
-  const database = getDb();
-  database
-    .prepare(`UPDATE providers SET oauth_accounts = NULL, oauth_access_token_encrypted = NULL, oauth_refresh_token_encrypted = NULL, oauth_token_expires_at = NULL, oauth_last_refresh_at = NULL, oauth_copilot_token_encrypted = NULL, oauth_copilot_token_expires_at = NULL, oauth_project_id = NULL, oauth_device_client_id = NULL, oauth_device_client_secret_encrypted = NULL, oauth_machine_id = NULL, oauth_profile_arn = NULL WHERE id = ?`)
-    .run(providerId);
-}
-
-export async function clearOAuthAccount(providerId: string, accountId: string) {
-  const provider = await readProviderById(providerId);
-  if (!provider) return;
-  const accounts = configuredOAuthAccountsFromProvider(provider).filter((account) => account.id !== accountId);
-  const database = getDb();
-  if (!accounts.length) {
-    await clearProviderOAuthTokens(providerId);
-    return;
-  }
-  database.prepare("UPDATE providers SET oauth_accounts = ? WHERE id = ?").run(serializeOAuthAccounts(accounts), providerId);
-  syncPrimaryOAuthColumns(database, providerId, accounts);
-  syncProviderOAuthConnectionStatus(database, providerId, accounts);
-}
-
-function syncProviderOAuthConnectionStatus(database: Database.Database, providerId: string, accounts: OAuthAccount[]) {
-  const withToken = accounts.filter((account) => Boolean(account.oauthAccessToken || account.oauthCopilotToken));
-  const routable = withToken.filter(
-    (account) => account.connectionStatus !== "error" && account.connectionStatus !== "no_subscription"
-  );
-  const onlyNoSub =
-    !routable.length &&
-    withToken.length > 0 &&
-    withToken.every((account) => account.connectionStatus === "no_subscription");
-  const anyNoSub = withToken.some((account) => account.connectionStatus === "no_subscription");
-  const status = routable.length
-    ? "connected"
-    : onlyNoSub || (anyNoSub && !withToken.some((account) => account.connectionStatus === "error"))
-      ? "no_subscription"
-      : withToken.length
-        ? "error"
-        : "unknown";
-  const lastError =
-    routable.length ? null : withToken.find((account) => account.lastError)?.lastError ?? null;
-  database
-    .prepare("UPDATE providers SET connection_status = ?, last_checked_at = ?, last_error = ? WHERE id = ?")
-    .run(status, new Date().toISOString(), lastError, providerId);
-}
-
-export async function markOAuthAccountConnection(
-  providerId: string,
-  accountId: string,
-  ok: boolean,
-  message?: string,
-  options?: { rateLimitedUntil?: string; status?: ProviderConnectionStatus }
-) {
-  const provider = await readProviderById(providerId);
-  if (!provider) return;
-  const status: ProviderConnectionStatus = options?.status ?? (ok ? "connected" : "error");
-  const accounts = configuredOAuthAccountsFromProvider(provider).map((account) =>
-    account.id === accountId
-      ? {
-          ...account,
-          connectionStatus: status,
-          lastError: status === "connected" ? undefined : message?.slice(0, 500),
-          lastCheckedAt: new Date().toISOString(),
-          rateLimitedUntil: options?.rateLimitedUntil ?? (status === "connected" ? undefined : account.rateLimitedUntil)
-        }
-      : account
-  );
-  const database = getDb();
-  database.prepare("UPDATE providers SET oauth_accounts = ? WHERE id = ?").run(serializeOAuthAccounts(accounts), providerId);
-  syncPrimaryOAuthColumns(database, providerId, accounts);
-  syncProviderOAuthConnectionStatus(database, providerId, accounts);
-}
-
-export async function writeOAuthAccounts(providerId: string, accounts: OAuthAccount[]) {
-  const database = getDb();
-  database.prepare("UPDATE providers SET oauth_accounts = ? WHERE id = ?").run(serializeOAuthAccounts(accounts), providerId);
-  syncPrimaryOAuthColumns(database, providerId, accounts);
-  syncProviderOAuthConnectionStatus(database, providerId, accounts);
-}
-
 export async function readProviderById(providerId: string): Promise<ProviderConfig | undefined> {
   const row = getDb().prepare("SELECT * FROM providers WHERE id = ?").get(providerId) as any | undefined;
   return row ? providerFromRow(row) : undefined;
-}
-
-export async function saveOAuthPending(state: string, data: { providerId: string; accountId?: string; codeVerifier: string; redirectUri: string; createdAt: string }) {
-  writeSetting(getDb(), `oauthPending:${state}`, {
-    ...data,
-    codeVerifier: encryptSecret(data.codeVerifier)
-  });
-}
-
-export async function readOAuthPending(state: string) {
-  const pending = readSetting<{ providerId: string; accountId?: string; codeVerifier: string; redirectUri: string; createdAt: string } | null>(
-    getDb(),
-    `oauthPending:${state}`,
-    null
-  );
-  if (!pending) return null;
-  return {
-    ...pending,
-    codeVerifier: decryptSecret(pending.codeVerifier)
-  };
-}
-
-export async function deleteOAuthPending(state: string) {
-  getDb().prepare("DELETE FROM settings WHERE key = ?").run(`oauthPending:${state}`);
-}
-
-export type DevicePendingState = {
-  deviceCode: string;
-  createdAt: string;
-  /** Absolute expiry from upstream `expires_in` (preferred over hardcoded 15m). */
-  expiresAt?: string;
-  accountId?: string;
-  clientId?: string;
-  clientSecret?: string;
-  region?: string;
-  /** PKCE verifier for Qwen device flow. */
-  codeVerifier?: string;
-};
-
-export async function saveDevicePending(providerId: string, data: DevicePendingState, accountId?: string) {
-  const key = accountId ? `devicePending:${providerId}:${accountId}` : `devicePending:${providerId}`;
-  writeSetting(getDb(), key, {
-    ...data,
-    accountId: data.accountId ?? accountId,
-    deviceCode: encryptSecret(data.deviceCode),
-    clientSecret: data.clientSecret ? encryptSecret(data.clientSecret) : undefined,
-    codeVerifier: data.codeVerifier ? encryptSecret(data.codeVerifier) : undefined
-  });
-}
-
-export async function readDevicePending(providerId: string, accountId?: string) {
-  const keys = [accountId ? `devicePending:${providerId}:${accountId}` : `devicePending:${providerId}`];
-  for (const key of keys) {
-    const pending = readSetting<DevicePendingState | null>(getDb(), key, null);
-    if (!pending) continue;
-    return {
-      ...pending,
-      deviceCode: decryptSecret(pending.deviceCode),
-      clientSecret: pending.clientSecret ? decryptSecret(pending.clientSecret) : undefined,
-      codeVerifier: pending.codeVerifier ? decryptSecret(pending.codeVerifier) : undefined
-    };
-  }
-  return null;
-}
-
-function listDevicePendingKeys(providerId: string) {
-  const rows = getDb().prepare("SELECT key FROM settings WHERE key LIKE ?").all(`devicePending:${providerId}:%`) as Array<{ key: string }>;
-  return rows.map((row) => row.key);
-}
-
-export async function deleteDevicePending(providerId: string, accountId?: string) {
-  if (accountId) {
-    getDb().prepare("DELETE FROM settings WHERE key = ?").run(`devicePending:${providerId}:${accountId}`);
-    return;
-  }
-  getDb().prepare("DELETE FROM settings WHERE key = ?").run(`devicePending:${providerId}`);
-  for (const key of listDevicePendingKeys(providerId)) {
-    getDb().prepare("DELETE FROM settings WHERE key = ?").run(key);
-  }
 }
 
 export function getDataDir() {

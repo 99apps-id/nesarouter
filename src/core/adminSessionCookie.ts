@@ -5,12 +5,15 @@
 
 export const adminCookieName = "nesa_admin_session";
 const DEFAULT_SESSION_TTL_HOURS = 24 * 7;
+const MAX_SESSION_TTL_HOURS = 24 * 365;
 
 function readSessionTtlHours() {
   const raw = process.env.NESA_SESSION_TTL_HOURS?.trim();
   if (!raw) return DEFAULT_SESSION_TTL_HOURS;
   const hours = Number(raw);
-  return Number.isFinite(hours) && hours > 0 ? hours : DEFAULT_SESSION_TTL_HOURS;
+  return Number.isFinite(hours) && hours > 0 && hours <= MAX_SESSION_TTL_HOURS
+    ? hours
+    : DEFAULT_SESSION_TTL_HOURS;
 }
 
 /** Sliding admin session lifetime (default 7 days). Override with NESA_SESSION_TTL_HOURS. */
@@ -18,10 +21,12 @@ export const SESSION_TTL_MS = readSessionTtlHours() * 60 * 60 * 1000;
 export const COOKIE_PREFIX = "nesa1";
 
 function sessionHmacSecret() {
-  const fromEnv = process.env.NESA_ADMIN_SESSION_SECRET?.trim() || process.env.NESA_ENCRYPTION_KEY?.trim();
+  const fromEnv = process.env.NESA_ADMIN_SESSION_SECRET?.trim();
   if (fromEnv) return fromEnv;
+  const fallback = process.env.NESA_ENCRYPTION_KEY?.trim();
+  if (fallback) return fallback;
   if (process.env.NODE_ENV === "production") {
-    throw new Error("NESA_ENCRYPTION_KEY (or NESA_ADMIN_SESSION_SECRET) is required in production.");
+    throw new Error("NESA_ADMIN_SESSION_SECRET (or NESA_ENCRYPTION_KEY) is required in production.");
   }
   return "nesa-router-dev";
 }

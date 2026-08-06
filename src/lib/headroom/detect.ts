@@ -19,7 +19,10 @@ const EXTRA_BINS = IS_WIN
       `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python312\\Scripts`,
       `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python311\\Scripts`,
       `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python310\\Scripts`,
-      `${process.env.APPDATA || ""}\\Python\\Python313\\Scripts`
+      `${process.env.APPDATA || ""}\\Python\\Python313\\Scripts`,
+      `${process.env.APPDATA || ""}\\Python\\Python312\\Scripts`,
+      `${process.env.APPDATA || ""}\\Python\\Python311\\Scripts`,
+      `${process.env.APPDATA || ""}\\Python\\Python310\\Scripts`
     ]
   : [
       "/usr/local/bin",
@@ -41,6 +44,19 @@ const HEADROOM_HEALTH_TIMEOUT_MS = 1500;
 export const DEFAULT_HEADROOM_URL = process.env.HEADROOM_URL || "http://localhost:8787";
 
 const ENV = { ...process.env, PATH: EXTENDED_PATH };
+
+export const HEADROOM_PROCESS_ENV = ENV;
+
+export interface HeadroomLaunchSpec {
+  command: string;
+  prefixArgs: string[];
+}
+
+export function buildHeadroomLaunchSpec(binary: string | null, python: string | null): HeadroomLaunchSpec | null {
+  if (binary) return { command: binary, prefixArgs: [] };
+  if (python) return { command: python, prefixArgs: ["-m", "headroom.cli"] };
+  return null;
+}
 
 export function findHeadroomBinary(): string | null {
   try {
@@ -144,12 +160,12 @@ export interface HeadroomStatus {
 export async function getHeadroomStatus(url: string): Promise<HeadroomStatus> {
   const bin = findHeadroomBinary();
   const python = findPython310();
-  const installed = Boolean(bin);
   const running = await probeProxyRunning(url);
-  const extrasStatus = installed ? getInstalledHeadroomExtras(python) : { installed: false, version: null, extras: { code: false, ml: false } };
+  const extrasStatus = python ? getInstalledHeadroomExtras(python) : { installed: false, version: null, extras: { code: false, ml: false } };
+  const installed = Boolean(bin) || extrasStatus.installed;
   return {
     installed,
-    path: bin,
+    path: bin || (extrasStatus.installed && python ? `${python} -m headroom.cli` : null),
     running,
     python,
     version: extrasStatus.version,
