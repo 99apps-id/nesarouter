@@ -19,6 +19,41 @@ export function deepMergeJson(base: unknown, patch: unknown): unknown {
   return patch;
 }
 
+/** Like deepMergeJson, but array values append (deduped by title/id) instead of replacing. */
+export function mergeJsonAppend(base: unknown, patch: unknown): unknown {
+  if (Array.isArray(patch)) {
+    const existing = Array.isArray(base) ? (base as unknown[]) : [];
+    const keyOf = (entry: unknown) => {
+      if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+        const row = entry as Record<string, unknown>;
+        if (typeof row.title === "string") return `title:${row.title}`;
+        if (typeof row.id === "string") return `id:${row.id}`;
+      }
+      return JSON.stringify(entry);
+    };
+    const seen = new Set(existing.map(keyOf));
+    const out = [...existing];
+    for (const item of patch) {
+      const key = keyOf(item);
+      if (!seen.has(key)) {
+        out.push(item);
+        seen.add(key);
+      }
+    }
+    return out;
+  }
+  if (patch && typeof patch === "object" && !Array.isArray(patch)) {
+    const baseObj =
+      base && typeof base === "object" && !Array.isArray(base) ? (base as Record<string, unknown>) : {};
+    const out: Record<string, unknown> = { ...baseObj };
+    for (const [key, value] of Object.entries(patch as Record<string, unknown>)) {
+      out[key] = mergeJsonAppend(out[key], value);
+    }
+    return out;
+  }
+  return patch;
+}
+
 export function expandCliHomePath(filePath: string) {
   if (filePath.startsWith("~/") || filePath === "~") {
     return path.join(os.homedir(), filePath.slice(2));
@@ -60,6 +95,18 @@ export function applyCliConfigFile(file: CliConfigFile) {
     return { path: target, mode: "merge-json" as const };
   }
 
+  if (mode === "merge-json-append") {
+    let patch: unknown;
+    try {
+      patch = JSON.parse(file.content);
+    } catch {
+      throw new Error(`Invalid JSON patch for ${file.path}`);
+    }
+    const merged = mergeJsonAppend(readJsonFile(target, true), patch);
+    try { fs.writeFileSync(target, `${JSON.stringify(merged, null, 2)}\n`, "utf8"); } catch (error) { throw cliWriteError(target, error); }
+    return { path: target, mode: "merge-json-append" as const };
+  }
+
   if (mode === "merge-toml") {
     const existing = fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
     try {
@@ -89,7 +136,17 @@ export function applyCliConfigFile(file: CliConfigFile) {
 function cliWriteError(target: string, error: unknown) {
   const cause = error as NodeJS.ErrnoException;
   if (cause?.code === "EACCES" || cause?.code === "EPERM") {
-    return new Error(`Cannot write ${target}: permission denied. Ensure the NesaRouter service user owns the file and its parent directory (for example: sudo chown -R $(systemctl show nesarouter -p User --value) ${path.dirname(target)}).`);
+    // The app runs as the service user (pm2 fork or systemd unit). Resolve that
+    // user at runtime so the hint is accurate for both setups.
+    let owner = "the service user";
+    try {
+      owner = os.userInfo()?.username || owner;
+    } catch {
+      /* os.userInfo may throw when uid has no passwd entry; keep generic */
+    }
+    return new Error(
+      `Cannot write ${target}: permission denied. Ensure the NesaRouter service user (${owner}) owns the file and its parent directory (for example: sudo chown -R ${owner} ${path.dirname(target)}).`
+    );
   }
   return error instanceof Error ? error : new Error(`Cannot write ${target}.`);
 }
@@ -135,7 +192,7 @@ function stripHermesModelRouting(existing: string) {
 export function applyCliToolConfigLocal(config: CliToolConfig) {
   if (!config.files.length) {
     return {
-      applied: [] as Array<{ path: string; mode: "merge-json" | "merge-toml" | "merge-yaml-model" | "replace" }>,
+      applied: [] as Array<{ path: string; mode: "merge-json" | "merge-json-append" | "merge-toml" | "merge-yaml-model" | "replace" }>,
       skipped: true as const,
       reason: "This tool does not write a local file — use the dashboard instructions / env instead."
     };
@@ -219,6 +276,10 @@ const TOOL_STATUS_FILES: Partial<Record<CliToolId, StatusMeta>> = {
     path: "~/.jcode/config.toml",
     baseUrlKeys: [],
     scanPaths: ["~/.jcode/config.toml"]
+  },
+  opencode: {
+    path: "~/.config/opencode/opencode.json",
+    baseUrlKeys: ["provider.nesa.options.baseURL"]
   }
 };
 
@@ -345,9 +406,6 @@ function continueNesaBaseUrl(settings: Record<string, unknown>): string | undefi
 export function readCliToolStatus(tool: CliToolId, nesaBaseUrl?: string): ToolStatus {
   const meta = TOOL_STATUS_FILES[tool];
   const binaryInstalled = commandInstalled(tool);
-  if (tool === "gemini-cli" || tool === "continue") {
-    return { installed: binaryInstalled, configPresent: false, credentialReady: false, configStatus: "unsupported" };
-  }
   if (!meta) {
     return { installed: binaryInstalled, configPresent: false, credentialReady: false, configStatus: "unsupported" };
   }
@@ -421,6 +479,11 @@ export function readCliToolStatus(tool: CliToolId, nesaBaseUrl?: string): ToolSt
     }
   }
 
+  if (tool === "continue") {
+    const viaModels = continueNesaBaseUrl(settings);
+    if (viaModels) currentBaseUrl = viaModels;
+  }
+
   if (!currentBaseUrl) {
     return { installed, configPresent, credentialReady: false, settingsPath, configStatus: "not_configured", settings, currentBaseUrl };
   }
@@ -431,6 +494,17 @@ export function readCliToolStatus(tool: CliToolId, nesaBaseUrl?: string): ToolSt
       ? typeof getByPath(settings, "env.ANTHROPIC_AUTH_TOKEN") === "string" && Boolean(String(getByPath(settings, "env.ANTHROPIC_AUTH_TOKEN")).trim())
     : tool === "qwen-code"
       ? typeof getByPath(settings, "env.NESA_ROUTER_API_KEY") === "string" && Boolean(String(getByPath(settings, "env.NESA_ROUTER_API_KEY")).trim())
+    : tool === "gemini-cli"
+      ? typeof getByPath(settings, "security.auth.apiKey") === "string" && Boolean(String(getByPath(settings, "security.auth.apiKey")).trim())
+    : tool === "continue"
+      ? (() => {
+          const models = Array.isArray(settings.models) ? settings.models : [];
+          const nesa = models.find((entry) => entry && typeof entry === "object" && (
+            String((entry as Record<string, unknown>).title ?? "").includes("NesaRouter") ||
+            (typeof (entry as Record<string, unknown>).apiBase === "string" && looksLikeNesa(String((entry as Record<string, unknown>).apiBase), nesaBaseUrl))
+          )) as Record<string, unknown> | undefined;
+          return Boolean(nesa && String(nesa.apiKey ?? "").trim());
+        })()
     : true;
 
   return {
@@ -586,6 +660,19 @@ export function resetCliToolConfigLocal(tool: CliToolId, options?: { settingsPat
     if (!fs.existsSync(filePath)) return { ok: true, message: "No jcode config to reset." };
     writeOrRemove(filePath, stripTomlTable(fs.readFileSync(filePath, "utf8"), "providers.nesa"));
     return { ok: true, message: "Removed NesaRouter provider from jcode config.", path: filePath };
+  }
+
+  if (tool === "opencode") {
+    const filePath = options?.settingsPath ?? expandCliHomePath("~/.config/opencode/opencode.json");
+    if (!fs.existsSync(filePath)) return { ok: true, message: "No opencode config to reset." };
+    const settings = readJsonFile(filePath, true);
+    const provider = (settings.provider as Record<string, unknown> | undefined) ?? {};
+    delete provider.nesa;
+    if (Object.keys(provider).length) settings.provider = provider;
+    else delete settings.provider;
+    if (typeof settings.model === "string" && String(settings.model).startsWith("nesa/")) delete settings.model;
+    fs.writeFileSync(filePath, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+    return { ok: true, message: "Removed NesaRouter provider from opencode.", path: filePath };
   }
 
   return {
