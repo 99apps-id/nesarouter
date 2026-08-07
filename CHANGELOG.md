@@ -2,6 +2,25 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.1.51 - 2026-08-07
+
+### Added
+
+- Curated MCP server catalog in the MCP manager: 20 one-click presets (filesystem, fetch, memory, git, github, sequential-thinking, time, everything, brave-search, context7, playwright, sqlite, postgres, puppeteer, chrome-devtools, tavily, exa, firecrawl, redis, arxiv). All run via `npx -y <package>` so the package auto-installs on first bridge use — no manual search or install step. Presets that need an argument or secret (e.g. filesystem root directory, GitHub token) open a small inline form; servers already added show as added. The manual "Add MCP server" form stays available, and existing servers now have an Edit button.
+- CLI config patching for Gemini CLI, Continue, and opencode — the dashboard Apply button now writes their configs directly (no pre-generated config needed):
+  - Gemini CLI: merge `~/.gemini/settings.json` (base URL + API key) plus `GEMINI_API_BASE_URL`.
+  - Continue: append a NesaRouter model into `~/.continue/config.json` (deduped by title; other models preserved) via a new merge-json-append write mode.
+  - opencode: merge `~/.config/opencode/opencode.json` with an `@ai-sdk/openai-compatible` NesaRouter provider.
+
+### Fixed
+
+- CLI permission-denied error hint now resolves the actual service user at runtime (`os.userInfo()`) and suggests `sudo chown -R <user> <dir>`, instead of assuming a `nesarouter` systemd unit — which is misleading on pm2-managed deployments.
+- Successful automatic SQLite backups are logged at info level instead of `console.error`, so Next.js dev no longer surfaces every backup as a browser console error.
+
+### Validation
+
+- TypeScript validation, production build, and the unit suites pass (CLI tool config and MCP preset suites included).
+
 ## 0.1.50 - 2026-08-04
 
 ### Security
