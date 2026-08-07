@@ -2,8 +2,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { applyCliConfigFile, applyCliToolConfigLocal, deepMergeJson, mergeHermesModelYaml, mergeTomlConfig, resetCliToolConfigLocal } from "@/lib/cliLocalApply";
-import { buildCliInstallScripts, buildCliToolConfig, resolveCliModel } from "@/lib/cliToolConfig";
+import { applyCliConfigFile, applyCliToolConfigLocal, deepMergeJson, mergeHermesModelYaml, mergeJsonAppend, mergeTomlConfig, resetCliToolConfigLocal } from "@/lib/cliLocalApply";
+import { buildCliInstallScripts, buildCliToolConfig, isCliToolFilePatchable, resolveCliModel } from "@/lib/cliToolConfig";
 import { defaultStore } from "@/lib/defaults";
 
 describe("cli tool config", () => {
@@ -233,5 +233,134 @@ describe("cli local apply merge", () => {
     expect(result).not.toContain("gpt-5");
     expect(result).toContain("[model_providers.other]");
     expect(result).toContain('name = "keep"');
+  });
+});
+
+describe("cli extended patchable tools (gemini-cli / continue / opencode)", () => {
+  const tmpDir = path.join(os.tmpdir(), `nesa-cli-ext-${process.pid}`);
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("marks gemini-cli, continue and opencode as file-patchable", () => {
+    expect(isCliToolFilePatchable("gemini-cli")).toBe(true);
+    expect(isCliToolFilePatchable("continue")).toBe(true);
+    expect(isCliToolFilePatchable("opencode")).toBe(true);
+    expect(isCliToolFilePatchable("cursor")).toBe(false);
+    expect(isCliToolFilePatchable("cline")).toBe(false);
+    expect(isCliToolFilePatchable("roo")).toBe(false);
+  });
+
+  it("builds Gemini CLI settings.json with base URL + api key", () => {
+    const config = buildCliToolConfig("gemini-cli", "http://127.0.0.1:20129", "nesa_g", "auto");
+    expect(config.files).toHaveLength(1);
+    const json = JSON.parse(config.files[0]!.content);
+    expect(json.security.auth.selectedType).toBe("apiKey");
+    expect(json.security.auth.apiKey).toBe("nesa_g");
+    expect(json.security.auth.baseUrl).toBe("http://127.0.0.1:20129/v1");
+    expect(config.env.GEMINI_API_BASE_URL).toBe("http://127.0.0.1:20129/v1");
+  });
+
+  it("builds opencode opencode.json with nesa provider and model", () => {
+    const config = buildCliToolConfig("opencode", "http://127.0.0.1:20129", "nesa_o", "gpt-5");
+    const json = JSON.parse(config.files[0]!.content);
+    expect(json.provider.nesa.options.baseURL).toBe("http://127.0.0.1:20129/v1");
+    expect(json.provider.nesa.options.apiKey).toBe("nesa_o");
+    expect(json.provider.nesa.npm).toBe("@ai-sdk/openai-compatible");
+    expect(json.model).toBe("nesa/gpt-5");
+  });
+
+  it("appends Continue model without wiping existing models", () => {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const continuePath = path.join(tmpDir, "config.json");
+    fs.writeFileSync(
+      continuePath,
+      JSON.stringify(
+        {
+          models: [
+            { title: "Existing", provider: "openai", model: "gpt-4", apiBase: "https://x.example/v1", apiKey: "k1" }
+          ],
+          other: { keep: true }
+        },
+        null,
+        2
+      )
+    );
+    const config = buildCliToolConfig("continue", "http://127.0.0.1:20129", "nesa_c", "auto");
+    config.files[0]!.path = continuePath;
+    expect(applyCliToolConfigLocal(config).skipped).toBe(false);
+    const saved = JSON.parse(fs.readFileSync(continuePath, "utf8"));
+    expect(saved.models).toHaveLength(2);
+    expect(saved.models[0].title).toBe("Existing");
+    expect(saved.models[1]).toMatchObject({
+      title: "NesaRouter (auto)",
+      provider: "openai",
+      apiBase: "http://127.0.0.1:20129/v1",
+      apiKey: "nesa_c"
+    });
+    expect(saved.other.keep).toBe(true);
+  });
+
+  it("mergeJsonAppend dedupes by title and keeps scalars", () => {
+    expect(
+      mergeJsonAppend(
+        { models: [{ title: "A", x: 1 }], keep: true },
+        { models: [{ title: "A", x: 2 }, { title: "B", x: 3 }], extra: "e" }
+      )
+    ).toEqual({
+      models: [{ title: "A", x: 1 }, { title: "B", x: 3 }],
+      keep: true,
+      extra: "e"
+    });
+  });
+
+  it("resets Continue and opencode Nesa entries, keeping other settings", () => {
+    fs.mkdirSync(tmpDir, { recursive: true });
+
+    const continuePath = path.join(tmpDir, "continue.json");
+    fs.writeFileSync(
+      continuePath,
+      JSON.stringify({
+        models: [
+          { title: "NesaRouter (auto)", provider: "openai", model: "auto", apiBase: "http://127.0.0.1:20129/v1", apiKey: "x" },
+          { title: "Other", provider: "openai", model: "gpt-4", apiBase: "https://y.example/v1", apiKey: "y" }
+        ]
+      })
+    );
+    const contRes = resetCliToolConfigLocal("continue", { settingsPath: continuePath });
+    expect(contRes.ok).toBe(true);
+    const contSaved = JSON.parse(fs.readFileSync(continuePath, "utf8"));
+    expect(contSaved.models).toHaveLength(1);
+    expect(contSaved.models[0].title).toBe("Other");
+
+    const opencodePath = path.join(tmpDir, "opencode.json");
+    fs.writeFileSync(
+      opencodePath,
+      JSON.stringify({
+        provider: {
+          nesa: { npm: "@ai-sdk/openai-compatible", options: { baseURL: "http://127.0.0.1:20129/v1", apiKey: "x" } },
+          other: { npm: "x", options: {} }
+        },
+        model: "nesa/auto",
+        theme: "dark"
+      })
+    );
+    const opRes = resetCliToolConfigLocal("opencode", { settingsPath: opencodePath });
+    expect(opRes.ok).toBe(true);
+    const opSaved = JSON.parse(fs.readFileSync(opencodePath, "utf8"));
+    expect(opSaved.provider.nesa).toBeUndefined();
+    expect(opSaved.provider.other).toBeDefined();
+    expect(opSaved.model).toBeUndefined();
+    expect(opSaved.theme).toBe("dark");
+  });
+
+  it("generates install scripts for continue (append mode) and gemini (env)", () => {
+    const continueScripts = buildCliInstallScripts(buildCliToolConfig("continue", "http://127.0.0.1:20129", "nesa_c", "auto"));
+    expect(continueScripts.bash).toContain(".continue/config.json");
+    expect(continueScripts.bash).toContain("Merged (append)");
+    const geminiScripts = buildCliInstallScripts(buildCliToolConfig("gemini-cli", "http://127.0.0.1:20129", "nesa_g", "auto"));
+    expect(geminiScripts.bash).toContain(".gemini/settings.json");
+    expect(geminiScripts.bash).toContain("GEMINI_API_BASE_URL");
   });
 });

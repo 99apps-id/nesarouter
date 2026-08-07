@@ -28,9 +28,12 @@ export type CliToolId = (typeof CLI_TOOL_IDS)[number];
 export const CLI_FILE_PATCHABLE_IDS = [
   "claude-code",
   "codex",
+  "gemini-cli",
   "qwen-code",
   "hermes",
   "openclaw",
+  "continue",
+  "opencode",
   "deepseek-tui",
   "jcode"
 ] as const satisfies readonly CliToolId[];
@@ -43,7 +46,7 @@ export interface CliConfigFile {
   path: string;
   content: string;
   /** Default: merge-json for *.json, replace otherwise. */
-  writeMode?: "merge-json" | "merge-toml" | "merge-yaml-model" | "replace";
+  writeMode?: "merge-json" | "merge-json-append" | "merge-toml" | "merge-yaml-model" | "replace";
   tomlTable?: string;
 }
 
@@ -155,10 +158,27 @@ export function buildCliToolConfig(tool: CliToolId, baseUrl: string, apiKey: str
       };
     case "gemini-cli":
       return {
-        summary: "Gemini CLI — generic OpenAI-compatible override unsupported",
-        files: [],
-        env: {},
-        instructions: "Gemini CLI resmi tidak menyediakan provider OpenAI-compatible generik. Gunakan Qwen Code, Codex, Claude Code, OpenClaw, atau konfigurasi Generic untuk NesaRouter."
+        summary: "Gemini CLI — settings.json (merge) + GEMINI_API_BASE_URL",
+        files: [
+          {
+            path: "~/.gemini/settings.json",
+            writeMode: "merge-json",
+            content: JSON.stringify(
+              {
+                security: {
+                  auth: {
+                    selectedType: "apiKey",
+                    apiKey,
+                    baseUrl: v1
+                  }
+                }
+              },
+              null,
+              2
+            )
+          }
+        ],
+        env: { GEMINI_API_BASE_URL: v1 }
       };
     case "qwen-code":
       return {
@@ -239,10 +259,30 @@ export function buildCliToolConfig(tool: CliToolId, baseUrl: string, apiKey: str
       };
     case "continue":
       return {
-        summary: "Continue — config.yaml manual additive setup",
-        files: [],
+        summary: "Continue — config.json (append NesaRouter model, keep others)",
+        files: [
+          {
+            path: "~/.continue/config.json",
+            writeMode: "merge-json-append",
+            content: JSON.stringify(
+              {
+                models: [
+                  {
+                    title: `NesaRouter (${model})`,
+                    provider: "openai",
+                    model,
+                    apiBase: v1,
+                    apiKey
+                  }
+                ]
+              },
+              null,
+              2
+            )
+          }
+        ],
         env: {},
-        instructions: `Tambahkan entry berikut ke config.yaml melalui Continue Config tanpa mengganti model lain:\n\nmodels:\n  - name: NesaRouter (${model})\n    provider: openai\n    model: ${model}\n    apiBase: ${v1}\n    apiKey: ${apiKey}`
+        instructions: `Model NesaRouter ditambahkan ke ~/.continue/config.json. Kalau Continue memakai config.yaml, tambahkan manual:\n\nmodels:\n  - name: NesaRouter (${model})\n    provider: openai\n    model: ${model}\n    apiBase: ${v1}\n    apiKey: ${apiKey}`
       };
     case "roo":
       return {
@@ -311,8 +351,33 @@ export function buildCliToolConfig(tool: CliToolId, baseUrl: string, apiKey: str
         env: {},
         instructions: `Cursor → Settings → Models → Advanced Override\nOpenAI API Base URL: ${v1}\nOpenAI API Key: ${apiKey}\nModel: ${model}\n\nCatatan: Cursor mungkin tetap lewat cloud kecuali pakai Tunnel.`
       };
-    case "cline":
     case "opencode":
+      return {
+        summary: "OpenCode — opencode.json (NesaRouter provider, merge)",
+        files: [
+          {
+            path: "~/.config/opencode/opencode.json",
+            writeMode: "merge-json",
+            content: JSON.stringify(
+              {
+                provider: {
+                  nesa: {
+                    npm: "@ai-sdk/openai-compatible",
+                    name: "NesaRouter",
+                    options: { baseURL: v1, apiKey },
+                    models: { [model]: { name: `NesaRouter ${model}` } }
+                  }
+                },
+                model: `nesa/${model}`
+              },
+              null,
+              2
+            )
+          }
+        ],
+        env: {}
+      };
+    case "cline":
       return {
         summary: `${tool} — OpenAI Compatible`,
         files: [],
@@ -370,6 +435,19 @@ export function buildCliInstallScripts(config: CliToolConfig) {
       psLines.push(`$env:NESA_TARGET = $target`);
       psLines.push(`$env:NESA_PATCH = ${JSON.stringify(file.content)}`);
       psLines.push(`node -e ${JSON.stringify(nodeMergeSnippetPs())}`);
+      continue;
+    }
+
+    if (mode === "merge-json-append") {
+      const patchLiteral = JSON.stringify(file.content);
+      bashLines.push(`TARGET=${dirBash}`);
+      bashLines.push(`PATCH=${patchLiteral}`);
+      bashLines.push("export TARGET PATCH");
+      bashLines.push(`node -e ${JSON.stringify(nodeMergeJsonAppendSnippet())}`);
+      psLines.push(`$target = ${dirPs}`);
+      psLines.push(`$env:NESA_TARGET = $target`);
+      psLines.push(`$env:NESA_PATCH = ${JSON.stringify(file.content)}`);
+      psLines.push(`node -e ${JSON.stringify(nodeMergeJsonAppendSnippet("NESA_TARGET", "NESA_PATCH"))}`);
       continue;
     }
 
@@ -436,6 +514,23 @@ export function buildCliInstallScripts(config: CliToolConfig) {
     bash: bashLines.join("\n"),
     powershell: psLines.join("\n")
   };
+}
+
+/** Inline Node merge-append (Continue-style): appends array items deduped by title/id. */
+function nodeMergeJsonAppendSnippet(targetEnv = "TARGET", patchEnv = "PATCH") {
+  return [
+    "const fs=require('fs'),path=require('path');",
+    `const target=process.env.${targetEnv},patch=JSON.parse(process.env.${patchEnv});`,
+    "fs.mkdirSync(path.dirname(target),{recursive:true});",
+    "let base={};",
+    "try{base=JSON.parse(fs.readFileSync(target,'utf8').replace(/,(\\s*[}\\]])/g,'$1'));}catch(e){if(e.code!=='ENOENT')throw new Error('Existing JSON is invalid: '+target)}",
+    "if(!base||typeof base!=='object'||Array.isArray(base))base={};",
+    "const keyOf=e=>e&&typeof e==='object'&&!Array.isArray(e)?(typeof e.title==='string'?'title:'+e.title:typeof e.id==='string'?'id:'+e.id:JSON.stringify(e)):JSON.stringify(e);",
+    "const merge=(a,b)=>{if(Array.isArray(b)){const ex=Array.isArray(a)?a:[];const seen=new Set(ex.map(keyOf));const out=[...ex];for(const item of b){const k=keyOf(item);if(!seen.has(k)){out.push(item);seen.add(k)}}return out}if(b&&typeof b==='object'&&!Array.isArray(b)){const o={...(a&&typeof a==='object'&&!Array.isArray(a)?a:{})};for(const [k,v] of Object.entries(b))o[k]=merge(o[k],v);return o}return b};",
+    "const out=merge(base,patch);",
+    "fs.writeFileSync(target,JSON.stringify(out,null,2)+'\\n');",
+    "console.log('Merged (append)',target);"
+  ].join("");
 }
 
 function nodeMergeTomlSnippet(targetEnv = "TARGET", patchEnv = "PATCH", tableName?: string) {

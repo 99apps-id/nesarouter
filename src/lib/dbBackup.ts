@@ -79,7 +79,7 @@ export function startAutoBackupSchedule() {
   const keep = readBackupKeepCount();
   const run = () => {
     backupDatabaseNow(keep)
-      .then((dest) => console.error("[debug-backup] ok", dest))
+      .then((dest) => console.log("[debug-backup] ok", dest))
       .catch((error) => {
         console.error("[debug-backup] failed", error);
       });
