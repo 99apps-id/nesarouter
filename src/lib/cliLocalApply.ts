@@ -89,7 +89,17 @@ export function applyCliConfigFile(file: CliConfigFile) {
 function cliWriteError(target: string, error: unknown) {
   const cause = error as NodeJS.ErrnoException;
   if (cause?.code === "EACCES" || cause?.code === "EPERM") {
-    return new Error(`Cannot write ${target}: permission denied. Ensure the NesaRouter service user owns the file and its parent directory (for example: sudo chown -R $(systemctl show nesarouter -p User --value) ${path.dirname(target)}).`);
+    // The app runs as the service user (pm2 fork or systemd unit). Resolve that
+    // user at runtime so the hint is accurate for both setups.
+    let owner = "the service user";
+    try {
+      owner = os.userInfo()?.username || owner;
+    } catch {
+      /* os.userInfo may throw when uid has no passwd entry; keep generic */
+    }
+    return new Error(
+      `Cannot write ${target}: permission denied. Ensure the NesaRouter service user (${owner}) owns the file and its parent directory (for example: sudo chown -R ${owner} ${path.dirname(target)}).`
+    );
   }
   return error instanceof Error ? error : new Error(`Cannot write ${target}.`);
 }
