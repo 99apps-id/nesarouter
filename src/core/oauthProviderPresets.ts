@@ -1,6 +1,6 @@
 /**
  * OAuth presets for subscription-based providers (Claude, ChatGPT/Codex, Gemini CLI,
- * GitHub Copilot, Kiro Builder ID, Antigravity, Cursor, plus 9router specialty flows).
+ * GitHub Copilot, Kiro Builder ID, Antigravity, Cursor, plus NesaRouter specialty flows).
  * Client IDs are the public CLI values; tokens are stored encrypted and refreshed automatically.
  */
 

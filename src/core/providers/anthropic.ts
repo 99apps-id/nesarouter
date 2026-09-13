@@ -60,7 +60,7 @@ export class AnthropicMessagesExecutor implements ProviderExecutor {
     if (!token) throw new UpstreamProviderError(`${provider.name} needs an API key or OAuth token.`, 400);
     const models = await this.listModels(provider);
 
-    // OAuth subscription: soft check (9router-style). A live Messages call burns quota and
+    // OAuth subscription: soft check (NesaRouter-style). A live Messages call burns quota and
     // intermittent 429/5xx was flipping accounts to error on the 45s probe.
     if (provider.oauthProfile) {
       if (token.length < 20) {

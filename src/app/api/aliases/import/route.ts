@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { adminJson, readAdminJson, requireAdmin } from "@/lib/adminApi";
-import { mergeNineRouterAliases } from "@/core/nineRouterImport";
+import { mergeNesaRouterAliases } from "@/core/nesaRouterImport";
 import { readStore, writeStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   const payload = parsedBody.data;
 
   const store = await readStore();
-  const result = mergeNineRouterAliases(store.aliases, payload);
+  const result = mergeNesaRouterAliases(store.aliases, payload);
   if (result.added === 0 && result.updated === 0) {
     return adminJson(request, {
       ok: true,

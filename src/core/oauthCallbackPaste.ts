@@ -1,11 +1,11 @@
 /**
- * Parse pasted OAuth callback values (9router-style full URL, Claude code#state, or bare code).
+ * Parse pasted OAuth callback values (NesaRouter-style full URL, Claude code#state, or bare code).
  */
 export function parseOAuthCallbackPaste(raw: string, fallbackState?: string) {
   const trimmed = raw.trim().replace(/^['"]|['"]$/g, "");
   if (!trimmed) return { code: "", state: fallbackState };
 
-  // Full callback URL from the browser address bar (9router / Codex / Kimchi style).
+  // Full callback URL from the browser address bar (NesaRouter / Codex / Kimchi style).
   if (/^https?:\/\//i.test(trimmed) || trimmed.includes("://") || /[?&#](code|token)=/i.test(trimmed)) {
     try {
       const href = trimmed.includes("://") ? trimmed : `http://localhost${trimmed.startsWith("/") ? "" : "/"}${trimmed}`;

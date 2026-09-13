@@ -1,7 +1,7 @@
 import { ProviderConfig } from "@/core/types";
 
 /**
- * Short provider prefixes for `prefix/model` routing (9router-style).
+ * Short provider prefixes for `prefix/model` routing (NesaRouter-style).
  * Codex subscription uses `cx/gpt-…` only (canonical provider id: oauth-chatgpt).
  */
 export const PROVIDER_PREFIXES: Record<string, string> = {

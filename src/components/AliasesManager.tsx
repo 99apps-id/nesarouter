@@ -58,7 +58,7 @@ export default function AliasesManager({
     await persist(items.filter((item) => item.id !== id));
   }
 
-  async function importNineRouter() {
+  async function importAliases() {
     setImportMsg(null);
     const raw = importText.trim();
     if (!raw) {
@@ -167,7 +167,7 @@ export default function AliasesManager({
             onChange={(event) => setImportText(event.target.value)}
           />
         </label>
-        <button className="button" type="button" disabled={importing} onClick={importNineRouter}>
+        <button className="button" type="button" disabled={importing} onClick={importAliases}>
           <Upload size={16} /> {importing ? a.importing : a.importButton}
         </button>
         {importMsg ? <p className="subtle">{importMsg}</p> : null}

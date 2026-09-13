@@ -433,11 +433,11 @@ export const en: Messages = {
     targetPlaceholder: "provider model or combo name",
     add: "Add alias",
     delete: "Delete",
-    importLabel: "Import 9router JSON",
+    importLabel: "Import NesaRouter JSON",
     importPlaceholder: '{"aliases":{"fast":"or/meta-llama/..."}}',
-    importButton: "Import 9router JSON",
+    importButton: "Import NesaRouter JSON",
     importing: "Importing…",
-    importPasteFirst: "Paste JSON from 9router GET /api/models/alias first.",
+    importPasteFirst: "Paste JSON from NesaRouter GET /api/models/alias first.",
     importInvalidJson: "Invalid JSON.",
     importFailed: "Import failed.",
     importSummary: "{added} added, {updated} updated, {skipped} skipped."
@@ -448,7 +448,7 @@ export const en: Messages = {
     heroSubtle: "Local apply",
     heroTitle: "Connect CLIs with Apply / Patch",
     heroBody:
-      "Same idea as 9router: pick a tool → pick a client key → Apply. Config is merged into local CLI settings on this machine. No manual .env / JSON edits.",
+      "Same idea as NesaRouter: pick a tool → pick a client key → Apply. Config is merged into local CLI settings on this machine. No manual .env / JSON edits.",
     clientKeys: "Client keys",
     combos: "Combos",
     oauthSubtle: "Subscription OAuth",
@@ -459,7 +459,7 @@ export const en: Messages = {
     logTitle: "Request log",
     logBody: "Every CLI request is recorded in Usage — provider, cost, cache, fallback.",
     openUsage: "Open Usage",
-    panelSubtle: "Like 9router",
+    panelSubtle: "Like NesaRouter",
     panelTitle: "Apply / Patch CLI",
     panelBodyBefore: "Pick a tool, key, and routing target, then",
     panelBodyAfter:

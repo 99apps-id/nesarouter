@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseOAuthCallbackPaste } from "@/core/oauthCallbackPaste";
 
 describe("parseOAuthCallbackPaste", () => {
-  it("parses a Codex/9router localhost callback URL", () => {
+  it("parses a Codex/NesaRouter localhost callback URL", () => {
     const parsed = parseOAuthCallbackPaste(
       "http://localhost:1455/auth/callback?code=abc123&scope=openid&state=prov:xyz",
       "fallback"

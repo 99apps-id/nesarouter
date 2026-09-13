@@ -327,9 +327,17 @@ export const providerPresets: ProviderConfig[] = [
     name: "DeepSeek",
     type: "openai_compatible",
     tier: "cheap",
-    baseUrl: "https://api.deepseek.com",
+    baseUrl: "https://api.deepseek.com/chat/completions",
     model: "deepseek-v4-flash",
-    models: ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"],
+    models: [
+      "deepseek-v4-pro",
+      "deepseek-v4-pro-max",
+      "deepseek-v4-pro-none",
+      "deepseek-v4-flash",
+      "deepseek-v4-flash-vision-exp",
+      "deepseek-chat",
+      "deepseek-reasoner",
+    ],
     priority: 31,
     inputCostPerMTok: 0.14,
     outputCostPerMTok: 0.28
@@ -390,8 +398,16 @@ export const providerPresets: ProviderConfig[] = [
     type: "openai_compatible",
     tier: "cheap",
     baseUrl: "https://api.groq.com/openai/v1",
-    model: "llama-3.1-8b-instant",
-    models: ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "openai/gpt-oss-120b"],
+    model: "llama-3.3-70b-versatile",
+    models: [
+      "llama-3.3-70b-versatile",
+      "meta-llama/llama-4-maverick-17b-128e-instruct",
+      "qwen/qwen3-32b",
+      "openai/gpt-oss-120b",
+      "whisper-large-v3",
+      "whisper-large-v3-turbo",
+      "distil-whisper-large-v3-en",
+    ],
     priority: 32,
     inputCostPerMTok: 0.05,
     outputCostPerMTok: 0.08
@@ -840,7 +856,7 @@ export const providerPresets: ProviderConfig[] = [
     inputCostPerMTok: 0,
     outputCostPerMTok: 0
   }),
-  // --- 9router-aligned catalogs (OpenAI-compatible API key / token) ---
+  // --- NesaRouter-aligned catalogs (OpenAI-compatible API key / token) ---
   preset({
     id: "azure-openai",
     name: "Azure OpenAI",
@@ -1028,6 +1044,17 @@ export const providerPresets: ProviderConfig[] = [
     tier: "cheap",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     model: "gemini-2.5-flash",
+    models: [
+      "gemini-3.8-flash",
+      "gemini-3.7-flash",
+      "gemini-3.6-flash",
+      "gemini-3.5-flash-lite",
+      "gemini-3.1-flash-lite-preview",
+      "gemini-3-flash-preview",
+      "gemini-2.5-flash",
+      "gemini-2.5-flash-lite",
+      "gemini-2.0-flash",
+    ],
     priority: 40,
     inputCostPerMTok: 0.3,
     outputCostPerMTok: 2.5
@@ -1061,17 +1088,32 @@ export const providerPresets: ProviderConfig[] = [
     tier: "balanced",
     baseUrl: "https://generativelanguage.googleapis.com/v1beta",
     model: "gemini-2.5-pro",
+    models: [
+      "gemini-3.1-pro-preview",
+      "gemini-3-flash-preview",
+      "gemini-2.5-pro",
+      "gemini-2.5-flash",
+      "gemini-2.0-flash",
+      "gemma-4-31b-it",
+    ],
     priority: 42,
     inputCostPerMTok: 1.25,
     outputCostPerMTok: 10
   }),
   preset({
     id: "openai-gpt-4o",
-    name: "OpenAI API (GPT-4o)",
+    name: "OpenAI API",
     type: "openai_compatible",
     tier: "premium",
     baseUrl: "https://api.openai.com/v1",
     model: "gpt-4o",
+    models: [
+      "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano",
+      "gpt-5.2", "gpt-5.1", "gpt-5", "gpt-5-mini", "gpt-5-nano",
+      "gpt-4o", "gpt-4o-mini", "gpt-4-turbo",
+      "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano",
+      "o3", "o3-mini", "o3-pro", "o4-mini", "o1", "o1-mini",
+    ],
     priority: 50,
     inputCostPerMTok: 2.5,
     outputCostPerMTok: 10
@@ -1083,7 +1125,14 @@ export const providerPresets: ProviderConfig[] = [
     tier: "premium",
     baseUrl: "https://api.anthropic.com/v1/messages",
     model: "claude-sonnet-4-5",
-    models: ["claude-sonnet-4-5", "claude-haiku-4-5", "claude-opus-4-5"],
+    models: [
+      "claude-sonnet-4-20250514",
+      "claude-opus-4-20250514",
+      "claude-3-5-sonnet-20241022",
+      "claude-sonnet-4-5",
+      "claude-haiku-4-5",
+      "claude-opus-4-5",
+    ],
     priority: 51,
     inputCostPerMTok: 3,
     outputCostPerMTok: 15

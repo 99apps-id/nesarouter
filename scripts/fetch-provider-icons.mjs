@@ -2,7 +2,7 @@
  * Fetch official provider brand marks (no Simple Icons).
  *
  * Sources researched via agent-reach style tooling (gh API + web):
- * - decolua/9router public/providers (MIT provider-asset set)
+ * - decolua/NesaRouter public/providers (MIT provider-asset set)
  * - MoonshotAI/Branding-Guide (official Kimi / K marks)
  * - Hugging Face documentation-images (Hyperbolic)
  * - Primer octicons (GitHub Copilot UI mark)
@@ -14,10 +14,10 @@ import path from "node:path";
 import https from "node:https";
 
 const dir = path.join(process.cwd(), "public", "providers");
-const NINEROUTER = "https://raw.githubusercontent.com/decolua/9router/master/public/providers";
+const NESAROUTER = "https://raw.githubusercontent.com/decolua/NesaRouter/master/public/providers";
 
-/** 9router filename → local filename (skip known duplicate siblings — handled in officialDirect) */
-const from9router = {
+/** NesaRouter filename → local filename (skip known duplicate siblings — handled in officialDirect) */
+const fromNesaRouter = {
   "openrouter.png": "openrouter.png",
   "deepseek.png": "deepseek.png",
   "gemini.png": "gemini.png",
@@ -64,7 +64,7 @@ const from9router = {
   "vertex.png": "vertex.png"
 };
 
-/** Direct official / distinct vendor URLs (overrides 9router duplicates) */
+/** Direct official / distinct vendor URLs (overrides NesaRouter duplicates) */
 const officialDirect = {
   "kimi.png":
     "https://raw.githubusercontent.com/MoonshotAI/Branding-Guide/main/scenarios/03-icon-without-kimi/kimi-icon-round.png",
@@ -118,8 +118,8 @@ async function download(url, file) {
   return true;
 }
 
-for (const [source, dest] of Object.entries(from9router)) {
-  await download(`${NINEROUTER}/${source}`, dest);
+for (const [source, dest] of Object.entries(fromNesaRouter)) {
+  await download(`${NESAROUTER}/${source}`, dest);
 }
 
 for (const [file, url] of Object.entries(officialDirect)) {

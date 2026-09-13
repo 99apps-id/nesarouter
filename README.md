@@ -192,7 +192,7 @@ Response headers may include routing and saver metadata such as `x-nesa-cache`, 
 - **Health**: `GET /api/health` returns liveness (`ok: true`) plus readiness (`ready`, `checks.db`, app `version` from `package.json`). HTTP **503** when the database check fails (usable as a readiness probe). Docker liveness can keep checking for process up / TCP.
 - **Metrics**: `GET /api/metrics` exposes Prometheus text (`nesa_requests_total`, queue gauges, budget spend, …). **Deny-by-default** — set `NESA_METRICS_TOKEN` and scrape with `Authorization: Bearer …` or `?token=`. Without the env var, the endpoint returns 401.
 - **Backups**: the SQLite database is backed up automatically to `data/backups/` (default: every 24h, newest 7 kept) starting shortly after the first request touches the database. Configure with `NESA_DB_BACKUP_INTERVAL_HOURS` / `NESA_DB_BACKUP_KEEP`; `NESA_DB_BACKUP_INTERVAL_HOURS=0` disables it.
-- **Aliases import**: paste 9router `GET /api/models/alias` JSON on the Aliases page (or `POST /api/aliases/import`) to migrate shorthand model maps.
+- **Aliases import**: paste NesaRouter `GET /api/models/alias` JSON on the Aliases page (or `POST /api/aliases/import`) to migrate shorthand model maps.
 - **Concurrency queue**: under Routing settings, set global / per-provider max concurrent upstream calls (`0` = unlimited). Queue wait timeouts return HTTP 503 with `code: queue_timeout`; disconnected clients are removed from the queue.
 - **Routing**: mode, strategy, fallback, cache, budget, token savers (Caveman / RTK), and admin password.
 - **Combos**: named fallback or round-robin chains; aliases map friendly model names to targets.
