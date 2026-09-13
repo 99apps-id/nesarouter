@@ -2,7 +2,7 @@
  * Fetch official provider brand marks (no Simple Icons).
  *
  * Sources researched via agent-reach style tooling (gh API + web):
- * - decolua/NesaRouter public/providers (MIT provider-asset set)
+ * - 99apps-id/NesaRouter public/providers (MIT provider-asset set)
  * - MoonshotAI/Branding-Guide (official Kimi / K marks)
  * - Hugging Face documentation-images (Hyperbolic)
  * - Primer octicons (GitHub Copilot UI mark)
@@ -14,7 +14,7 @@ import path from "node:path";
 import https from "node:https";
 
 const dir = path.join(process.cwd(), "public", "providers");
-const NESAROUTER = "https://raw.githubusercontent.com/decolua/NesaRouter/master/public/providers";
+const NESAROUTER = "https://raw.githubusercontent.com/99apps-id/NesaRouter/master/public/providers";
 
 /** NesaRouter filename → local filename (skip known duplicate siblings — handled in officialDirect) */
 const fromNesaRouter = {
