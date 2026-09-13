@@ -55,7 +55,7 @@ export async function GET(request: Request, context: { params: Promise<{ tool: s
 
 /**
  * Apply / patch CLI config on this machine (merge into existing settings).
- * Same idea as 9router Apply — click once, no manual JSON edit.
+ * Same idea as NesaRouter Apply — click once, no manual JSON edit.
  */
 export async function POST(request: Request, context: { params: Promise<{ tool: string }> }) {
   const unauthorized = await requireAdmin(request);

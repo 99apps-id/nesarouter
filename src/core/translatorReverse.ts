@@ -276,7 +276,7 @@ const CODEX_UNSUPPORTED_PARAMS = [
   "stream_options"
 ] as const;
 
-/** Fields ChatGPT Codex /responses accepts (9router-style allowlist). */
+/** Fields ChatGPT Codex /responses accepts (NesaRouter-style allowlist). */
 const CODEX_RESPONSES_ALLOWLIST = new Set([
   "model",
   "input",

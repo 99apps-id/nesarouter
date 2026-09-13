@@ -12,11 +12,11 @@ function aliasId(alias: string) {
 }
 
 /**
- * Normalize 9router-style `provider:model` to `provider/model`.
+ * Normalize NesaRouter-style `provider:model` to `provider/model`.
  * Leaves URLs and model ids that already contain `/` alone.
  * Only rewrites when there is exactly one colon and no slash.
  */
-export function normalizeNineRouterTarget(target: string): string {
+export function normalizeNesaRouterTarget(target: string): string {
   const trimmed = target.trim();
   if (!trimmed) return trimmed;
   if (trimmed.includes("/")) return trimmed;
@@ -72,10 +72,10 @@ function collectPairs(payload: unknown): Array<{ alias: string; target: string }
 }
 
 /**
- * Merge 9router / Nesa alias payloads into the existing ModelAlias list.
+ * Merge NesaRouter alias payloads into the existing ModelAlias list.
  * Case-insensitive alias match; duplicates overwrite target (and keep prior id when present).
  */
-export function mergeNineRouterAliases(
+export function mergeNesaRouterAliases(
   existing: ModelAlias[] | undefined,
   payload: unknown
 ): AliasImportResult {
@@ -87,7 +87,7 @@ export function mergeNineRouterAliases(
 
   for (const pair of pairs) {
     const alias = pair.alias.trim();
-    const target = normalizeNineRouterTarget(pair.target);
+    const target = normalizeNesaRouterTarget(pair.target);
     if (!alias || !target) {
       skipped += 1;
       continue;

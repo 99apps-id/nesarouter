@@ -410,7 +410,7 @@ export default function ProviderDetail({
       });
       setOauthMessage(
         result.loopback
-          ? "Authorize in the new tab, then paste the localhost callback URL below (same as 9router)."
+          ? "Authorize in the new tab, then paste the localhost callback URL below (same as NesaRouter)."
           : "Authorize in the new tab, then paste the code below."
       );
     } else {
@@ -1035,7 +1035,7 @@ export default function ProviderDetail({
                 : usesCursorImport
                   ? "Not connected — auto-import reads Cursor on the same machine as NesaRouter (not from your browser PC when using VPS). Or paste access token + machine id (+ refresh token if available) manually."
                   : draft.oauthProfile === "openai_codex"
-                    ? "Not connected — Connect opens ChatGPT. After redirect to localhost (page may error), copy the FULL URL from the address bar (…?code=…&state=…) and paste it here, then Save — same as 9router."
+                    ? "Not connected — Connect opens ChatGPT. After redirect to localhost (page may error), copy the FULL URL from the address bar (…?code=…&state=…) and paste it here, then Save — same as NesaRouter."
                     : "Not connected — Connect opens the vendor login in a new tab. Claude / Gemini: paste the code. ChatGPT: paste the full localhost callback URL."}
           </p>
           {usesCursorImport ? (
@@ -1100,7 +1100,7 @@ export default function ProviderDetail({
               ) : null}
               {showImport ? (
                 <div className="oauth-import">
-                  <p className="subtle">Paste an existing token pair (e.g. from 9router or the vendor CLI).</p>
+                  <p className="subtle">Paste an existing token pair (e.g. from NesaRouter or the vendor CLI).</p>
                   <input suppressHydrationWarning type="password" placeholder="access_token" value={importTok.accessToken} onChange={(e) => setImportTok({ ...importTok, accessToken: e.target.value })} />
                   <input suppressHydrationWarning type="password" placeholder="refresh_token (optional)" value={importTok.refreshToken} onChange={(e) => setImportTok({ ...importTok, refreshToken: e.target.value })} />
                   <input suppressHydrationWarning type="number" placeholder="expires_in (seconds, optional)" value={importTok.expiresIn} onChange={(e) => setImportTok({ ...importTok, expiresIn: e.target.value })} />
@@ -1173,7 +1173,7 @@ export default function ProviderDetail({
               ) : null}
               {showImport ? (
                 <div className="oauth-import">
-                  <p className="subtle">Paste an existing token pair (e.g. from 9router or the vendor CLI).</p>
+                  <p className="subtle">Paste an existing token pair (e.g. from NesaRouter or the vendor CLI).</p>
                   <input suppressHydrationWarning type="password" placeholder="access_token" value={importTok.accessToken} onChange={(e) => setImportTok({ ...importTok, accessToken: e.target.value })} />
                   <input suppressHydrationWarning type="password" placeholder="refresh_token (optional)" value={importTok.refreshToken} onChange={(e) => setImportTok({ ...importTok, refreshToken: e.target.value })} />
                   <input suppressHydrationWarning type="number" placeholder="expires_in (seconds, optional)" value={importTok.expiresIn} onChange={(e) => setImportTok({ ...importTok, expiresIn: e.target.value })} />

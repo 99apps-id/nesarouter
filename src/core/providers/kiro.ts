@@ -325,7 +325,7 @@ export class KiroExecutor implements ProviderExecutor {
   }
 
   /**
-   * Soft credential check (matches 9router: expiry/token presence, not a hard
+   * Soft credential check (matches NesaRouter: expiry/token presence, not a hard
    * ListAvailableModels requirement). Aggressive probes were flipping Builder ID
    * accounts to `error` and skipping them in routing after a successful Connect.
    */

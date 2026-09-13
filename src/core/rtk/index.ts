@@ -1,6 +1,6 @@
 /**
  * RTK (full): compress tool_result / tool message content before upstream.
- * Port of 9router's filter pipeline: auto-detect git-diff/status/log, grep,
+ * Port of NesaRouter's filter pipeline: auto-detect git-diff/status/log, grep,
  * find, ls, tree, build output, search-list, read-numbered, dedup-log,
  * smart-truncate. Safe by design — never enlarge, never empty, skip errors.
  */
