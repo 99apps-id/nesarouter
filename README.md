@@ -155,6 +155,25 @@ docker compose up -d --build
 
 The Compose file persists SQLite data in the `nesa-router-data` volume and exposes port `20129`.
 
+### Prebuilt image (GHCR)
+
+Tagged releases are published to GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/99apps-id/nesarouter:0.2.0
+```
+
+To run the published image directly:
+
+```bash
+docker run -d \
+  --name nesa-router \
+  -p 20129:20129 \
+  -v nesa-router-data:/app/data \
+  --env-file .env \
+  ghcr.io/99apps-id/nesarouter:0.2.0
+```
+
 ## API
 
 The base URL is `http://localhost:20129/v1`.
