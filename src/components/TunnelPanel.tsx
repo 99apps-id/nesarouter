@@ -67,22 +67,27 @@ export default function TunnelPanel() {
   async function enable() {
     setBusy("cf-enable");
     setMessage("");
-    const parsed = parsePort(port);
-    if (parsed == null) {
-      setMessage("Port must be an integer between 1 and 65535.");
+    try {
+      const parsed = parsePort(port);
+      if (parsed == null) {
+        setMessage("Port must be an integer between 1 and 65535.");
+        setBusy("");
+        return;
+      }
+      const response = await fetch("/api/tunnel/enable", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ port: parsed })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.ok) { setMessage(`Tunnel active: ${result.tunnelUrl}`); portDirty.current = false; }
+      else setMessage(result.error ?? "Failed to enable tunnel.");
       setBusy("");
-      return;
+      refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to enable tunnel.");
+      setBusy("");
     }
-    const response = await fetch("/api/tunnel/enable", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ port: parsed })
-    });
-    const result = await response.json().catch(() => ({}));
-    if (response.ok) { setMessage(`Tunnel active: ${result.tunnelUrl}`); portDirty.current = false; }
-    else setMessage(result.error ?? "Failed to enable tunnel.");
-    setBusy("");
-    refresh();
   }
 
   async function disable() {
@@ -100,28 +105,33 @@ export default function TunnelPanel() {
     setBusy("ts-enable");
     setMessage("");
     setLoginUrl("");
-    const parsed = parsePort(port);
-    if (parsed == null) {
-      setMessage("Port must be an integer between 1 and 65535.");
-      setBusy("");
-      return;
-    }
-    const response = await fetch("/api/tunnel/tailscale", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ port: parsed, mode: tsMode })
-    });
-    const result = await response.json().catch(() => ({}));
-    if (response.ok) { setMessage(`Tailscale ${tsMode} active${result.url ? `: ${result.url}` : ""}`); portDirty.current = false; modeDirty.current = false; }
-    else {
-      setMessage(result.error ?? "Failed to enable Tailscale.");
-      if (result.enableUrl) {
-        setLoginUrl(result.enableUrl);
-        window.open(result.enableUrl, "_blank", "noopener,noreferrer");
+    try {
+      const parsed = parsePort(port);
+      if (parsed == null) {
+        setMessage("Port must be an integer between 1 and 65535.");
+        setBusy("");
+        return;
       }
+      const response = await fetch("/api/tunnel/tailscale", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ port: parsed, mode: tsMode })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.ok) { setMessage(`Tailscale ${tsMode} active${result.url ? `: ${result.url}` : ""}`); portDirty.current = false; modeDirty.current = false; }
+      else {
+        setMessage(result.error ?? "Failed to enable Tailscale.");
+        if (result.enableUrl) {
+          setLoginUrl(result.enableUrl);
+          window.open(result.enableUrl, "_blank", "noopener,noreferrer");
+        }
+      }
+      setBusy("");
+      refresh();
+    } catch {
+      setMessage("Failed to reach the server.");
+      setBusy("");
     }
-    setBusy("");
-    refresh();
   }
 
   async function disableTailscale() {
@@ -137,15 +147,20 @@ export default function TunnelPanel() {
 
   async function loginTailscale() {
     setBusy("ts-login");
-    const response = await fetch("/api/tunnel/tailscale/login", { method: "POST" });
-    const result = await response.json().catch(() => ({}));
-    if (response.ok && result.loginUrl) {
-      setLoginUrl(result.loginUrl);
-      window.open(result.loginUrl, "_blank", "noopener,noreferrer");
-    } else {
-      setMessage(result.error ?? "Tailscale login failed.");
+    try {
+      const response = await fetch("/api/tunnel/tailscale/login", { method: "POST" });
+      const result = await response.json().catch(() => ({}));
+      if (response.ok && result.loginUrl) {
+        setLoginUrl(result.loginUrl);
+        window.open(result.loginUrl, "_blank", "noopener,noreferrer");
+      } else {
+        setMessage(result.error ?? "Tailscale login failed.");
+      }
+      setBusy("");
+    } catch {
+      setMessage("Failed to reach the server.");
+      setBusy("");
     }
-    setBusy("");
   }
 
   if (loading) return <p className="subtle">Loading tunnel status…</p>;

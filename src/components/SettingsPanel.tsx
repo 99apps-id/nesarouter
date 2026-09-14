@@ -44,19 +44,23 @@ export default function SettingsPanel({
   async function save() {
     setSaved(false);
     setError("");
-    const publicBaseUrl = routerDraft.publicBaseUrl?.trim() || undefined;
-    const response = await adminFetch("/api/state", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        budget: budgetDraft,
-        router: { ...routerDraft, publicBaseUrl }
-      })
-    });
-    if (response.ok) {
-      setSaved(true);
-      setTimeout(() => window.location.reload(), 450);
-    } else setError((await response.json().catch(() => ({}))).error ?? "Failed to save routing settings.");
+    try {
+      const publicBaseUrl = routerDraft.publicBaseUrl?.trim() || undefined;
+      const response = await adminFetch("/api/state", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          budget: budgetDraft,
+          router: { ...routerDraft, publicBaseUrl }
+        })
+      });
+      if (response.ok) {
+        setSaved(true);
+        setTimeout(() => window.location.reload(), 450);
+      } else setError((await response.json().catch(() => ({}))).error ?? "Failed to save routing settings.");
+    } catch {
+      setError("Failed to reach the server.");
+    }
   }
 
   return (

@@ -74,28 +74,36 @@ export default function CombosManager({
       editingId ??
       (draft.id.trim() || draft.name.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-"));
     if (!id || !draft.name.trim() || draft.providerIds.length === 0) return;
-    const response = await adminFetch("/api/combos", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...draft, id })
-    });
-    if (response.ok) {
-      setSaved(true);
-      setTimeout(() => window.location.reload(), 450);
-    } else {
-      const result = await response.json().catch(() => ({}));
-      setError(result.error || (editingId ? "Could not update combo." : "Could not create combo."));
+    try {
+      const response = await adminFetch("/api/combos", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...draft, id })
+      });
+      if (response.ok) {
+        setSaved(true);
+        setTimeout(() => window.location.reload(), 450);
+      } else {
+        const result = await response.json().catch(() => ({}));
+        setError(result.error || (editingId ? "Could not update combo." : "Could not create combo."));
+      }
+    } catch {
+      setError("Failed to reach the server.");
     }
   }
 
   async function remove(id: string) {
     if (editingId === id) resetForm();
-    const response = await adminFetch("/api/combos", {
-      method: "DELETE",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id })
-    });
-    if (response.ok) window.location.reload();
+    try {
+      const response = await adminFetch("/api/combos", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id })
+      });
+      if (response.ok) window.location.reload();
+    } catch {
+      setError("Failed to reach the server.");
+    }
   }
 
   return (

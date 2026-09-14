@@ -25,6 +25,9 @@ export default function UsageChart() {
         if (cancelled || !data?.points) return;
         setPoints(data.points);
       })
+      .catch(() => {
+        if (!cancelled) setPoints([]);
+      })
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;

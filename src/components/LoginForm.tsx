@@ -47,27 +47,32 @@ export default function LoginForm({
   async function login() {
     setLoading(true);
     setError("");
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify({ password })
-    });
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ password })
+      });
 
-    const result = await response.json().catch(() => ({}));
-    if (response.ok) {
-      window.location.href = result.mustChangePassword ? "/routing" : nextPath;
-      return;
-    }
+      const result = await response.json().catch(() => ({}));
+      if (response.ok) {
+        window.location.href = result.mustChangePassword ? "/routing" : nextPath;
+        return;
+      }
 
-    if (response.status === 423) {
-      setLocked(true);
-      setError(`Login locked. Try again in ${minutesLeft(result.remainingMs)} minutes.`);
-    } else {
-      const remainingAttempts = Math.max(0, Number(result.maxAttempts ?? 5) - Number(result.failedAttempts ?? 0));
-      setError(remainingAttempts ? `${result.error ?? "Login failed."} ${remainingAttempts} tries left.` : (result.error ?? "Login failed."));
+      if (response.status === 423) {
+        setLocked(true);
+        setError(`Login locked. Try again in ${minutesLeft(result.remainingMs)} minutes.`);
+      } else {
+        const remainingAttempts = Math.max(0, Number(result.maxAttempts ?? 5) - Number(result.failedAttempts ?? 0));
+        setError(remainingAttempts ? `${result.error ?? "Login failed."} ${remainingAttempts} tries left.` : (result.error ?? "Login failed."));
+      }
+    } catch {
+      setError("Failed to reach the server.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   return (

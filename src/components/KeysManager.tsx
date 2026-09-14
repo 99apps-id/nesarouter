@@ -16,45 +16,53 @@ export default function KeysManager({ initialKeys }: { initialKeys: KeyRow[] }) 
   async function createKey() {
     setNewKey(null);
     setError("");
-    const response = await fetch("/api/keys", { method: "POST", credentials: "same-origin" });
-    const result = await response.json().catch(() => ({}));
-    if (response.status === 401) {
-      setError("Session expired. Please log in again.");
-      window.setTimeout(() => {
-        window.location.href = "/login?next=%2Fkeys";
-      }, 600);
-      return;
+    try {
+      const response = await fetch("/api/keys", { method: "POST", credentials: "same-origin" });
+      const result = await response.json().catch(() => ({}));
+      if (response.status === 401) {
+        setError("Session expired. Please log in again.");
+        window.setTimeout(() => {
+          window.location.href = "/login?next=%2Fkeys";
+        }, 600);
+        return;
+      }
+      if (!response.ok) {
+        setError(result.error ?? "Failed to create key.");
+        return;
+      }
+      setNewKey({ token: result.token, id: result.id, preview: result.preview });
+      setKeys((items) => [{ id: result.id, preview: result.preview }, ...items.filter((item) => item.id !== result.id)]);
+    } catch {
+      setError("Failed to reach the server.");
     }
-    if (!response.ok) {
-      setError(result.error ?? "Failed to create key.");
-      return;
-    }
-    setNewKey({ token: result.token, id: result.id, preview: result.preview });
-    setKeys((items) => [{ id: result.id, preview: result.preview }, ...items.filter((item) => item.id !== result.id)]);
   }
 
   async function revokeKey(id: string) {
     setError("");
-    const response = await fetch("/api/keys", {
-      method: "DELETE",
-      headers: { "content-type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify({ id })
-    });
-    if (response.status === 401) {
-      setError("Session expired. Please log in again.");
-      window.setTimeout(() => {
-        window.location.href = "/login?next=%2Fkeys";
-      }, 600);
-      return;
+    try {
+      const response = await fetch("/api/keys", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ id })
+      });
+      if (response.status === 401) {
+        setError("Session expired. Please log in again.");
+        window.setTimeout(() => {
+          window.location.href = "/login?next=%2Fkeys";
+        }, 600);
+        return;
+      }
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        setError(result.error ?? "Failed to revoke key.");
+        return;
+      }
+      setKeys((items) => items.filter((item) => item.id !== id));
+      if (newKey?.id === id) setNewKey(null);
+    } catch {
+      setError("Failed to reach the server.");
     }
-    if (!response.ok) {
-      const result = await response.json().catch(() => ({}));
-      setError(result.error ?? "Failed to revoke key.");
-      return;
-    }
-    setKeys((items) => items.filter((item) => item.id !== id));
-    if (newKey?.id === id) setNewKey(null);
   }
 
   async function copyKey(token: string) {
