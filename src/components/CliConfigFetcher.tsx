@@ -108,22 +108,27 @@ export default function CliConfigFetcher({
 
   async function refreshStatus(nextTool = tool) {
     setChecking(true);
-    const response = await adminFetch(`/api/cli-tools/${nextTool}/apply`);
-    const payload = await response.json().catch(() => ({}));
-    if (response.ok) {
-      setStatus({
-        configStatus: payload.configStatus,
-        currentBaseUrl: payload.currentBaseUrl,
-        settingsPath: payload.settingsPath,
-        installed: payload.installed,
-        configPresent: payload.configPresent,
-        credentialReady: payload.credentialReady
-      });
-      if (payload.modelTarget) setModelTarget(payload.modelTarget);
-    } else {
+    try {
+      const response = await adminFetch(`/api/cli-tools/${nextTool}/apply`);
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok) {
+        setStatus({
+          configStatus: payload.configStatus,
+          currentBaseUrl: payload.currentBaseUrl,
+          settingsPath: payload.settingsPath,
+          installed: payload.installed,
+          configPresent: payload.configPresent,
+          credentialReady: payload.credentialReady
+        });
+        if (payload.modelTarget) setModelTarget(payload.modelTarget);
+      } else {
+        setStatus(null);
+      }
+    } catch {
       setStatus(null);
+    } finally {
+      setChecking(false);
     }
-    setChecking(false);
   }
 
   useEffect(() => {

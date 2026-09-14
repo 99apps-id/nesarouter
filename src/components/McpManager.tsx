@@ -48,20 +48,24 @@ export default function McpManager({
       setError("Env must be a JSON object, e.g. {\"KEY\":\"value\"}");
       return;
     }
-    const response = await fetch("/api/mcp", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...draft, id, args, env })
-    });
-    if (response.ok) {
-      setDraft({ id: "", name: "", command: "", args: [], env: {} });
-      setArgsText("");
-      setEnvText("");
-      setEditingId(null);
-      setTimeout(() => window.location.reload(), 450);
-    } else {
-      const result = await response.json().catch(() => ({}));
-      setError(result.error ?? "Failed to save MCP server.");
+    try {
+      const response = await fetch("/api/mcp", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...draft, id, args, env })
+      });
+      if (response.ok) {
+        setDraft({ id: "", name: "", command: "", args: [], env: {} });
+        setArgsText("");
+        setEnvText("");
+        setEditingId(null);
+        setTimeout(() => window.location.reload(), 450);
+      } else {
+        const result = await response.json().catch(() => ({}));
+        setError(result.error ?? "Failed to save MCP server.");
+      }
+    } catch {
+      setError("Failed to reach the server.");
     }
   }
 

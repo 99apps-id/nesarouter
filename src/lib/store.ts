@@ -242,6 +242,10 @@ function migrateLocalApiKeysEncryption(database: Database.Database) {
 }
 
 function ensureColumn(database: Database.Database, table: string, column: string, definition: string) {
+  const identifier = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+  if (!identifier.test(table) || !identifier.test(column)) {
+    throw new Error(`Invalid SQLite identifier: ${table}.${column}`);
+  }
   const columns = database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
   if (!columns.some((item) => item.name === column)) {
     database.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`).run();

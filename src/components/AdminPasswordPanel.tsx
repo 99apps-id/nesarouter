@@ -14,25 +14,30 @@ export default function AdminPasswordPanel() {
   async function savePassword() {
     setMessage("");
     setStatus("idle");
-    const response = await fetch("/api/auth/password", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify({ currentPassword, newPassword })
-    });
-    const result = await response.json().catch(() => ({}));
-    if (response.ok) {
-      setCurrentPassword("");
-      setNewPassword("");
-      setStatus("ok");
-      setMessage(t.password.updated);
-      window.setTimeout(() => {
-        window.location.assign("/routing");
-      }, 400);
-      return;
+    try {
+      const response = await fetch("/api/auth/password", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.ok) {
+        setCurrentPassword("");
+        setNewPassword("");
+        setStatus("ok");
+        setMessage(t.password.updated);
+        window.setTimeout(() => {
+          window.location.assign("/routing");
+        }, 400);
+        return;
+      }
+      setStatus("error");
+      setMessage(typeof result.error === "string" ? result.error : t.password.failed);
+    } catch {
+      setStatus("error");
+      setMessage("Failed to reach the server.");
     }
-    setStatus("error");
-    setMessage(typeof result.error === "string" ? result.error : t.password.failed);
   }
 
   return (

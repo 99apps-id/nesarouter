@@ -93,9 +93,13 @@ export default function HeadroomPanel() {
   async function start() {
     setBusy("start");
     setMessage("");
-    const response = await fetch("/api/headroom/start?action=start", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-    const result = await response.json().catch(() => ({}));
-    setMessage(response.ok ? `Started (pid ${result.pid}).` : result.error ?? "Failed to start.");
+    try {
+      const response = await fetch("/api/headroom/start?action=start", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      const result = await response.json().catch(() => ({}));
+      setMessage(response.ok ? `Started (pid ${result.pid}).` : result.error ?? "Failed to start.");
+    } catch {
+      setMessage("Failed to start proxy.");
+    }
     setBusy("");
     refresh();
   }
@@ -116,9 +120,13 @@ export default function HeadroomPanel() {
 
   async function restart() {
     setBusy("restart");
-    const response = await fetch("/api/headroom/start?action=restart", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
-    const result = await response.json().catch(() => ({}));
-    setMessage(response.ok ? `Restarted (pid ${result.pid}).` : result.error ?? "Failed to restart.");
+    try {
+      const response = await fetch("/api/headroom/start?action=restart", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      const result = await response.json().catch(() => ({}));
+      setMessage(response.ok ? `Restarted (pid ${result.pid}).` : result.error ?? "Failed to restart.");
+    } catch {
+      setMessage("Failed to restart proxy.");
+    }
     setBusy("");
     refresh();
   }
@@ -126,13 +134,17 @@ export default function HeadroomPanel() {
   async function installBase() {
     setBusy("install-base");
     setMessage("Installing headroom-ai[proxy]…");
-    const response = await fetch("/api/headroom/extras", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ extras: [] })
-    });
-    const result = await response.json().catch(() => ({}));
-    setMessage(response.ok ? `Installed ${result.spec}.` : result.error ?? "Install failed.");
+    try {
+      const response = await fetch("/api/headroom/extras", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ extras: [] })
+      });
+      const result = await response.json().catch(() => ({}));
+      setMessage(response.ok ? `Installed ${result.spec}.` : result.error ?? "Install failed.");
+    } catch {
+      setMessage("Failed to install.");
+    }
     setBusy("");
     refresh();
   }
@@ -140,22 +152,32 @@ export default function HeadroomPanel() {
   async function toggleExtra(extra: HeadroomExtra, on: boolean) {
     setBusy(`extra-${extra}`);
     setMessage("");
-    const response = await fetch("/api/headroom/extras", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ extras: [extra], action: on ? "install" : "uninstall" })
-    });
-    const result = await response.json().catch(() => ({}));
-    setMessage(response.ok ? `${on ? "Installed" : "Removed"} ${extra} extras.` : result.error ?? "Action failed.");
+    try {
+      const response = await fetch("/api/headroom/extras", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ extras: [extra], action: on ? "install" : "uninstall" })
+      });
+      const result = await response.json().catch(() => ({}));
+      setMessage(response.ok ? `${on ? "Installed" : "Removed"} ${extra} extras.` : result.error ?? "Action failed.");
+    } catch {
+      setMessage("Failed to reach the server.");
+    }
     setBusy("");
     refresh();
   }
 
   async function showLogs() {
-    const response = await fetch("/api/headroom/logs?which=proxy").catch(() => null);
-    if (response?.ok) {
-      const data = await response.json();
-      setLogs(data.tail ?? "");
+    try {
+      const response = await fetch("/api/headroom/logs?which=proxy").catch(() => null);
+      if (response?.ok) {
+        const data = await response.json().catch(() => ({ tail: "" }));
+        setLogs(data.tail ?? "");
+      } else {
+        setLogs("");
+      }
+    } catch {
+      setLogs("");
     }
   }
 
