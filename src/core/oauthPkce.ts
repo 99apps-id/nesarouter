@@ -289,7 +289,7 @@ export async function startDeviceFlow(preset: OAuthPreset, codeChallenge?: strin
     accept: "application/json"
   };
   if (preset.profile === "grok_cli") {
-    headers["User-Agent"] = preset.upstreamHeaders["User-Agent"] ?? "grok-pager/0.2.93";
+    headers["User-Agent"] = (preset.upstreamHeaders ?? {})["User-Agent"] ?? "grok-pager/0.2.93";
   }
 
   const response = await fetch(preset.deviceCodeUrl, {
@@ -323,7 +323,7 @@ export async function pollDeviceFlow(
     ? { "content-type": "application/json", accept: "application/json" }
     : { "content-type": "application/x-www-form-urlencoded", accept: "application/json" };
   if (preset.profile === "grok_cli") {
-    headers["User-Agent"] = preset.upstreamHeaders["User-Agent"] ?? "grok-pager/0.2.93";
+    headers["User-Agent"] = (preset.upstreamHeaders ?? {})["User-Agent"] ?? "grok-pager/0.2.93";
   }
 
   const response = await fetch(preset.tokenUrl, {
