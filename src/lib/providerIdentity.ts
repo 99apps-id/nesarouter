@@ -50,6 +50,9 @@ export function providerIdentity(input: ProviderIdentityInput | ProviderConfig):
   if (has(providerText, /pollinations/)) {
     return { key: "pollinations", label: "PO", title, iconPath: "/icons/pollinations.svg" };
   }
+  if (has(providerText, /freebuff/)) {
+    return { key: "freebuff", label: "FB", title, iconPath: "/icons/freebuff.png" };
+  }
   if (has(providerText, /qoder/)) {
     return { key: "qoder", label: "QD", title, iconPath: "/icons/qoder.svg" };
   }
@@ -87,6 +90,11 @@ export function providerIdentity(input: ProviderIdentityInput | ProviderConfig):
     return { key: "moonshot", label: "MS", title, iconPath: "/icons/moonshot.png" };
   }
 
+  // Z.ai (Zhipu's international brand/billing surface) before the bigmodel.cn
+  // domestic check below, since both catalogs share GLM model names.
+  if (has(providerText, /\bz\.ai\b|api\.z\.ai|zai-intl/)) {
+    return { key: "zai", label: "ZA", title, iconPath: "/icons/zai.png" };
+  }
   if (has(providerText, /zhipu|bigmodel|\bglm\b/)) {
     return { key: "zhipu", label: "Z", title, iconPath: "/icons/zhipu.png" };
   }
@@ -116,6 +124,21 @@ export function providerIdentity(input: ProviderIdentityInput | ProviderConfig):
   }
   if (has(providerText, /runware/)) {
     return { key: "runware", label: "RW", title, iconPath: "/icons/runware.svg" };
+  }
+  if (has(providerText, /nanogpt|nano-gpt/)) {
+    return { key: "nanogpt", label: "NG", title, iconPath: "/icons/nanogpt.png" };
+  }
+  if (has(providerText, /gmi-cloud|gmi-serving|\bgmi\b/)) {
+    return { key: "gmi-cloud", label: "GM", title, iconPath: "/icons/gmi-cloud.png" };
+  }
+  if (has(providerText, /sarvam/)) {
+    return { key: "sarvam", label: "SV", title, iconPath: "/icons/sarvam.svg" };
+  }
+  if (has(providerText, /scaleway/)) {
+    return { key: "scaleway", label: "SW", title, iconPath: "/icons/scaleway.png" };
+  }
+  if (has(providerText, /morphllm|\bmorph\b/)) {
+    return { key: "morph", label: "MP", title, iconPath: "/icons/morph.png" };
   }
   if (has(providerText, /fireworks/)) {
     return { key: "fireworks", label: "FW", title, iconPath: "/icons/fireworks.png" };
@@ -239,6 +262,9 @@ export function providerIdentity(input: ProviderIdentityInput | ProviderConfig):
   }
   if (has(providerText, /iflow/)) {
     return { key: "iflow", label: "IF", title, iconPath: "/icons/iflow.png" };
+  }
+  if (has(providerText, /tokenhub|tencentcloudmaas|tencentmaas/)) {
+    return { key: "tokenhub", label: "TH", title, iconPath: "/icons/tencent-tokenhub.png" };
   }
   if (has(providerText, /codebuddy|copilot\.tencent/)) {
     return { key: "codebuddy", label: "CB", title, iconPath: "/icons/codebuddy-cn.png" };

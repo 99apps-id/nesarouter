@@ -23,6 +23,14 @@ Provider names and marks are used only to identify configured upstream services.
 | `agentrouter.png` | [diegosouzapw/OmniRoute](https://github.com/diegosouzapw/OmniRoute) `public/providers/agentrouter.png` |
 | `zenmux.svg` | [@lobehub/icons-static-svg](https://cdn.jsdelivr.net/npm/@lobehub/icons-static-svg/icons/zenmux.svg) |
 | `felo.svg` | Local distinct badge — derived from [Felo](https://felo.ai) brand |
+| `freebuff.png` | [Freebuff](https://freebuff.com) official site (`/logo-icon.png`) |
+| `zai.png` | [Z.ai](https://z.ai) GitHub organization avatar (`github.com/zai-org`) |
+| `nanogpt.png` | [NanoGPT](https://nano-gpt.com) official site favicon |
+| `gmi-cloud.png` | [GMI Cloud](https://www.gmicloud.ai) official site favicon |
+| `sarvam.svg` | [Sarvam AI](https://www.sarvam.ai) official site favicon |
+| `tencent-tokenhub.png` | Tencent Cloud GitHub organization avatar (`github.com/TencentCloud`) |
+| `morph.png` | [Morph](https://www.morphllm.com) favicon (fetched via Google favicon service after direct fetch was rate-limited) |
+| `scaleway.png` | Scaleway GitHub organization avatar (`github.com/scaleway`) |
 
 
 ## Refresh

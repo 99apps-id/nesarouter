@@ -123,6 +123,21 @@ export const providerPresets: ProviderConfig[] = [
     inputCostPerMTok: 0,
     outputCostPerMTok: 0
   }),
+  // Freebuff has no first-party public API — it's a free (ad-funded) coding agent
+  // (CLI/desktop/web). This points at a community-run reverse-engineered gateway
+  // (freebuff.llm.pm), not an official endpoint: verify it still works before enabling.
+  preset({
+    id: "freebuff",
+    name: "Freebuff (community gateway, unofficial)",
+    type: "openai_compatible",
+    tier: "free",
+    baseUrl: "https://freebuff.llm.pm/v1",
+    model: "auto",
+    models: ["auto", "minimax-m2.7", "gemini-flash"],
+    priority: 19,
+    inputCostPerMTok: 0,
+    outputCostPerMTok: 0
+  }),
   // Pollinations OpenAI-compatible gateway (legacy text.pollinations.ai is retired).
   // Generation consumes Pollen credit and requires a key from https://enter.pollinations.ai.
   // Keep the historical id for existing SQLite rows and saved routing references.
@@ -256,6 +271,21 @@ export const providerPresets: ProviderConfig[] = [
     priority: 27,
     inputCostPerMTok: 0,
     outputCostPerMTok: 0
+  }),
+  // Z.ai is Zhipu's international developer platform — separate account/billing
+  // surface from open.bigmodel.cn (the zhipu-glm preset above), same relationship
+  // as the alibaba-dashscope / alibaba-dashscope-intl pair below.
+  preset({
+    id: "zai-intl",
+    name: "Z.ai (GLM Intl)",
+    type: "openai_compatible",
+    tier: "cheap",
+    baseUrl: "https://api.z.ai/api/paas/v4",
+    model: "glm-5.1",
+    models: ["glm-5.2", "glm-5.1", "glm-5-turbo", "glm-4.7", "glm-4.7-flash"],
+    priority: 26,
+    inputCostPerMTok: 0.6,
+    outputCostPerMTok: 2.2
   }),
   preset({
     id: "minimax",
@@ -391,6 +421,21 @@ export const providerPresets: ProviderConfig[] = [
     outputCostPerMTok: 0
   }),
 
+  // Indic-language focused (Hindi + other Indian languages). ~Rs 4 in / Rs 16 out
+  // per 1M tokens converted to USD at time of writing; re-check docs.sarvam.ai/api/pricing.
+  preset({
+    id: "sarvam-ai",
+    name: "Sarvam AI (India)",
+    type: "openai_compatible",
+    tier: "cheap",
+    baseUrl: "https://api.sarvam.ai/v1",
+    model: "sarvam-105b",
+    models: ["sarvam-105b"],
+    priority: 31,
+    inputCostPerMTok: 0.05,
+    outputCostPerMTok: 0.18
+  }),
+
   // --- Global API-key ---
   preset({
     id: "groq",
@@ -468,6 +513,18 @@ export const providerPresets: ProviderConfig[] = [
     outputCostPerMTok: 1
   }),
   preset({
+    id: "nanogpt",
+    name: "NanoGPT",
+    type: "openai_compatible",
+    tier: "cheap",
+    baseUrl: "https://nano-gpt.com/api/v1",
+    model: "gpt-5.5-mini",
+    models: ["gpt-5.5-mini", "claude-sonnet-4-6", "gemini-3.1-flash", "deepseek-v4-flash"],
+    priority: 34,
+    inputCostPerMTok: 0,
+    outputCostPerMTok: 0
+  }),
+  preset({
     id: "cohere",
     name: "Cohere",
     type: "openai_compatible",
@@ -523,6 +580,54 @@ export const providerPresets: ProviderConfig[] = [
     priority: 34,
     inputCostPerMTok: 0,
     outputCostPerMTok: 0
+  }),
+  preset({
+    id: "gmi-cloud",
+    name: "GMI Cloud",
+    type: "openai_compatible",
+    tier: "cheap",
+    baseUrl: "https://api.gmi-serving.com/v1",
+    model: "deepseek-ai/DeepSeek-V4",
+    models: [
+      "deepseek-ai/DeepSeek-V4",
+      "meta-llama/Llama-3.3-70B-Instruct",
+      "Qwen/Qwen3-235B-A22B-Instruct",
+      "zai-org/GLM-5.2"
+    ],
+    priority: 34,
+    inputCostPerMTok: 0,
+    outputCostPerMTok: 0
+  }),
+  preset({
+    id: "scaleway",
+    name: "Scaleway Generative APIs",
+    type: "openai_compatible",
+    tier: "cheap",
+    baseUrl: "https://api.scaleway.ai/v1",
+    model: "llama-3.3-70b-instruct",
+    models: [
+      "llama-3.3-70b-instruct",
+      "deepseek-r1-distill-llama-70b",
+      "qwen3-235b-a22b-instruct-2507",
+      "mistral-small-3.2-24b-instruct-2506"
+    ],
+    priority: 34,
+    inputCostPerMTok: 0.2,
+    outputCostPerMTok: 0.2
+  }),
+  // Fast-apply / code-merge model, not a general chat model — used by coding
+  // agents to apply an edit snippet to a full file (10,500 tok/s @ ~98% accuracy).
+  preset({
+    id: "morph",
+    name: "Morph (Fast Apply)",
+    type: "openai_compatible",
+    tier: "cheap",
+    baseUrl: "https://api.morphllm.com/v1",
+    model: "morph-v3-large",
+    models: ["morph-v3-large", "morph-v3-fast"],
+    priority: 34,
+    inputCostPerMTok: 0.9,
+    outputCostPerMTok: 1.9
   }),
   preset({
     id: "venice",
@@ -674,6 +779,45 @@ export const providerPresets: ProviderConfig[] = [
       "glm-4-7-251222"
     ],
     priority: 34,
+    inputCostPerMTok: 0,
+    outputCostPerMTok: 0
+  }),
+  // Tencent Cloud's unified LLM gateway — OpenAI-compatible, single key across
+  // DeepSeek/GLM/Kimi/MiniMax/Hunyuan. Raw Hunyuan-direct API uses TC3-HMAC request
+  // signing (not a static bearer key), so TokenHub is the fitting entry point here.
+  preset({
+    id: "tokenhub-cn",
+    name: "Tencent TokenHub (China)",
+    type: "openai_compatible",
+    tier: "cheap",
+    baseUrl: "https://tokenhub.tencentcloudmaas.com/v1",
+    model: "tencent/hunyuan-turbo",
+    models: [
+      "tencent/hunyuan-turbo",
+      "tencent/deepseek-v4-pro",
+      "tencent/glm-5.2",
+      "tencent/kimi-k2.6",
+      "tencent/minimax-m2.7"
+    ],
+    priority: 29,
+    inputCostPerMTok: 0,
+    outputCostPerMTok: 0
+  }),
+  preset({
+    id: "tokenhub-intl",
+    name: "Tencent TokenHub (Intl)",
+    type: "openai_compatible",
+    tier: "cheap",
+    baseUrl: "https://tokenhub-intl.tencentmaas.com/v1",
+    model: "tencent/hunyuan-turbo",
+    models: [
+      "tencent/hunyuan-turbo",
+      "tencent/deepseek-v4-pro",
+      "tencent/glm-5.2",
+      "tencent/kimi-k2.6",
+      "tencent/minimax-m2.7"
+    ],
+    priority: 29,
     inputCostPerMTok: 0,
     outputCostPerMTok: 0
   }),
@@ -1230,7 +1374,7 @@ export const providerPresetGroups: Array<{ label: string; ids: string[] }> = [
   },
   {
     label: "Free / local",
-    ids: ["openrouter-free", "ollama-local", "opencode-free", "mimo-code-free", "opencode-go"]
+    ids: ["openrouter-free", "ollama-local", "opencode-free", "mimo-code-free", "freebuff", "opencode-go"]
   },
   {
     label: "China / Asia API key",
@@ -1247,16 +1391,20 @@ export const providerPresetGroups: Array<{ label: string; ids: string[] }> = [
       "kimi-coding",
       "zhipu-glm",
       "zhipu-glm-coding",
+      "zai-intl",
       "minimax",
       "minimax-cn",
       "volcengine-ark",
       "byteplus-ark",
+      "tokenhub-cn",
+      "tokenhub-intl",
       "siliconflow",
       "deepseek",
       "baidu-qianfan",
       "stepfun-cn",
       "stepfun-intl",
       "stepfun-plan-cn",
+      "sarvam-ai",
       "iflow",
       "codebuddy-cn"
     ]
@@ -1277,6 +1425,10 @@ export const providerPresetGroups: Array<{ label: string; ids: string[] }> = [
       "hyperbolic",
       "featherless",
       "nebius",
+      "gmi-cloud",
+      "scaleway",
+      "morph",
+      "nanogpt",
       "venice",
       "chutes",
       "deepinfra",
