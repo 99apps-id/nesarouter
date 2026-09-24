@@ -17,8 +17,18 @@ export type OAuthProfile =
   | "kimchi"
   | "iflow"
   | "codebuddy_cn"
+  | "codebuddy_intl"
   | "cline"
-  | "kilocode";
+  | "clinepass"
+  | "kilocode"
+  | "kimi"
+  | "qoder"
+  | "qoder_cn"
+  | "trae"
+  | "xiaomi_mimo"
+  | "gitlab"
+  | "windsurf"
+  | "zed";
 
 export type OAuthProviderType =
   | "anthropic_messages"
@@ -27,7 +37,8 @@ export type OAuthProviderType =
   | "github_copilot"
   | "kiro"
   | "cursor"
-  | "openai_compatible";
+  | "openai_compatible"
+  | "kimi";
 
 export interface OAuthPreset {
   profile: OAuthProfile;
@@ -37,10 +48,14 @@ export interface OAuthPreset {
   clientSecret?: string;
   authorizeUrl: string;
   tokenUrl: string;
+  /** Separate refresh endpoint; fallback to tokenUrl when omitted. */
+  refreshUrl?: string;
   scope: string;
   codeChallengeMethod: "S256";
   /** "json" sends token exchange as JSON; "form" as application/x-www-form-urlencoded. */
   tokenEncoding: "json" | "form";
+  /** Refresh-specific encoding override (defaults to tokenEncoding). */
+  refresh?: { encoding: "json" | "form" };
   providerType: OAuthProviderType;
   baseUrl: string;
   defaultModel: string;
@@ -75,7 +90,7 @@ export interface OAuthPreset {
   loadCodeAssistUrl?: string;
   skipPkce?: boolean;
   /** Cursor IDE: import token from local state.vscdb (no browser OAuth). */
-  importTokenFlow?: boolean;
+  importTokenFlow?: string;
   /** When set, use this redirect_uri instead of the NesaRouter callback URL (CLI public clients). */
   fixedRedirectUri?: string;
   /** After authorize, user pastes the code shown by the vendor (Claude / Gemini remote flows). */
@@ -83,6 +98,8 @@ export interface OAuthPreset {
   /** Fixed loopback listener for CLI clients that only allow localhost redirects (e.g. Codex :1455). */
   loopbackPort?: number;
   loopbackPath?: string;
+  callbackPath?: string;
+  fixedPort?: number;
   cursorClientVersion?: string;
   cursorClientType?: string;
   /** Kimchi: loopback delivers `?token=` (no authorization-code exchange). */
@@ -91,6 +108,8 @@ export interface OAuthPreset {
   kimchiWebAppUrl?: string;
   /** iFlow userInfo endpoint (returns API key after OAuth). */
   iflowUserInfoUrl?: string;
+  /** Generic userInfo endpoint; falls back to provider-specific fields. */
+  userInfoUrl?: string;
   /** CodeBuddy browser poll: POST state → open authUrl → GET token?state=. */
   codebuddyPoll?: boolean;
   codebuddyStateUrl?: string;
@@ -103,6 +122,20 @@ export interface OAuthPreset {
   kiloInitiateUrl?: string;
   kiloPollUrlBase?: string;
   kiloApiBaseUrl?: string;
+  /** Trae / ByteDance login guidance. */
+  loginGuidanceUrl?: string;
+  /** Device flow poll interval in ms (overrides server-suggested interval). */
+  pollInterval?: number;
+  /** Xiaomi MiMo: start login page URL. */
+  mimoStartUrl?: string;
+  /** Xiaomi MiMo: status check URL. */
+  mimoStatusUrl?: string;
+  /** Qoder / multi-region API bases. */
+  openApiBaseUrl?: string;
+  centerBaseUrl?: string;
+  chatBaseUrl?: string;
+  /** Quota / usage endpoint. */
+  quotaUsageUrl?: string;
 }
 
 export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
@@ -533,6 +566,204 @@ export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
     ],
     upstreamHeaders: {},
     refreshLeadMs: 24 * 60 * 60_000
+  },
+  kimi: {
+    profile: "kimi",
+    displayName: "Kimi Code",
+    clientId: "17e5f671-d194-4dfb-9706-5516cb48c098",
+    clientSecret: "",
+    authorizeUrl: "",
+    tokenUrl: "https://auth.kimi.com/api/oauth/token",
+    refreshUrl: "https://auth.kimi.com/api/oauth/token",
+    deviceCodeUrl: "https://auth.kimi.com/api/oauth/device_authorization",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "form",
+    deviceFlow: true,
+    devicePkce: true,
+    providerType: "kimi",
+    baseUrl: "https://api.kimi.com/coding/v1/messages",
+    defaultModel: "kimi-k3",
+    models: ["kimi-k3", "kimi-for-coding", "kimi-k2.7-code", "kimi-latest"],
+    upstreamHeaders: {},
+    refreshLeadMs: 5 * 60_000
+  },
+  qoder: {
+    profile: "qoder",
+    displayName: "Qoder",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "https://openapi.qoder.sh",
+    deviceCodeUrl: "https://openapi.qoder.sh/api/v1/deviceToken/poll",
+    refreshUrl: "https://center.qoder.sh/algo/api/v3/user/refresh_token",
+    userInfoUrl: "https://openapi.qoder.sh/api/v1/userinfo",
+    quotaUsageUrl: "https://openapi.qoder.sh/api/v2/quota/usage",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    deviceFlow: true,
+    providerType: "openai_compatible",
+    baseUrl: "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",
+    defaultModel: "qmodel_latest",
+    models: ["qmodel_latest", "qmodel", "qfmodel", "kmodel_latest", "kmodel", "gmodel", "gfmodel", "dmodel", "dfmodel", "mmodel"],
+    upstreamHeaders: {},
+    refreshLeadMs: 10 * 60_000
+  },
+  qoder_cn: {
+    profile: "qoder_cn",
+    displayName: "Qoder CN",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "https://openapi.qoder.sh",
+    deviceCodeUrl: "https://openapi.qoder.sh/api/v1/deviceToken/poll",
+    refreshUrl: "https://center.qoder.sh/algo/api/v3/user/refresh_token",
+    userInfoUrl: "https://openapi.qoder.sh/api/v1/userinfo",
+    quotaUsageUrl: "https://openapi.qoder.sh/api/v2/quota/usage",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    deviceFlow: true,
+    providerType: "openai_compatible",
+    baseUrl: "https://api3.qoder.sh/algo/api/v2/service/pro/sse/agent_chat_generation",
+    defaultModel: "qmodel_latest",
+    models: ["qmodel_latest", "qmodel", "qfmodel", "kmodel_latest", "kmodel", "gmodel", "gfmodel", "dmodel", "dfmodel", "mmodel"],
+    upstreamHeaders: {},
+    refreshLeadMs: 10 * 60_000
+  },
+  codebuddy_intl: {
+    profile: "codebuddy_intl",
+    displayName: "CodeBuddy Intl",
+    clientId: "codebuddy-intl",
+    authorizeUrl: "https://copilot.tencent.com",
+    tokenUrl: "https://copilot.tencent.com/v2/plugin/auth/token",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://copilot.tencent.com/v2",
+    defaultModel: "glm-5.2",
+    models: ["glm-5.2", "glm-5.1", "glm-5.0", "minimax-m3", "minimax-m2.7", "kimi-k2.7", "deepseek-v4-pro", "deepseek-v4-flash"],
+    upstreamHeaders: {
+      "User-Agent": "CLI/2.108.1 CodeBuddy/2.108.1",
+      "X-Product": "SaaS",
+      "X-IDE-Type": "CLI",
+      "X-IDE-Name": "CLI",
+      "x-requested-with": "XMLHttpRequest",
+      "x-codebuddy-request": "1"
+    },
+    refreshLeadMs: 10 * 60_000
+  },
+  trae: {
+    profile: "trae",
+    displayName: "Trae (ByteDance)",
+    clientId: "ono9krqynydwx5",
+    clientSecret: "-",
+    authorizeUrl: "",
+    tokenUrl: "https://api.marscode.com/cloudide/api/v3/trae/oauth/ExchangeToken",
+    refreshUrl: "https://api.marscode.com/cloudide/api/v3/trae/oauth/ExchangeToken",
+    loginGuidanceUrl: "https://api.marscode.com/cloudide/api/v3/trae/GetLoginGuidance",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    refresh: { encoding: "json" },
+    providerType: "openai_compatible",
+    baseUrl: "https://core-normal.trae.ai/api/remote/v1",
+    defaultModel: "gemini-3.1-pro",
+    models: ["auto", "gemini-3.1-pro", "gemini-3-flash-solo", "minimax-m3", "minimax-m2.7", "kimi-k2.5", "gpt-5.4", "gpt-5.2"],
+    upstreamHeaders: {
+      "X-Trae-Client-Type": "web",
+      "X-Preferenced-Language": "en",
+      Referer: "https://solo.trae.ai/"
+    },
+    refreshLeadMs: 10 * 60_000
+  },
+  xiaomi_mimo: {
+    profile: "xiaomi_mimo",
+    displayName: "Xiaomi MiMo",
+    clientId: "",
+    authorizeUrl: "https://mimo.ai.xiaomi.com/api/login/web",
+    tokenUrl: "https://mimo.ai.xiaomi.com/api/login/web",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://mimo.ai.xiaomi.com/v1",
+    defaultModel: "mimo-vl",
+    models: ["mimo-vl"],
+    upstreamHeaders: {},
+    refreshLeadMs: 60 * 60_000
+  },
+  clinepass: {
+    profile: "clinepass",
+    displayName: "ClinePass",
+    clientId: "clinepass-extension",
+    authorizeUrl: "https://api.cline.bot/api/v1/auth/authorize",
+    tokenUrl: "https://api.cline.bot/api/v1/auth/token",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    skipPkce: true,
+    providerType: "openai_compatible",
+    baseUrl: "https://api.cline.bot/api/v1",
+    defaultModel: "anthropic/claude-sonnet-4.6",
+    models: ["anthropic/claude-sonnet-4.6", "openai/gpt-5.4", "google/gemini-3.1-pro-preview"],
+    upstreamHeaders: {
+      "HTTP-Referer": "https://cline.bot",
+      "X-Title": "ClinePass",
+      "X-CLIENT-TYPE": "nesarouter"
+    },
+    fixedRedirectUri: "http://127.0.0.1:51890/callback",
+    loopbackPort: 51890,
+    loopbackPath: "/callback",
+    refreshLeadMs: 10 * 60_000
+  },
+  gitlab: {
+    profile: "gitlab",
+    displayName: "GitLab Duo",
+    clientId: "",
+    authorizeUrl: "https://gitlab.com/oauth/authorize",
+    tokenUrl: "https://gitlab.com/oauth/token",
+    scope: "api read_api read_repository",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://gitlab.com/api/v4",
+    defaultModel: "gitlab-duo",
+    models: ["gitlab-duo"],
+    upstreamHeaders: {},
+    refreshLeadMs: 10 * 60_000
+  },
+  windsurf: {
+    profile: "windsurf",
+    displayName: "Windsurf",
+    clientId: "",
+    authorizeUrl: "https://windsurf.com/oauth/authorize",
+    tokenUrl: "https://windsurf.com/oauth/token",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://windsurf.com/api/v1",
+    defaultModel: "windsurf-default",
+    models: ["windsurf-default"],
+    upstreamHeaders: {},
+    refreshLeadMs: 10 * 60_000
+  },
+  zed: {
+    profile: "zed",
+    displayName: "Zed",
+    clientId: "",
+    authorizeUrl: "https://zed.ai/oauth/authorize",
+    tokenUrl: "https://zed.ai/oauth/token",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://zed.ai/api/v1",
+    defaultModel: "zed-default",
+    models: ["zed-default"],
+    upstreamHeaders: {},
+    refreshLeadMs: 10 * 60_000
   }
 };
 

@@ -47,6 +47,16 @@ export const providerPresets: ProviderConfig[] = [
   oauthPreset("oauth-codebuddy-cn", "codebuddy_cn", 17),
   oauthPreset("oauth-cline", "cline", 18),
   oauthPreset("oauth-kilocode", "kilocode", 19),
+  oauthPreset("oauth-kimi", "kimi", 20),
+  oauthPreset("oauth-qoder", "qoder", 21),
+  oauthPreset("oauth-qoder-cn", "qoder_cn", 22),
+  oauthPreset("oauth-codebuddy-intl", "codebuddy_intl", 23),
+  oauthPreset("oauth-trae", "trae", 24),
+  oauthPreset("oauth-xiaomi-mimo", "xiaomi_mimo", 25),
+  oauthPreset("oauth-clinepass", "clinepass", 26),
+  oauthPreset("oauth-gitlab", "gitlab", 27),
+  oauthPreset("oauth-windsurf", "windsurf", 28),
+  oauthPreset("oauth-zed", "zed", 29),
 
   // --- Free / local ---
   preset({
