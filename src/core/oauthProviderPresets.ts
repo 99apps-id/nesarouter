@@ -769,13 +769,576 @@ export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
 export function getPreset(profile: OAuthProfile | undefined): OAuthPreset | undefined {
   if (!profile) return undefined;
   return OAUTH_PRESETS[profile];
-}
 
-export function usesOAuthDeviceFlow(preset: OAuthPreset | undefined): boolean {
-  if (!preset) return false;
-  return Boolean(preset.deviceFlow || preset.kiroDeviceFlow || preset.codebuddyPoll || preset.kiloDeviceAuth);
-}
-
-export function usesOAuthLoopback(preset: OAuthPreset | undefined): boolean {
-  return Boolean(preset?.loopbackPort && preset.loopbackPath);
-}
+/**
+ * Non-OAuth API-key presets (free / free-tier / paid).
+ */
+export const API_PRESETS: Record<string, OAuthPreset> = {
+  together: {
+    profile: undefined,
+    displayName: "Together AI",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.together.xyz/v1",
+    defaultModel: "meta-llama/Llama-3.1-8B-Instruct-Turbo",
+    models: [
+      "meta-llama/Llama-3.1-8B-Instruct-Turbo",
+      "meta-llama/Llama-3.1-70B-Instruct-Turbo",
+      "mistralai/Mixtral-8x7B-Instruct-v0.1",
+      "Qwen/Qwen2.5-72B-Instruct-Turbo"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  groq: {
+    profile: undefined,
+    displayName: "Groq",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.groq.com/openai/v1",
+    defaultModel: "llama-3.1-8b-instant",
+    models: [
+      "llama-3.1-8b-instant",
+      "llama-3.1-70b-versatile",
+      "mixtral-8x7b-32768",
+      "gemma2-9b-it"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  fireworks: {
+    profile: undefined,
+    displayName: "Fireworks AI",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.fireworks.ai/inference/v1",
+    defaultModel: "accounts/fireworks/models/llama-v3p1-8b-instruct",
+    models: [
+      "accounts/fireworks/models/llama-v3p1-8b-instruct",
+      "accounts/fireworks/models/llama-v3p1-70b-instruct",
+      "accounts/fireworks/models/mixtral-8x7b-instruct",
+      "accounts/fireworks/models/qwen2-72b-instruct"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  perplexity: {
+    profile: undefined,
+    displayName: "Perplexity",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.perplexity.ai",
+    defaultModel: "llama-3.1-sonar-large-128k-online",
+    models: [
+      "llama-3.1-sonar-large-128k-online",
+      "llama-3.1-sonar-small-128k-online",
+      "llama-3.1-sonar-huge-128k-online"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  cohere: {
+    profile: undefined,
+    displayName: "Cohere",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.cohere.ai/v2",
+    defaultModel: "command-r-plus",
+    models: [
+      "command-r-plus",
+      "command-r",
+      "command",
+      "command-light"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  mistral: {
+    profile: undefined,
+    displayName: "Mistral",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.mistral.ai/v1",
+    defaultModel: "mistral-large-latest",
+    models: [
+      "mistral-large-latest",
+      "mistral-medium-latest",
+      "mistral-small-latest",
+      "open-mistral-nemo",
+      "open-mixtral-8x22b",
+      "codestral-latest"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  huggingface: {
+    profile: undefined,
+    displayName: "Hugging Face",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api-inference.huggingface.co/v1",
+    defaultModel: "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    models: [
+      "meta-llama/Meta-Llama-3.1-8B-Instruct",
+      "meta-llama/Meta-Llama-3.1-70B-Instruct",
+      "mistralai/Mixtral-8x7B-Instruct-v0.1",
+      "Qwen/Qwen2.5-72B-Instruct"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  openrouter: {
+    profile: undefined,
+    displayName: "OpenRouter",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://openrouter.ai/api/v1",
+    defaultModel: "meta-llama/llama-3.1-8b-instruct:free",
+    models: [
+      "meta-llama/llama-3.1-8b-instruct:free",
+      "meta-llama/llama-3.1-70b-instruct",
+      "google/gemini-pro-1.5",
+      "anthropic/claude-3.5-sonnet"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  deepseek: {
+    profile: undefined,
+    displayName: "DeepSeek",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.deepseek.com/v1",
+    defaultModel: "deepseek-chat",
+    models: [
+      "deepseek-chat",
+      "deepseek-coder"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  zhipu: {
+    profile: undefined,
+    displayName: "Zhipu AI (GLM)",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+    defaultModel: "glm-4-plus",
+    models: [
+      "glm-4-plus",
+      "glm-4",
+      "glm-4-flash",
+      "glm-4v-plus"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  moonshot: {
+    profile: undefined,
+    displayName: "Moonshot",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.moonshot.cn/v1",
+    defaultModel: "moonshot-v1-8k",
+    models: [
+      "moonshot-v1-8k",
+      "moonshot-v1-32k",
+      "moonshot-v1-128k"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  cerebras: {
+    profile: undefined,
+    displayName: "Cerebras",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.cerebras.ai/v1",
+    defaultModel: "llama3.1-8b",
+    models: [
+      "llama3.1-8b",
+      "llama3.1-70b",
+      "mixtral-8x7b-instruct-v0.1"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  fal: {
+    profile: undefined,
+    displayName: "Fal.ai",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://fal.run/api/v1",
+    defaultModel: "fal-ai/llama-v3p1-8b",
+    models: [
+      "fal-ai/llama-v3p1-8b",
+      "fal-ai/llama-v3p1-70b",
+      "fal-ai/mixtral-8x7b-instruct"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  replicate: {
+    profile: undefined,
+    displayName: "Replicate",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.replicate.com/v1",
+    defaultModel: "meta/llama-3.1-8b-instruct",
+    models: [
+      "meta/llama-3.1-8b-instruct",
+      "meta/llama-3.1-70b-instruct",
+      "mistralai/mixtral-8x7b-instruct-v0.1"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  runware: {
+    profile: undefined,
+    displayName: "Runware",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.runware.ai/v1",
+    defaultModel: "runware/llama-v3p1-8b-instruct",
+    models: [
+      "runware/llama-v3p1-8b-instruct",
+      "runware/llama-v3p1-70b-instruct"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  chutes: {
+    profile: undefined,
+    displayName: "Chutes",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.chutes.ai/v1",
+    defaultModel: "chutes/llama-v3p1-8b-instruct",
+    models: [
+      "chutes/llama-v3p1-8b-instruct",
+      "chutes/llama-v3p1-70b-instruct"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  hyperbolic: {
+    profile: undefined,
+    displayName: "Hyperbolic",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.hyperbolic.xyz/v1",
+    defaultModel: "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    models: [
+      "meta-llama/Meta-Llama-3.1-8B-Instruct",
+      "meta-llama/Meta-Llama-3.1-70B-Instruct",
+      "mistralai/Mixtral-8x7B-Instruct-v0.1"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  nebius: {
+    profile: undefined,
+    displayName: "Nebius AI Studio",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.studio.nebius.com/v1",
+    defaultModel: "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    models: [
+      "meta-llama/Meta-Llama-3.1-8B-Instruct",
+      "meta-llama/Meta-Llama-3.1-70B-Instruct",
+      "mistralai/Mixtral-8x7B-Instruct-v0.1"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  sarvam: {
+    profile: undefined,
+    displayName: "Sarvam",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.sarvam.ai/v1",
+    defaultModel: "sarvam/llama-v3p1-8b-instruct",
+    models: [
+      "sarvam/llama-v3p1-8b-instruct",
+      "sarvam/llama-v3p1-70b-instruct"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  scaleway: {
+    profile: undefined,
+    displayName: "Scaleway",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.scaleway.ai/v1",
+    defaultModel: "llama-3.1-8b-instruct",
+    models: [
+      "llama-3.1-8b-instruct",
+      "llama-3.1-70b-instruct",
+      "mixtral-8x7b-instruct"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  morph: {
+    profile: undefined,
+    displayName: "Morph",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.morphllm.com/v1",
+    defaultModel: "morph/llama-v3p1-8b-instruct",
+    models: [
+      "morph/llama-v3p1-8b-instruct",
+      "morph/llama-v3p1-70b-instruct"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  blackbox: {
+    profile: undefined,
+    displayName: "Blackbox AI",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.blackbox.ai/v1",
+    defaultModel: "blackbox/llama-v3p1-8b-instruct",
+    models: [
+      "blackbox/llama-v3p1-8b-instruct",
+      "blackbox/llama-v3p1-70b-instruct"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  nanogpt: {
+    profile: undefined,
+    displayName: "NanoGPT",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.nanogpt.com/v1",
+    defaultModel: "gpt-4o-mini",
+    models: [
+      "gpt-4o-mini",
+      "gpt-4o",
+      "gpt-3.5-turbo"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  gmicloud: {
+    profile: undefined,
+    displayName: "GMI Cloud",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.gmicloud.ai/v1",
+    defaultModel: "gmi/llama-v3p1-8b-instruct",
+    models: [
+      "gmi/llama-v3p1-8b-instruct",
+      "gmi/llama-v3p1-70b-instruct"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  felo: {
+    profile: undefined,
+    displayName: "Felo",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.felo.ai/v1",
+    defaultModel: "felo/llama-v3p1-8b-instruct",
+    models: [
+      "felo/llama-v3p1-8b-instruct",
+      "felo/llama-v3p1-70b-instruct"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  zenmux: {
+    profile: undefined,
+    displayName: "Zenmux",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.zenmux.ai/v1",
+    defaultModel: "zenmux/llama-v3p1-8b-instruct",
+    models: [
+      "zenmux/llama-v3p1-8b-instruct",
+      "zenmux/llama-v3p1-70b-instruct"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  },
+  agentrouter: {
+    profile: undefined,
+    displayName: "AgentRouter",
+    clientId: "",
+    authorizeUrl: "",
+    tokenUrl: "",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "json",
+    providerType: "openai_compatible",
+    baseUrl: "https://api.agentrouter.ai/v1",
+    defaultModel: "agentrouter/llama-v3p1-8b-instruct",
+    models: [
+      "agentrouter/llama-v3p1-8b-instruct",
+      "agentrouter/llama-v3p1-70b-instruct"
+    ],
+    apiKeyHeader: "Authorization",
+    apiKeyQuery: undefined,
+    apiKeyPrefix: "Bearer "
+  }
+};
