@@ -40,7 +40,7 @@ export type OAuthProviderType =
   | "openai_compatible";
 
 export interface OAuthPreset {
-  profile: OAuthProfile;
+  profile?: OAuthProfile;
   displayName: string;
   clientId: string;
   /** OAuth confidential-client secret (public CLI values for Gemini/Antigravity/iFlow). */
@@ -60,11 +60,19 @@ export interface OAuthPreset {
   defaultModel: string;
   models?: string[];
   /** Extra headers required for upstream calls (e.g. CLI identity headers). */
-  upstreamHeaders: Record<string, string>;
+  upstreamHeaders?: Record<string, string>;
   /** Extra params appended to the authorize URL. */
   extraAuthorizeParams?: Record<string, string>;
   /** Refresh lead time in ms (refresh if expiry within this window). */
-  refreshLeadMs: number;
+  refreshLeadMs?: number;
+  /** API-key preset: header name for key (e.g. "x-api-key"). */
+  apiKeyHeader?: string;
+  /** API-key preset: query param name for key (e.g. "api_key"). */
+  apiKeyQuery?: string;
+  /** API-key preset: prefix added before the key (e.g. "Bearer ", "sk-"). */
+  apiKeyPrefix?: string;
+  /** API-key preset: env var name for manual entry. */
+  apiKeyEnv?: string;
   /** Device-code flow (GitHub Copilot / Kiro / Qwen / Grok CLI / …). */
   deviceFlow?: boolean;
   deviceCodeUrl?: string;
@@ -769,6 +777,16 @@ export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
 export function getPreset(profile: OAuthProfile | undefined): OAuthPreset | undefined {
   if (!profile) return undefined;
   return OAUTH_PRESETS[profile];
+}
+
+export function usesOAuthDeviceFlow(preset: OAuthPreset | undefined): boolean {
+  if (!preset) return false;
+  return Boolean(preset.deviceFlow || preset.kiroDeviceFlow || preset.codebuddyPoll || preset.kiloDeviceAuth);
+}
+
+export function usesOAuthLoopback(preset: OAuthPreset | undefined): boolean {
+  return Boolean(preset?.loopbackPort && preset.loopbackPath);
+}
 
 /**
  * Non-OAuth API-key presets (free / free-tier / paid).
