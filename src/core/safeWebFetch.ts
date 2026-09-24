@@ -25,7 +25,7 @@ function isPrivateIpv4(value: string) {
 }
 
 export function isBlockedAddress(address: string) {
-  const normalized = address.toLowerCase().replace(/^\[|\]$/g, "");
+  const normalized = address.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.+$/, "");
   const family = isIP(normalized);
   if (family === 4) return isPrivateIpv4(normalized);
   if (family === 6) {
@@ -43,7 +43,12 @@ export function isBlockedAddress(address: string) {
     }
     return false;
   }
-  return normalized === "localhost" || normalized.endsWith(".localhost") || normalized.endsWith(".local");
+  return (
+    normalized === "localhost" ||
+    normalized.endsWith(".localhost") ||
+    normalized.endsWith(".local") ||
+    normalized.endsWith(".internal")
+  );
 }
 
 export async function validateExternalUrl(rawUrl: string) {

@@ -26,6 +26,13 @@ export function availableOAuthProviders(): OAuthProviderInfo[] {
   ];
 }
 
+function requireOAuthEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) throw new Error(`Missing required OAuth environment variable: ${name}`);
+  return value;
+}
+
+
 export function enabledOAuthProvider(providerId: string) {
   return availableOAuthProviders().find((provider) => provider.id === providerId && provider.enabled);
 }
@@ -66,7 +73,7 @@ export function oauthAuthorizeUrl(provider: OAuthProviderId, request: Request, s
   const redirectUri = oauthCallbackUrl(request, provider);
   if (provider === "github") {
     const url = new URL("https://github.com/login/oauth/authorize");
-    url.searchParams.set("client_id", process.env.GITHUB_CLIENT_ID ?? "");
+    url.searchParams.set("client_id", requireOAuthEnv("GITHUB_CLIENT_ID"));
     url.searchParams.set("redirect_uri", redirectUri);
     url.searchParams.set("scope", "read:user user:email");
     url.searchParams.set("state", state);
@@ -74,7 +81,7 @@ export function oauthAuthorizeUrl(provider: OAuthProviderId, request: Request, s
   }
 
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-  url.searchParams.set("client_id", process.env.GOOGLE_CLIENT_ID ?? "");
+  url.searchParams.set("client_id", requireOAuthEnv("GOOGLE_CLIENT_ID"));
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", "openid email profile");
@@ -97,8 +104,8 @@ export async function resolveOAuthEmail(provider: OAuthProviderId, request: Requ
   const redirectUri = oauthCallbackUrl(request, provider);
   if (provider === "github") {
     const token = await postToken("https://github.com/login/oauth/access_token", {
-      client_id: process.env.GITHUB_CLIENT_ID ?? "",
-      client_secret: process.env.GITHUB_CLIENT_SECRET ?? "",
+      client_id: requireOAuthEnv("GITHUB_CLIENT_ID"),
+      client_secret: requireOAuthEnv("GITHUB_CLIENT_SECRET"),
       redirect_uri: redirectUri,
       code
     });
@@ -111,8 +118,8 @@ export async function resolveOAuthEmail(provider: OAuthProviderId, request: Requ
   }
 
   const token = await postToken("https://oauth2.googleapis.com/token", {
-    client_id: process.env.GOOGLE_CLIENT_ID ?? "",
-    client_secret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+    client_id: requireOAuthEnv("GOOGLE_CLIENT_ID"),
+    client_secret: requireOAuthEnv("GOOGLE_CLIENT_SECRET"),
     redirect_uri: redirectUri,
     grant_type: "authorization_code",
     code
