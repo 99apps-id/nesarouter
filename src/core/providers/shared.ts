@@ -11,6 +11,21 @@ export function withProviderRequestSignal<T>(signal: AbortSignal | undefined, ru
   return signal ? requestSignalStorage.run(signal, run) : run();
 }
 
+const ALLOWED_PROXY_SCHEMES = new Set(["http:", "https:", "socks5:", "socks4:", "socks5h:", "socks4a:"]);
+
+export function validateProxyUrl(proxyUrl: string): string {
+  if (!proxyUrl) return "";
+  if (/[\n\r`$]/.test(proxyUrl)) throw new Error("Proxy URL contains invalid characters.");
+  try {
+    const parsed = new URL(proxyUrl);
+    if (!ALLOWED_PROXY_SCHEMES.has(parsed.protocol)) throw new Error("Proxy URL scheme is not allowed.");
+    return parsed.href;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("scheme")) throw error;
+    throw new Error("Proxy URL is invalid.");
+  }
+}
+
 function isSocksProxy(proxyUrl: string) {
   return /^socks(4a?|5h?):\/\//i.test(proxyUrl);
 }
@@ -129,10 +144,12 @@ export async function proxyFetch(provider: ProviderConfig, url: string, init: Re
   const signal = signals.length > 1 ? AbortSignal.any(signals) : signals[0];
   const bounded = { ...init, signal };
   if (!provider.proxyUrl) return fetch(url, bounded);
-  if (isSocksProxy(provider.proxyUrl)) {
-    return socksFetch(provider.proxyUrl, url, bounded);
+  const normalizedProxy = validateProxyUrl(provider.proxyUrl);
+  if (!normalizedProxy) return fetch(url, bounded);
+  if (isSocksProxy(normalizedProxy)) {
+    return socksFetch(normalizedProxy, url, bounded);
   }
-  const dispatcher = await getHttpProxyDispatcher(provider.proxyUrl);
+  const dispatcher = await getHttpProxyDispatcher(normalizedProxy);
   if (dispatcher) return fetch(url, { ...bounded, dispatcher } as any);
   return fetch(url, bounded);
 }
