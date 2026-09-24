@@ -37,8 +37,7 @@ export type OAuthProviderType =
   | "github_copilot"
   | "kiro"
   | "cursor"
-  | "openai_compatible"
-  | "kimi";
+  | "openai_compatible";
 
 export interface OAuthPreset {
   profile: OAuthProfile;
@@ -90,7 +89,7 @@ export interface OAuthPreset {
   loadCodeAssistUrl?: string;
   skipPkce?: boolean;
   /** Cursor IDE: import token from local state.vscdb (no browser OAuth). */
-  importTokenFlow?: string;
+  importTokenFlow?: boolean;
   /** When set, use this redirect_uri instead of the NesaRouter callback URL (CLI public clients). */
   fixedRedirectUri?: string;
   /** After authorize, user pastes the code shown by the vendor (Claude / Gemini remote flows). */
@@ -581,7 +580,7 @@ export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
     tokenEncoding: "form",
     deviceFlow: true,
     devicePkce: true,
-    providerType: "kimi",
+    providerType: "openai_compatible",
     baseUrl: "https://api.kimi.com/coding/v1/messages",
     defaultModel: "kimi-k3",
     models: ["kimi-k3", "kimi-for-coding", "kimi-k2.7-code", "kimi-latest"],

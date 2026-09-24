@@ -1,5 +1,5 @@
 import { getPreset, type OAuthPreset } from "@/core/oauthProviderPresets";
-import { refreshCodebuddyToken, refreshCursorToken, refreshKiroToken, refreshToken } from "@/core/oauthPkce";
+import { refreshCodebuddyToken, refreshCursorToken, refreshKiroToken, refreshToken, type OAuthTokens } from "@/core/oauthPkce";
 import { configuredOAuthAccounts, providerForOAuthAccount } from "@/core/oauthAccounts";
 import { cursorAccessTokenExpiresAt } from "@/core/cursorTokenImport";
 import { ProviderConfig } from "@/core/types";
@@ -7,6 +7,86 @@ import { readProviderById } from "@/lib/store";
 import { markOAuthAccountConnection, saveProviderOAuthTokens } from "@/lib/providerOAuthPersistence";
 
 const UNKNOWN_EXPIRY_REFRESH_INTERVAL_MS = 45 * 60_000;
+
+/**
+ * Upstream-style per-provider refresh profiles.
+ * Keys not listed fall back to generic form-encoded OAuth2 refresh
+ * with client_id + client_secret (unless includeClientSecret is false).
+ */
+const REFRESH_PROFILES: Record<string, {
+  bodyFormat?: "json" | "form";
+  includeClientSecret?: boolean | ((config: OAuthPreset) => boolean);
+  extraHeaders?: (credentials: { oauthRefreshToken: string }, config: OAuthPreset) => Record<string, string>;
+}> = {
+  anthropic_claude: {
+    bodyFormat: "json",
+    includeClientSecret: false,
+  },
+  iflow: {
+    includeClientSecret: (config) => Boolean(config.clientSecret),
+  },
+  github_copilot: {
+    includeClientSecret: (config) => Boolean(config.clientSecret),
+  },
+  kimi: {
+    extraHeaders: () => ({
+      "X-Msh-Device-Id": "",
+    }),
+  },
+  trae: {
+    bodyFormat: "json",
+    includeClientSecret: true,
+    extraHeaders: () => ({
+      "User-Agent": "Trae/1.0.0 antigravity-cockpit-tools",
+    }),
+  },
+  clinepass: {
+    bodyFormat: "json",
+    includeClientSecret: true,
+    extraHeaders: () => ({
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    }),
+  },
+  cline: {
+    bodyFormat: "json",
+    includeClientSecret: true,
+    extraHeaders: () => ({
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    }),
+  },
+  codebuddy_intl: {
+    bodyFormat: "json",
+    includeClientSecret: false,
+    extraHeaders: () => ({
+      "X-Refresh-Token": "",
+    }),
+  },
+};
+
+export function classifyOAuthRefreshError(errorText = "", status = 0): { permanent: boolean; code?: string; description?: string; status?: number } {
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    parsed = errorText ? JSON.parse(errorText) : null;
+  } catch {
+    parsed = null;
+  }
+
+  const errorObj = typeof parsed?.error === "object" && parsed?.error !== null ? (parsed.error as Record<string, unknown>) : null;
+  const code = typeof parsed?.error === "string" ? parsed.error : typeof errorObj?.code === "string" ? errorObj.code : "";
+  const description = typeof parsed?.error_description === "string" ? parsed.error_description : typeof parsed?.message === "string" ? parsed.message : errorText;
+  const combined = `${code} ${description}`.toLowerCase();
+
+  const permanent = [
+    "refresh_token_expired",
+    "refresh_token_reused",
+    "refresh_token_invalidated",
+    "invalid_grant",
+  ].some((marker) => combined.includes(marker));
+
+  return { status, code, description, permanent };
+}
 
 export function oauthTokenIsExpired(provider: Pick<ProviderConfig, "oauthTokenExpiresAt">, now = Date.now()): boolean {
   if (!provider.oauthTokenExpiresAt) return false;
@@ -33,6 +113,49 @@ export function oauthTokenNeedsRefresh(
 function computeExpiry(expiresIn?: number): string | undefined {
   if (!expiresIn) return undefined;
   return new Date(Date.now() + expiresIn * 1000).toISOString();
+}
+
+async function refreshWithProfile(preset: OAuthPreset, refreshTokenValue: string): Promise<OAuthTokens> {
+  const profile = REFRESH_PROFILES[preset.profile];
+  const encoding = profile?.bodyFormat ?? preset.tokenEncoding;
+  const body: Record<string, string> = {
+    grant_type: "refresh_token",
+    refresh_token: refreshTokenValue,
+    client_id: preset.clientId
+  };
+  const includeSecret = typeof profile?.includeClientSecret === "function"
+    ? profile.includeClientSecret(preset)
+    : profile?.includeClientSecret ?? true;
+  if (includeSecret && preset.clientSecret) body.client_secret = preset.clientSecret;
+  if (encoding === "form" && preset.scope) body.scope = preset.scope;
+  const url = preset.refreshUrl ?? preset.tokenUrl;
+  const headers: Record<string, string> = encoding === "json"
+    ? { "content-type": "application/json", accept: "application/json" }
+    : { "content-type": "application/x-www-form-urlencoded", accept: "application/json" };
+  if (profile?.extraHeaders) {
+    Object.assign(headers, profile.extraHeaders({ oauthRefreshToken: refreshTokenValue }, preset));
+  }
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: encoding === "json" ? JSON.stringify(body) : new URLSearchParams(body).toString()
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    const classification = classifyOAuthRefreshError(errorText, response.status);
+    if (classification.permanent) {
+      const err = new Error(classification.description || `OAuth refresh failed (${response.status})`) as Error & { permanent: boolean };
+      err.permanent = true;
+      throw err;
+    }
+    throw new Error(`OAuth refresh failed (${response.status}): ${classification.description || errorText}`);
+  }
+  const data = await response.json();
+  const accessToken = data.access_token || data.AccessToken;
+  if (!accessToken) throw new Error("OAuth refresh returned no access token.");
+  const refreshToken = data.refresh_token || data.RefreshToken || refreshTokenValue;
+  const expiresIn = data.expires_in ?? data.expiresIn;
+  return { access_token: accessToken, refresh_token: refreshToken, expires_in: expiresIn };
 }
 
 async function refreshCopilotToken(preset: OAuthPreset, githubAccessToken: string): Promise<{ token: string; expiresAt: string } | null> {
@@ -138,7 +261,7 @@ async function ensureFreshAccessTokenImpl(provider: ProviderConfig, accountId?: 
         ? await refreshCodebuddyToken(preset, snapshot.oauthRefreshToken)
         : preset.profile === "cursor"
           ? await refreshCursorToken(preset, snapshot.oauthRefreshToken)
-          : await refreshToken(preset, snapshot.oauthRefreshToken);
+          : await refreshWithProfile(preset, snapshot.oauthRefreshToken);
     const accessToken = tokens.access_token;
     if (!accessToken) return snapshot.oauthAccessToken;
     const refreshTokenValue = tokens.refresh_token ?? snapshot.oauthRefreshToken;
@@ -155,8 +278,10 @@ async function ensureFreshAccessTokenImpl(provider: ProviderConfig, accountId?: 
     return accessToken;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const classification = classifyOAuthRefreshError(message);
     const fatal =
-      /revoked|invalid_grant|already.?used|shouldLogout|expired.*refresh|unauthorized|invalid_token/i.test(message);
+      /revoked|already.?used|shouldLogout|expired.*refresh|unauthorized|invalid_token/i.test(message) ||
+      classification.permanent;
     if (fatal || oauthTokenIsExpired(snapshot)) {
       try {
         await markOAuthAccountConnection(

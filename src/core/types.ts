@@ -82,8 +82,18 @@ export interface ProviderConfig {
     | "kimchi"
     | "iflow"
     | "codebuddy_cn"
+    | "codebuddy_intl"
     | "cline"
-    | "kilocode";
+    | "clinepass"
+    | "kilocode"
+    | "kimi"
+    | "qoder"
+    | "qoder_cn"
+    | "trae"
+    | "xiaomi_mimo"
+    | "gitlab"
+    | "windsurf"
+    | "zed";
   /** Multiple OAuth accounts per provider (round-robin + per-account cooldown). */
   oauthAccounts?: OAuthAccount[];
   oauthAccessToken?: string;

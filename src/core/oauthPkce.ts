@@ -203,19 +203,21 @@ async function exchangeClineCode(preset: OAuthPreset, code: string, redirectUri:
 }
 
 export async function refreshToken(preset: OAuthPreset, refreshTokenValue: string): Promise<OAuthTokens> {
+  const encoding = preset.refresh?.encoding ?? preset.tokenEncoding;
   const body: Record<string, string> = {
     grant_type: "refresh_token",
     refresh_token: refreshTokenValue,
     client_id: preset.clientId
   };
   if (preset.clientSecret) body.client_secret = preset.clientSecret;
-  if (preset.tokenEncoding === "form" && preset.scope) body.scope = preset.scope;
-  const response = await fetch(preset.tokenUrl, {
+  if (encoding === "form" && preset.scope) body.scope = preset.scope;
+  const url = preset.refreshUrl ?? preset.tokenUrl;
+  const response = await fetch(url, {
     method: "POST",
-    headers: preset.tokenEncoding === "json"
+    headers: encoding === "json"
       ? { "content-type": "application/json", accept: "application/json" }
       : { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-    body: preset.tokenEncoding === "json" ? JSON.stringify(body) : new URLSearchParams(body).toString()
+    body: encoding === "json" ? JSON.stringify(body) : new URLSearchParams(body).toString()
   });
   if (!response.ok) throw await oauthHttpError("OAuth token refresh failed", response);
   return await response.json();
