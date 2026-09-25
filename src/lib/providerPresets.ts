@@ -33,13 +33,13 @@ function oauthPreset(
  */
 export const providerPresets: ProviderConfig[] = [
   // --- OAuth subscription (browser Connect / device flow on detail page) ---
-  oauthPreset("oauth-github-copilot", "github_copilot", 5),
-  oauthPreset("oauth-chatgpt", "openai_codex", 6),
+  oauthPreset("github_copilot", "github_copilot", 5),
+  oauthPreset("openai_codex", "openai_codex", 6),
   oauthPreset("oauth-kiro", "kiro", 7),
   oauthPreset("oauth-antigravity", "antigravity", 8),
   oauthPreset("oauth-cursor", "cursor", 9),
-  oauthPreset("oauth-claude", "anthropic_claude", 10),
-  oauthPreset("oauth-gemini-cli", "gemini_cli", 12),
+  oauthPreset("anthropic_claude", "anthropic_claude", 10),
+  oauthPreset("gemini_cli", "gemini_cli", 12),
   oauthPreset("oauth-qwen-code", "qwen_code", 13),
   oauthPreset("oauth-grok-cli", "grok_cli", 14),
   oauthPreset("oauth-kimchi", "kimchi", 15),
@@ -1208,17 +1208,22 @@ export const providerPresets: ProviderConfig[] = [
 ];
 
 /** Group labels for the New Provider preset dropdown. */
-export const providerPresetGroups: Array<{ label: string; ids: string[] }> = [
+export type ProviderPreset =
+  | keyof typeof OAUTH_PRESETS
+  | "oauth-manual"
+  | "api-manual";
+
+export const providerPresetGroups: Array<{ label: string; ids: ProviderPreset[] }> = [
   {
     label: "OAuth / account sign-in",
     ids: [
-      "oauth-github-copilot",
-      "oauth-chatgpt",
+      "github_copilot",
+      "openai_codex",
       "oauth-kiro",
       "oauth-antigravity",
       "oauth-cursor",
-      "oauth-claude",
-      "oauth-gemini-cli",
+      "anthropic_claude",
+      "gemini_cli",
       "oauth-qwen-code",
       "oauth-grok-cli",
       "oauth-kimchi",
