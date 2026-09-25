@@ -1,4 +1,4 @@
-import { getPreset, type OAuthPreset } from "@/core/oauthProviderPresets";
+import { getPreset, type OAuthPreset, type OAuthProfile } from "@/core/oauthProviderPresets";
 import { refreshCodebuddyToken, refreshCursorToken, refreshKiroToken, refreshToken, type OAuthTokens } from "@/core/oauthPkce";
 import { configuredOAuthAccounts, providerForOAuthAccount } from "@/core/oauthAccounts";
 import { cursorAccessTokenExpiresAt } from "@/core/cursorTokenImport";
@@ -107,7 +107,7 @@ export function oauthTokenNeedsRefresh(
     return Number.isFinite(lastRefresh) && now - lastRefresh >= UNKNOWN_EXPIRY_REFRESH_INTERVAL_MS;
   }
   const expiresAt = new Date(provider.oauthTokenExpiresAt).getTime();
-  return !Number.isFinite(expiresAt) || now + preset.refreshLeadMs >= expiresAt;
+  return !Number.isFinite(expiresAt) || now + (preset.refreshLeadMs ?? 5 * 60_000) >= expiresAt;
 }
 
 function computeExpiry(expiresIn?: number): string | undefined {
@@ -116,7 +116,7 @@ function computeExpiry(expiresIn?: number): string | undefined {
 }
 
 async function refreshWithProfile(preset: OAuthPreset, refreshTokenValue: string): Promise<OAuthTokens> {
-  const profile = REFRESH_PROFILES[preset.profile];
+  const profile = REFRESH_PROFILES[preset.profile as OAuthProfile];
   const encoding = profile?.bodyFormat ?? preset.tokenEncoding;
   const body: Record<string, string> = {
     grant_type: "refresh_token",
@@ -182,7 +182,7 @@ function copilotTokenNeedsRefresh(provider: ProviderConfig, preset: OAuthPreset)
   if (!provider.oauthCopilotToken) return true;
   if (!provider.oauthCopilotTokenExpiresAt) return true;
   const expiresAt = new Date(provider.oauthCopilotTokenExpiresAt).getTime();
-  return Date.now() + preset.refreshLeadMs >= expiresAt;
+  return Date.now() + (preset.refreshLeadMs ?? 5 * 60_000) >= expiresAt;
 }
 
 /**
