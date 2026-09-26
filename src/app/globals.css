@@ -2753,17 +2753,17 @@ button:focus-visible {
 
 .route-flow-path.active.success {
   filter: drop-shadow(0 0 4px color-mix(in oklch, var(--success) 62%, transparent));
-  stroke: var(--success);
+  stroke: url(#route-flow-success);
 }
 
 .route-flow-path.active.error {
   filter: drop-shadow(0 0 4px color-mix(in oklch, var(--danger) 62%, transparent));
-  stroke: var(--danger);
+  stroke: url(#route-flow-error);
 }
 
 .route-flow-path.active.cache {
   filter: drop-shadow(0 0 4px color-mix(in oklch, var(--primary) 66%, transparent));
-  stroke: var(--primary-strong);
+  stroke: url(#route-flow-cache);
 }
 
 .route-flow-arrow.idle {
