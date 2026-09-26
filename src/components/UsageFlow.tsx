@@ -237,6 +237,22 @@ function RouteMap({
       >
         <svg className="route-map-lines" viewBox="-410 -215 820 430" aria-hidden="true">
           <defs>
+            <linearGradient id="route-flow-idle" gradientUnits="userSpaceOnUse" x1="-360" y1="-180" x2="360" y2="180">
+              <stop offset="0%" stopColor="var(--muted)" />
+              <stop offset="100%" stopColor="var(--primary-strong)" />
+            </linearGradient>
+            <linearGradient id="route-flow-success" gradientUnits="userSpaceOnUse" x1="-360" y1="-180" x2="360" y2="180">
+              <stop offset="0%" stopColor="var(--success-strong)" />
+              <stop offset="100%" stopColor="var(--success-strong)" stopOpacity="0.2" />
+            </linearGradient>
+            <linearGradient id="route-flow-error" gradientUnits="userSpaceOnUse" x1="-360" y1="-180" x2="360" y2="180">
+              <stop offset="0%" stopColor="var(--error)" />
+              <stop offset="100%" stopColor="var(--error)" stopOpacity="0.2" />
+            </linearGradient>
+            <linearGradient id="route-flow-cache" gradientUnits="userSpaceOnUse" x1="-360" y1="-180" x2="360" y2="180">
+              <stop offset="0%" stopColor="var(--primary-strong)" />
+              <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.35" />
+            </linearGradient>
             <marker id="route-arrow-idle" markerHeight="6" markerWidth="7" orient="auto" refX="6" refY="3">
               <path d="M 0 0 L 7 3 L 0 6 Z" className="route-flow-arrow idle" />
             </marker>
@@ -249,11 +265,20 @@ function RouteMap({
             const afterglow = !selectedProvider && afterglowProviderIds.has(node.id);
             const path = flowPath(node, index);
             const tone = node.state === "cache" ? "cache" : node.state === "error" ? "error" : "success";
+            const gradientId =
+              selectedProvider && tone === "cache"
+                ? "route-flow-cache"
+                : selectedProvider
+                  ? `route-flow-${tone}`
+                  : afterglow
+                    ? "route-flow-success"
+                    : "route-flow-idle";
             return (
               <g key={node.id}>
                 <path
                   className={`route-flow-path ${selectedProvider ? `active ${tone}` : afterglow ? "afterglow" : "idle"}`}
                   d={path}
+                  stroke={`url(#${gradientId})`}
                   markerEnd={`url(#route-arrow-${selectedProvider ? "active" : "idle"})`}
                 />
                 {selectedProvider && !reduceMotion ? <RouteComet path={path} tone={tone} /> : null}

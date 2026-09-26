@@ -1,7 +1,8 @@
 import crypto from "node:crypto";
 import { cookieSecurePreferred, publicUrl } from "@/core/publicUrl";
+import { getAdminOAuthPreset } from "@/core/adminOAuthPresets";
 
-export type OAuthProviderId = "github" | "google";
+export type OAuthProviderId = string;
 
 export interface OAuthProviderInfo {
   id: OAuthProviderId;
@@ -12,18 +13,11 @@ export interface OAuthProviderInfo {
 export const oauthStateCookieName = "nesa_oauth_state";
 
 export function availableOAuthProviders(): OAuthProviderInfo[] {
-  return [
-    {
-      id: "github",
-      label: "GitHub",
-      enabled: Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET)
-    },
-    {
-      id: "google",
-      label: "Google",
-      enabled: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
-    }
-  ];
+  return adminOAuthPresets.map((preset) => ({
+    id: preset.id,
+    label: preset.label,
+    enabled: Boolean(process.env[preset.clientIdEnv] && process.env[preset.clientSecretEnv])
+  }));
 }
 
 function requireOAuthEnv(name: string): string {
@@ -70,22 +64,18 @@ export function oauthCallbackUrl(request: Request, provider: OAuthProviderId) {
 }
 
 export function oauthAuthorizeUrl(provider: OAuthProviderId, request: Request, state: string) {
-  const redirectUri = oauthCallbackUrl(request, provider);
-  if (provider === "github") {
-    const url = new URL("https://github.com/login/oauth/authorize");
-    url.searchParams.set("client_id", requireOAuthEnv("GITHUB_CLIENT_ID"));
-    url.searchParams.set("redirect_uri", redirectUri);
-    url.searchParams.set("scope", "read:user user:email");
-    url.searchParams.set("state", state);
-    return url;
-  }
+  const preset = getAdminOAuthPreset(provider);
+  if (!preset) throw new Error(`Unsupported OAuth provider: ${provider}`);
 
-  const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-  url.searchParams.set("client_id", requireOAuthEnv("GOOGLE_CLIENT_ID"));
+  const redirectUri = oauthCallbackUrl(request, provider);
+  const url = new URL(preset.authorizeUrl);
+  url.searchParams.set("client_id", process.env[preset.clientIdEnv] ?? "");
   url.searchParams.set("redirect_uri", redirectUri);
-  url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", "openid email profile");
+  url.searchParams.set("scope", preset.scope);
   url.searchParams.set("state", state);
+  if (preset.responseType) {
+    url.searchParams.set("response_type", preset.responseType);
+  }
   return url;
 }
 
@@ -100,34 +90,44 @@ async function postToken(url: string, body: Record<string, string>) {
   return String(result.access_token);
 }
 
-export async function resolveOAuthEmail(provider: OAuthProviderId, request: Request, code: string) {
-  const redirectUri = oauthCallbackUrl(request, provider);
-  if (provider === "github") {
-    const token = await postToken("https://github.com/login/oauth/access_token", {
-      client_id: requireOAuthEnv("GITHUB_CLIENT_ID"),
-      client_secret: requireOAuthEnv("GITHUB_CLIENT_SECRET"),
-      redirect_uri: redirectUri,
-      code
-    });
-    const response = await fetch("https://api.github.com/user/emails", {
-      headers: { accept: "application/vnd.github+json", authorization: `Bearer ${token}` }
-    });
-    const emails = (await response.json()) as Array<{ email?: string; primary?: boolean; verified?: boolean }>;
-    if (!response.ok || !Array.isArray(emails)) throw new Error("GitHub email lookup failed.");
-    return emails.find((item) => item.primary && item.verified)?.email ?? emails.find((item) => item.verified)?.email;
-  }
+async function fetchJson(url: string, headers: Record<string, string>) {
+  const response = await fetch(url, { headers });
+  if (!response.ok) throw new Error(`OAuth userinfo request failed (${response.status}).`);
+  return response.json();
+}
 
-  const token = await postToken("https://oauth2.googleapis.com/token", {
-    client_id: requireOAuthEnv("GOOGLE_CLIENT_ID"),
-    client_secret: requireOAuthEnv("GOOGLE_CLIENT_SECRET"),
+export async function resolveOAuthEmail(provider: OAuthProviderId, request: Request, code: string) {
+  const preset = getAdminOAuthPreset(provider);
+  if (!preset) throw new Error(`Unsupported OAuth provider: ${provider}`);
+
+  const redirectUri = oauthCallbackUrl(request, provider);
+  const token = await postToken(preset.tokenUrl, {
+    client_id: process.env[preset.clientIdEnv] ?? "",
+    client_secret: process.env[preset.clientSecretEnv] ?? "",
     redirect_uri: redirectUri,
     grant_type: "authorization_code",
     code
   });
-  const response = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
-    headers: { authorization: `Bearer ${token}` }
-  });
-  const profile = (await response.json()) as { email?: string; email_verified?: boolean };
-  if (!response.ok || !profile.email_verified) throw new Error("Google email lookup failed.");
-  return profile.email;
+
+  if (preset.id === "github") {
+    const emails = await fetchJson("https://api.github.com/user/emails", {
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${token}`
+    });
+    const items = emails as Array<{ email?: string; primary?: boolean; verified?: boolean }>;
+    if (!Array.isArray(items)) throw new Error("GitHub email lookup returned unexpected data.");
+    return items.find((item) => item.primary && item.verified)?.email ?? items.find((item) => item.verified)?.email;
+  }
+
+  if (preset.userinfoUrl) {
+    const profile = await fetchJson(preset.userinfoUrl, {
+      authorization: `Bearer ${token}`
+    });
+    if (preset.id === "google" && !profile.email_verified) {
+      throw new Error("Google email is not verified.");
+    }
+    return (profile as { email?: string }).email;
+  }
+
+  throw new Error(`No email resolution implemented for OAuth provider: ${provider}`);
 }
