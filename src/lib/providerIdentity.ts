@@ -57,7 +57,7 @@ export function providerIdentity(input: ProviderIdentityInput | ProviderConfig):
     return { key: "qoder", label: "QD", title, iconPath: "/icons/qoder.svg" };
   }
   if (has(providerText, /agentrouter/)) {
-    return { key: "agentrouter", label: "NR", title, iconPath: "/icons/nesarouter.svg" };
+    return { key: "agentrouter", label: "NR", title, iconPath: "/icons/agentrouter.png" };
   }
   if (has(providerText, /zenmux/)) {
     return { key: "zenmux", label: "ZM", title, iconPath: "/icons/zenmux.svg" };

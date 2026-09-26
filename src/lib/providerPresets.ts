@@ -1241,7 +1241,6 @@ export const providerPresetGroups: Array<{ label: string; ids: ProviderPreset[] 
       "opencode-free",
       "mimo-code-free",
       "opencode-go",
-      "pollinations-free",
       "huggingface",
       "mistral",
       "together",
