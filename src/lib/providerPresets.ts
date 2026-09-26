@@ -1235,7 +1235,19 @@ export const providerPresetGroups: Array<{ label: string; ids: ProviderPreset[] 
   },
   {
     label: "Free / local",
-    ids: ["openrouter-free", "ollama-local", "opencode-free", "mimo-code-free", "opencode-go"]
+    ids: [
+      "openrouter-free",
+      "ollama-local",
+      "opencode-free",
+      "mimo-code-free",
+      "opencode-go",
+      "pollinations-free",
+      "huggingface",
+      "mistral",
+      "together",
+      "fireworks",
+      "groq"
+    ]
   },
   {
     label: "China / Asia API key",
