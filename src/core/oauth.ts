@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import { cookieSecurePreferred, publicUrl } from "@/core/publicUrl";
-import { getAdminOAuthPreset } from "@/core/adminOAuthPresets";
+import { adminOAuthPresets, getAdminOAuthPreset } from "@/core/adminOAuthPresets";
 
 export type OAuthProviderId = string;
 
