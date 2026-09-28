@@ -160,7 +160,7 @@ The Compose file persists SQLite data in the `nesa-router-data` volume and expos
 Tagged releases are published to GitHub Container Registry:
 
 ```bash
-docker pull ghcr.io/99apps-id/nesarouter:0.2.0
+docker pull ghcr.io/99apps-id/nesarouter:0.2.1
 ```
 
 To run the published image directly:
@@ -171,7 +171,7 @@ docker run -d \
   -p 20129:20129 \
   -v nesa-router-data:/app/data \
   --env-file .env \
-  ghcr.io/99apps-id/nesarouter:0.2.0
+  ghcr.io/99apps-id/nesarouter:0.2.1
 ```
 
 ## API
