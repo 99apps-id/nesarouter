@@ -2882,7 +2882,8 @@ button:focus-visible {
   top: 50%;
   transform: translate(-50%, -50%);
 }
-.route-map .route-hub {
+.route-map .route-hub,
+.route-map .route-map-node {
   outline: 3px solid lime;
 }
 

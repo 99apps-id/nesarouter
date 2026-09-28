@@ -163,6 +163,15 @@ function RouteMap({
     const syncSize = () => {
       const rect = viewport.getBoundingClientRect();
       if (rect.width > 0 && rect.height > 0) setMapSize({ width: rect.width, height: rect.height });
+    const hub = viewport.querySelector(".route-hub") as HTMLElement | null;
+    const stage = viewport.querySelector(".route-map-stage") as HTMLElement | null;
+    console.log("[hub-probe]", JSON.stringify({
+      viewport: { left: rect.left, top: rect.top, w: rect.width, h: rect.height },
+      hub: hub ? { cx: hub.offsetLeft, cy: hub.offsetTop, w: hub.offsetWidth, h: hub.offsetHeight } : null,
+      hubRect: hub ? (() => { const r = hub.getBoundingClientRect(); return { cx: Number((r.left + r.width / 2 - rect.left).toFixed(1)), cy: Number((r.top + r.height / 2 - rect.top).toFixed(1)), w: Number(r.width.toFixed(1)), h: Number(r.height.toFixed(1)) }; })() : null,
+      stage: stage ? (() => { const r = stage.getBoundingClientRect(); return { x: Number((r.left - rect.left).toFixed(1)), y: Number((r.top - rect.top).toFixed(1)), w: Number(r.width.toFixed(1)), h: Number(r.height.toFixed(1)) }; })() : null,
+      stageStyle: stage ? { h: getComputedStyle(stage).height, w: getComputedStyle(stage).width } : null
+    }));
     };
     syncSize();
     const observer = new ResizeObserver(syncSize);
