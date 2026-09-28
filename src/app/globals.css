@@ -3602,16 +3602,19 @@ button:focus-visible {
   }
 }
 
+/* The hub is centered with translate(-50%, -50%); every keyframe must repeat
+   that translate or the animation replaces it and the hub drifts to the
+   top-left corner (same reason route-node-beat repeats it). */
 @keyframes route-hub-pulse {
   0%,
   100% {
-    transform: scale(1);
+    transform: translate(-50%, -50%) scale(1);
     box-shadow:
       0 0 0 10px color-mix(in oklch, var(--primary) 10%, transparent),
       0 0 34px color-mix(in oklch, var(--primary) 22%, transparent);
   }
   50% {
-    transform: scale(1.04);
+    transform: translate(-50%, -50%) scale(1.04);
     box-shadow:
       0 0 0 14px color-mix(in oklch, var(--primary) 14%, transparent),
       0 0 44px color-mix(in oklch, var(--primary) 28%, transparent);
