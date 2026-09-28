@@ -2,6 +2,35 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## 0.2.1 - 2026-09-28
+
+### Fixed
+
+- Complete `ProviderPreset` TypeScript union type in `src/lib/providerPresets.ts` so all built-in preset IDs (OAuth, free, free-tier, and paid API key providers) are recognized by the type system. This removes a build-time type error that blocked presets such as `oauth-kiro`, `openrouter-free`, `mimo-code-free`, `ollama-local`, and the full China / Asia API key set from being assigned as selectable presets.
+- Add missing provider icons (`freebuff`, `gmi-cloud`, `morph`, `nanogpt`, `sarvam`, `scaleway`, `tencent-tokenhub`, `zai`) to `public/icons/` so the provider list renders complete branding assets.
+
+### Validation
+
+- TypeScript validation passes (`tsc --noEmit`).
+- Unit test suite passes (391 tests).
+
+## 0.2.0 - 2026-09-28
+
+### Added
+
+- Deep audit and alignment of OAuth provider presets against upstream 9router: client IDs, client secrets, authorize URLs, token URLs, scopes, and flow configurations for Claude, Codex, Gemini CLI, Kiro, Antigravity, Cursor, Qoder, Trae, Windsurf, Zed, Kimi, KiloCode, Cline, ClinePass, GitLab, CodeBuddy, Kimchi, Grok CLI, iFlow, and Xiaomi MiMo are preserved and validated.
+- Maintained upstream tokens and secrets mapping in `src/core/oauthProviderPresets.ts`.
+- Verified API key preset catalog (`src/lib/providerPresets.ts`) covers free (OpenRouter free, Ollama, OpenCode free, MiMo free, OpenCode Go, Pollinations), free-tier, and paid providers (Groq, Together, Fireworks, Cerebras, Mistral, DeepInfra, Novita, SambaNova, HuggingFace, NVIDIA NIM, Cloudflare, Vertex, Azure, Blackbox, Kilocode, Cline, fal-ai, Replicate, AI21, Lambda, Lepton, and more).
+- Expanded `ProviderPreset` type union to include all OAuth and API key preset IDs.
+
+### Fixed
+
+- TypeScript type error in `ProviderPreset` that prevented full preset catalog from being used in the UI and routing layer.
+
+### Validation
+
+- TypeScript validation, production build, and unit test suite pass.
+
 ## 0.1.51 - 2026-08-07
 
 ### Added
