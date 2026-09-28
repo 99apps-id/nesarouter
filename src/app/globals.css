@@ -2707,6 +2707,7 @@ button:focus-visible {
   transition: transform 70ms linear;
   width: 100%;
   z-index: 1;
+  outline: 2px solid red;
 }
 
 .route-map-lines {
@@ -2880,6 +2881,9 @@ button:focus-visible {
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
+}
+.route-map .route-hub {
+  outline: 3px solid lime;
 }
 
 .route-map .route-hub {
