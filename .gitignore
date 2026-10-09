@@ -28,6 +28,11 @@ credentials*
 npm-debug.log*
 tsconfig.tsbuildinfo
 
+# Private company/tax documents (NPWP etc.) — never commit these.
+NPWP*.pdf
+NPWP*
+*NPWP*
+
 # Local user guides (do not commit/push)
 docs/guides/
 
