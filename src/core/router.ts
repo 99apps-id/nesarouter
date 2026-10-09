@@ -274,6 +274,13 @@ export function chooseProvider(
         ? activeProviders.find((provider) => provider.id === store.router.manualProviderId)
         : undefined;
     if (mode === "manual" && store.router.manualProviderId && !pinManual) {
+      // A pinned provider that already failed this request must not be reported as
+      // inactive — the operator would go looking for a provider that is fine.
+      if (excludedProviderIds.includes(store.router.manualProviderId)) {
+        throw new Error(
+          `Manual provider '${store.router.manualProviderId}' failed for this request. Routing mode is "manual", so no other provider was tried — switch mode (or enable Auto) if you want automatic fallback.`
+        );
+      }
       throw new Error(
         `Manual provider '${store.router.manualProviderId}' is not active or has no usable credentials. Activate it under Providers, or pick another Manual provider.`
       );

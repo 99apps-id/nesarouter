@@ -106,8 +106,30 @@ function sseData(event: string, raw: string) {
   return `event: ${event}\n${raw.split(/\r?\n/).map((line) => `data: ${line}`).join("\n")}\n\n`;
 }
 
+/**
+ * Router-owned secrets that a spawned MCP server must never inherit. MCP servers
+ * are usually third-party commands (`npx -y …`) configured by the admin, and
+ * NESA_ENCRYPTION_KEY alone decrypts every stored provider credential.
+ */
+export const MCP_CHILD_BLOCKED_ENV = [
+  "NESA_ENCRYPTION_KEY",
+  "NESA_ADMIN_SESSION_SECRET",
+  "NESA_ADMIN_PASSWORD",
+  "NESA_METRICS_TOKEN",
+  "GITHUB_CLIENT_SECRET",
+  "GOOGLE_CLIENT_SECRET"
+] as const;
+
+/** Inherited environment minus the router's own secrets, plus explicit server.env. */
+export function mcpChildEnv(server: Pick<McpServer, "env">): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const key of MCP_CHILD_BLOCKED_ENV) delete env[key];
+  // An explicit value in the server config is an intentional operator opt-in.
+  return { ...env, ...(server.env ?? {}) };
+}
+
 function spawnForSession(server: McpServer, sid: string, send: (frame: string) => void, close: () => void): BridgeEntry {
-  const env = { ...process.env, ...server.env };
+  const env = mcpChildEnv(server);
   const proc = spawn(server.command, server.args ?? [], {
     stdio: ["pipe", "pipe", "pipe"],
     env,

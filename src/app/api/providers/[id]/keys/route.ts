@@ -44,7 +44,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   const extras = Array.isArray(provider.apiKeys) ? [...provider.apiKeys] : [];
-  if (!extras.includes(key) && provider.apiKey !== key) extras.push(key);
+  if (provider.apiKey === key || extras.includes(key)) {
+    // Reporting success without storing the key desynced the dashboard list and
+    // let the per-key quota land on the wrong index (count-1 != this key).
+    return NextResponse.json(
+      { error: "This key is already saved for this provider." },
+      { status: 409 }
+    );
+  }
+  extras.push(key);
   const count = (provider.apiKey ? 1 : 0) + extras.length;
   const keyQuotas = alignKeyQuotas(provider.keyQuotas, count);
   if (ownQuota > 0) keyQuotas[count - 1] = { quotaLimitTokens: ownQuota };

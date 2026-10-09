@@ -43,6 +43,9 @@ function manualMediaDecision(store: NesaStore, provider: ProviderConfig, probeTe
 /**
  * Resolve provider for OpenAI-compatible media endpoints.
  * Uses per-kind overrides from Routing → Media when set; otherwise falls back to the chat router.
+ * The chat router may rank a provider the media passthrough cannot call (Gemini,
+ * OAuth chat adapters, …), so auto mode keeps walking the routing order until it
+ * finds an OpenAI-compatible provider instead of failing the request outright.
  */
 export function chooseMediaProvider(
   store: NesaStore,
@@ -60,8 +63,30 @@ export function chooseMediaProvider(
     return manualMediaDecision(store, provider, options.probeText, kind);
   }
 
-  return chooseProvider(store, {
+  const body = {
     model: options.model,
     messages: [{ role: "user", content: options.probeText }]
-  });
+  };
+  const incompatible: string[] = [];
+  let lastRoutingError: unknown;
+  while (incompatible.length < store.providers.length) {
+    let decision: RouteDecision;
+    try {
+      decision = chooseProvider(store, body, incompatible);
+    } catch (error) {
+      lastRoutingError = error;
+      break;
+    }
+    if (decision.provider.type === "openai_compatible") return decision;
+    incompatible.push(decision.provider.id);
+  }
+
+  if (incompatible.length) {
+    throw new Error(
+      `${kind} need an OpenAI-compatible provider. Skipped ${incompatible.length} provider(s) without the OpenAI API adapter (${incompatible.join(", ")}).`
+    );
+  }
+  throw lastRoutingError instanceof Error
+    ? lastRoutingError
+    : new Error(`No provider is available for ${kind} requests.`);
 }

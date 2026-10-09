@@ -25,8 +25,8 @@ export default function LoginForm({
 }: {
   /** Only set while still on the temporary local bootstrap password. */
   defaultPassword?: string;
-  /** default = show nesa123456; env = point at .env without revealing the value */
-  passwordHint?: "default" | "env";
+  /** default = show nesa123456; env = point at .env; misconfigured = production without .env password */
+  passwordHint?: "default" | "env" | "misconfigured";
   initialLock?: LoginLock;
   oauthProviders: OAuthProviderInfo[];
   oauthError?: string;
@@ -64,6 +64,8 @@ export default function LoginForm({
       if (response.status === 423) {
         setLocked(true);
         setError(`Login locked. Try again in ${minutesLeft(result.remainingMs)} minutes.`);
+      } else if (response.status === 503) {
+        setError(result.error ?? "Admin password is not configured on the server.");
       } else {
         const remainingAttempts = Math.max(0, Number(result.maxAttempts ?? 5) - Number(result.failedAttempts ?? 0));
         setError(remainingAttempts ? `${result.error ?? "Login failed."} ${remainingAttempts} tries left.` : (result.error ?? "Login failed."));
@@ -101,6 +103,16 @@ export default function LoginForm({
               Use the value of <code>NESA_ADMIN_PASSWORD</code> set during install (production cannot use{" "}
               <code>nesa123456</code>). Ask your installer if you do not have it, then change it under Routing →
               Password after login.
+            </small>
+          </div>
+        ) : null}
+        {passwordHint === "misconfigured" ? (
+          <div className="default-password-box">
+            <span>Admin password is not configured</span>
+            <small>
+              This server runs in production with the development default password. Set a unique{" "}
+              <code>NESA_ADMIN_PASSWORD</code> in <code>.env</code> (production refuses{" "}
+              <code>nesa123456</code> and <code>change-me</code>), then restart NesaRouter and log in again.
             </small>
           </div>
         ) : null}

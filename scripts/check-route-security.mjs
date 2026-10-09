@@ -18,7 +18,7 @@ function routePath(file) {
 }
 
 const publicApiPolicies = new Map([
-  ["src/app/api/auth/login/route.ts", "verifyAdminPassword"],
+  ["src/app/api/auth/login/route.ts", "checkAdminPassword"],
   ["src/app/api/auth/logout/route.ts", "revokeAdminToken"],
   ["src/app/api/auth/oauth/[provider]/callback/route.ts", "timingSafeEqualString"],
   ["src/app/api/auth/oauth/[provider]/start/route.ts", "oauthStateCookieName"],

@@ -1,6 +1,18 @@
 import { timingSafeEqualString } from "@/core/adminSessionCookie";
 
 /**
+ * `/api/metrics` answers Prometheus text or a JSON error. A client sending
+ * `Accept: text/event-stream` makes Next.js build a non-JSON response, so the
+ * route rejects that explicitly (406) instead of failing while serialising.
+ */
+export function metricsWantsJson(acceptHeader: string | null): boolean {
+  if (!acceptHeader) return true;
+  const accept = acceptHeader.toLowerCase();
+  if (accept.includes("application/json")) return true;
+  return !accept.includes("text/event-stream");
+}
+
+/**
  * Metrics are deny-by-default. Set NESA_METRICS_TOKEN and pass it via
  * `Authorization: Bearer …` or `?token=`.
  */

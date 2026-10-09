@@ -340,6 +340,20 @@ describe("router", () => {
     expect(() => chooseProvider(store, { model: "auto", messages: [{ role: "user", content: "hi" }] })).toThrow(/not active/i);
   });
 
+  it("reports a failed manual provider as failed, not as inactive", () => {
+    const store = storeWith([
+      provider({ id: "premium", name: "Premium", tier: "premium", model: "p" }),
+      provider({ id: "backup", name: "Backup", tier: "cheap", model: "b" })
+    ]);
+    store.router = { ...store.router, routingMode: "manual", manualProviderId: "premium" };
+
+    // Second attempt of the same request: the pinned provider is excluded because
+    // it already failed upstream. It must not be described as inactive.
+    expect(() =>
+      chooseProvider(store, { model: "auto", messages: [{ role: "user", content: "hi" }] }, ["premium"])
+    ).toThrow(/failed for this request/i);
+  });
+
   it("routes a combo to connected GitHub Copilot OAuth", () => {
     const combo: Combo = {
       id: "c-copilot",

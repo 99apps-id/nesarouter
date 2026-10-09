@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authorizeMetrics } from "@/core/metricsAuth";
+import { authorizeMetrics, metricsWantsJson } from "@/core/metricsAuth";
 import { readAppVersion } from "@/lib/appVersion";
 
 describe("authorizeMetrics", () => {
@@ -30,5 +30,21 @@ describe("authorizeMetrics", () => {
 describe("readAppVersion for health", () => {
   it("returns a semver-like package version", () => {
     expect(readAppVersion()).toMatch(/^\d+\.\d+\.\d+/);
+  });
+});
+
+describe("metricsWantsJson", () => {
+  it("accepts Prometheus-style scrapes", () => {
+    expect(metricsWantsJson(null)).toBe(true);
+    expect(metricsWantsJson("*/*")).toBe(true);
+    expect(metricsWantsJson("text/plain")).toBe(true);
+    expect(metricsWantsJson("application/json")).toBe(true);
+  });
+
+  it("rejects an SSE-only client so the route answers 406 instead of failing to serialise", () => {
+    expect(metricsWantsJson("text/event-stream")).toBe(false);
+    expect(metricsWantsJson("text/event-stream, */*;q=0.1")).toBe(false);
+    // A browser that also accepts JSON keeps working.
+    expect(metricsWantsJson("text/event-stream, application/json")).toBe(true);
   });
 });

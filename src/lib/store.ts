@@ -153,6 +153,7 @@ function migrate(database: Database.Database) {
       status TEXT NOT NULL,
       error TEXT
     );
+    CREATE INDEX IF NOT EXISTS idx_usage_logs_created_at ON usage_logs(created_at DESC);
     CREATE TABLE IF NOT EXISTS cache_entries (
       key TEXT PRIMARY KEY,
       created_at TEXT NOT NULL,
@@ -985,9 +986,16 @@ export async function readStore(): Promise<NesaStore> {
     .prepare("SELECT * FROM providers ORDER BY priority ASC, id ASC")
     .all()
     .map(providerFromRow);
+  // Keep the newest USAGE_RETENTION_ROWS rows for history/chart, plus every row
+  // from today so budget and daily quota checks cannot be under-counted by the cap.
   const usage = database
-    .prepare("SELECT * FROM usage_logs ORDER BY created_at DESC LIMIT 500")
-    .all()
+    .prepare(
+      `SELECT * FROM usage_logs
+        WHERE created_at >= @todayStart
+           OR id IN (SELECT id FROM usage_logs ORDER BY created_at DESC LIMIT @keep)
+        ORDER BY created_at DESC`
+    )
+    .all({ todayStart: startOfTodayIso(), keep: USAGE_RETENTION_ROWS })
     .map(usageFromRow);
   const cache = database
     .prepare("SELECT * FROM cache_entries ORDER BY created_at DESC LIMIT 100")
@@ -1223,14 +1231,28 @@ export async function deleteLocalApiKey(token: string) {
   }
 }
 
+/**
+ * Usage history kept for the dashboard/chart. Rows created today are always
+ * retained regardless of this cap, because daily spend, daily provider quotas
+ * and daily key quotas are summed from `store.usage`.
+ */
+export const USAGE_RETENTION_ROWS = 500;
+
+/** ISO timestamp of local midnight today — `created_at` is stored as a UTC ISO string. */
+export function startOfTodayIso(date = new Date()) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString();
+}
+
 export async function appendUsage(log: UsageLog) {
   const database = getDb();
   writeUsageToDb(database, log);
   database
     .prepare(
-      "DELETE FROM usage_logs WHERE id NOT IN (SELECT id FROM usage_logs ORDER BY created_at DESC LIMIT 500)"
+      `DELETE FROM usage_logs
+        WHERE created_at < @todayStart
+          AND id NOT IN (SELECT id FROM usage_logs ORDER BY created_at DESC LIMIT @keep)`
     )
-    .run();
+    .run({ todayStart: startOfTodayIso(), keep: USAGE_RETENTION_ROWS });
 }
 
 export async function saveCacheEntry(entry: CacheEntry) {

@@ -3,13 +3,13 @@ import {
   adminCookieName,
   adminCookieOptions,
   adminPasswordMustChange,
+  checkAdminPassword,
   createAdminSession,
   loginRateLimitKey,
   MAX_LOGIN_ATTEMPTS,
   readLoginLock,
   recordLoginFailure,
-  recordLoginSuccess,
-  verifyAdminPassword
+  recordLoginSuccess
 } from "@/core/adminAuth";
 import { readJsonBodyLimited, RequestBodyTooLargeError } from "@/core/auth";
 
@@ -41,7 +41,18 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
   }
-  if (!(await verifyAdminPassword(body.password ?? ""))) {
+  const passwordCheck = await checkAdminPassword(body.password ?? "");
+  if (passwordCheck.misconfigured) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: `${passwordCheck.misconfigured} Set it in .env and restart NesaRouter.`,
+        code: "admin_password_unconfigured"
+      },
+      { status: 503 }
+    );
+  }
+  if (!passwordCheck.ok) {
     const nextLock = await recordLoginFailure(lockKey);
     return NextResponse.json(
       {

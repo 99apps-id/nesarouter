@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { adminCookieName, buildAdminSessionCookie } from "@/core/adminSessionCookie";
-import { adminLoginPasswordHint, adminTokenFromRequest, loginRateLimitKey, readAdminSessionTokenCandidates } from "@/core/adminAuth";
+import {
+  adminLoginPasswordHint,
+  adminTokenFromRequest,
+  checkAdminPassword,
+  loginRateLimitKey,
+  readAdminSessionTokenCandidates
+} from "@/core/adminAuth";
 import { createAdminSessionRecord, writeAdminPasswordHash } from "@/lib/adminPersistence";
 
 describe("admin session token resolution", () => {
@@ -75,5 +81,26 @@ describe("admin session token resolution", () => {
   it("never exposes a bootstrap hint after a password hash is stored", async () => {
     await writeAdminPasswordHash("scrypt$stored-password-hash");
     await expect(adminLoginPasswordHint()).resolves.toBeNull();
+  });
+
+  it("flags production without a usable NESA_ADMIN_PASSWORD instead of advertising the dev default", async () => {
+    const env = process.env as unknown as Record<string, string | undefined>;
+    const previousNodeEnv = env.NODE_ENV;
+    const previousPassword = env.NESA_ADMIN_PASSWORD;
+    env.NODE_ENV = "production";
+    delete env.NESA_ADMIN_PASSWORD;
+    await writeAdminPasswordHash("");
+
+    try {
+      await expect(adminLoginPasswordHint()).resolves.toBe("misconfigured");
+      const attempt = await checkAdminPassword("nesa123456");
+      expect(attempt.ok).toBe(false);
+      expect(attempt.misconfigured).toMatch(/NESA_ADMIN_PASSWORD/);
+    } finally {
+      env.NODE_ENV = previousNodeEnv;
+      if (previousPassword === undefined) delete env.NESA_ADMIN_PASSWORD;
+      else env.NESA_ADMIN_PASSWORD = previousPassword;
+      await writeAdminPasswordHash("");
+    }
   });
 });

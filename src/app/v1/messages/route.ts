@@ -19,7 +19,27 @@ export async function POST(request: Request) {
   const openAiBody = claudeToOpenAi(body);
   const { response } = await handleChat(openAiBody, request);
 
-  if (!response.ok) return response;
+  // Claude clients parse `{type:"error",error:{type,message}}`; a raw OpenAI
+  // error body surfaces only as an opaque "unknown error" in the Anthropic SDK.
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    const message =
+      (typeof payload?.error?.message === "string" && payload.error.message) ||
+      (typeof payload?.error === "string" && payload.error) ||
+      `NesaRouter upstream error (${response.status}).`;
+    const errorType =
+      response.status === 401 || response.status === 403
+        ? "authentication_error"
+        : response.status === 429
+          ? "rate_limit_error"
+          : response.status >= 500
+            ? "api_error"
+            : "invalid_request_error";
+    return NextResponse.json(
+      { type: "error", error: { type: errorType, message } },
+      { status: response.status }
+    );
+  }
 
   const isStream = response.headers.get("content-type")?.includes("text/event-stream");
   if (isStream && response.body) {

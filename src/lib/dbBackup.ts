@@ -79,9 +79,13 @@ export function startAutoBackupSchedule() {
   const keep = readBackupKeepCount();
   const run = () => {
     backupDatabaseNow(keep)
-      .then((dest) => console.log("[debug-backup] ok", dest))
+      // Only failures are logged by default: a success line on every boot/backup
+      // is noise for operators and made Vitest workers fail teardown.
+      .then((dest) => {
+        if (process.env.NESA_DEBUG_BACKUP === "1") console.log("[debug-backup] ok", dest);
+      })
       .catch((error) => {
-        console.error("[debug-backup] failed", error);
+        console.error("[backup] failed", error);
       });
   };
   run();

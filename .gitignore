@@ -28,6 +28,12 @@ credentials*
 npm-debug.log*
 tsconfig.tsbuildinfo
 
+# Local agent/tooling state — never part of the product repo.
+.termixgo/
+.termigo/
+.agents/
+.commandcode/
+
 # Private company/tax documents (NPWP etc.) — never commit these.
 NPWP*.pdf
 NPWP*

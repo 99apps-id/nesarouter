@@ -64,7 +64,12 @@ function compressText(text: string, hits: NonNullable<RtkResult["hits"]>, shape:
   return text;
 }
 
-function compressToolMessageContent(content: unknown, hits: NonNullable<RtkResult["hits"]>, shape: string): unknown {
+function compressToolMessageContent(
+  content: unknown,
+  hits: NonNullable<RtkResult["hits"]>,
+  shape: string,
+  compressPlainText: boolean
+): unknown {
   if (typeof content === "string") return compressText(content, hits, shape);
   if (!Array.isArray(content)) return content;
 
@@ -103,6 +108,10 @@ function compressToolMessageContent(content: unknown, hits: NonNullable<RtkResul
     }
 
     if (partRecord.type === "text" && typeof partRecord.text === "string") {
+      // Only tool output is fair game. Rewriting a user/assistant text block
+      // (multimodal `content: [{type:"text"},…]`) silently truncates the
+      // operator's own prompt, and string-content messages never got compressed.
+      if (!compressPlainText) return part;
       const compressed = compressText(partRecord.text, hits, `${shape}-text`);
       if (compressed !== partRecord.text) {
         changed = true;
@@ -156,12 +165,14 @@ export function compressToolResults<T>(body: T): RtkResult<T> {
       }
 
       if (messageRecord.role === "tool") {
-        const content = compressToolMessageContent(messageRecord.content, hits, "openai-tool");
+        const content = compressToolMessageContent(messageRecord.content, hits, "openai-tool", true);
         return content !== messageRecord.content ? { ...messageRecord, content } : message;
       }
 
       if (Array.isArray(messageRecord.content)) {
-        const content = compressToolMessageContent(messageRecord.content, hits, "blocks");
+        // Claude tool_result blocks live in user messages and are still filtered;
+        // plain text parts of any message are left untouched.
+        const content = compressToolMessageContent(messageRecord.content, hits, "blocks", false);
         return content !== messageRecord.content ? { ...messageRecord, content } : message;
       }
 

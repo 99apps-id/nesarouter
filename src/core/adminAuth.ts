@@ -63,12 +63,16 @@ export async function adminPasswordMustChange() {
  * Login hint mode while no password hash exists yet.
  * - default: show well-known local bootstrap password
  * - env: custom NESA_ADMIN_PASSWORD is set (do not echo it; point at .env)
+ * - misconfigured: production without a usable NESA_ADMIN_PASSWORD — never
+ *   advertise `nesa123456`, because production refuses to verify it.
  * - null: password already changed (hash stored) — NEVER show bootstrap UI
  */
-export async function adminLoginPasswordHint(): Promise<"default" | "env" | null> {
+export async function adminLoginPasswordHint(): Promise<"default" | "env" | "misconfigured" | null> {
   const stored = await readAdminPasswordHash();
   if (typeof stored === "string" && stored.trim().length > 0) return null;
   const fromEnv = process.env.NESA_ADMIN_PASSWORD?.trim();
+  const insecure = !fromEnv || fromEnv === defaultAdminPassword || fromEnv === "change-me";
+  if (insecure && process.env.NODE_ENV === "production") return "misconfigured";
   if (!fromEnv || fromEnv === defaultAdminPassword) return "default";
   return "env";
 }
@@ -127,6 +131,21 @@ export async function verifyAdminPassword(password: string) {
   const left = Buffer.from(password);
   const right = Buffer.from(bootstrapPassword());
   return left.length === right.length && crypto.timingSafeEqual(left, right);
+}
+
+/**
+ * Non-throwing wrapper for route handlers: a production instance without a valid
+ * NESA_ADMIN_PASSWORD must return an actionable 503, not an unhandled 500.
+ */
+export async function checkAdminPassword(password: string): Promise<{ ok: boolean; misconfigured?: string }> {
+  try {
+    return { ok: await verifyAdminPassword(password) };
+  } catch (error) {
+    return {
+      ok: false,
+      misconfigured: error instanceof Error ? error.message : "Admin password bootstrap failed."
+    };
+  }
 }
 
 /** Issue a random, revocable admin session cookie value. */
