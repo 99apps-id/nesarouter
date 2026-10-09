@@ -982,17 +982,20 @@ function writeComboToDb(database: Database.Database, combo: Combo) {
 
 export async function readStore(): Promise<NesaStore> {
   const database = getDb();
+  pruneUsageLogs(database);
   const providers = database
     .prepare("SELECT * FROM providers ORDER BY priority ASC, id ASC")
     .all()
     .map(providerFromRow);
+  // Prune old rows first so the retention scan does not walk the full history.
+  pruneUsageLogs(database);
   // Keep the newest USAGE_RETENTION_ROWS rows for history/chart, plus every row
   // from today so budget and daily quota checks cannot be under-counted by the cap.
   const usage = database
     .prepare(
       `SELECT * FROM usage_logs
         WHERE created_at >= @todayStart
-           OR id IN (SELECT id FROM usage_logs ORDER BY created_at DESC LIMIT @keep)
+           OR rowid IN (SELECT rowid FROM usage_logs ORDER BY created_at DESC LIMIT @keep)
         ORDER BY created_at DESC`
     )
     .all({ todayStart: startOfTodayIso(), keep: USAGE_RETENTION_ROWS })
@@ -1246,11 +1249,15 @@ export function startOfTodayIso(date = new Date()) {
 export async function appendUsage(log: UsageLog) {
   const database = getDb();
   writeUsageToDb(database, log);
+}
+
+/** Remove old usage rows that are outside the retention window. Called from `readStore`. */
+export function pruneUsageLogs(database: Database.Database) {
   database
     .prepare(
       `DELETE FROM usage_logs
         WHERE created_at < @todayStart
-          AND id NOT IN (SELECT id FROM usage_logs ORDER BY created_at DESC LIMIT @keep)`
+          AND rowid NOT IN (SELECT rowid FROM usage_logs ORDER BY created_at DESC LIMIT @keep)`
     )
     .run({ todayStart: startOfTodayIso(), keep: USAGE_RETENTION_ROWS });
 }
