@@ -403,20 +403,15 @@ export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
     tokenEncoding: "form",
     deviceFlow: true,
     deviceReferrer: "grok-build",
-    providerType: "openai_responses",
-    baseUrl: "https://cli-chat-proxy.grok.com/v1/responses",
-    defaultModel: "grok-4.5",
-    // grok-4.7 and grok-build-0.1 are the ids the same OAuth client serves per
-    // the reference client's xai-oauth catalogue; the effort variants are the
-    // Grok CLI's own. Kept additive so every previously working id still works.
-    models: ["grok-4.5", "grok-4.5-high", "grok-4.5-medium", "grok-4.5-low", "grok-4.7", "grok-build-0.1"],
-    upstreamHeaders: {
-      "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
-      "x-xai-token-auth": "xai-grok-cli",
-      "x-grok-client-identifier": "grok-pager",
-      "x-grok-client-version": "0.2.93",
-      "x-authenticateresponse": "authenticate-response"
-    },
+    // xAI's own API, as the reference client's xai-oauth spec does: an
+    // OpenAI-compatible endpoint that takes the OAuth access token as the
+    // bearer. The CLI-proxy-only headers that used to live here belong to
+    // cli-chat-proxy and are not sent to api.x.ai.
+    providerType: "openai_compatible",
+    baseUrl: "https://api.x.ai/v1",
+    defaultModel: "grok-4.7",
+    models: ["grok-4.7", "grok-build-0.1"],
+    upstreamHeaders: {},
     refreshLeadMs: 5 * 60_000
   },
   kimchi: {

@@ -12,6 +12,7 @@ import { CursorExecutor } from "@/core/providers/cursor";
 import { VertexExecutor } from "@/core/providers/vertex";
 import { GrokWebExecutor } from "@/core/providers/grokWeb";
 import { ProviderExecutor, UpstreamProviderError, cleanApiKey } from "@/core/providers/shared";
+import { callWithProxyPool, proxyPoolFor } from "@/core/proxyPool";
 import { isChatgptCodexUpstream } from "@/core/translatorReverse";
 
 const executors: Record<ProviderConfig["type"], ProviderExecutor> = {
@@ -47,7 +48,11 @@ export function getProviderExecutor(provider: ProviderConfig) {
 
 export async function callProvider(provider: ProviderConfig, body: any, apiKey?: string) {
   const effective = coerceProviderForCall(provider);
-  return getProviderExecutor(effective).call(effective, body, apiKey);
+  // Providers whose entitlement follows the egress address (Muse) run through
+  // the proxy pool, which retries an entitled hop instead of failing the call.
+  const pool = proxyPoolFor(effective);
+  if (!pool.length) return getProviderExecutor(effective).call(effective, body, apiKey);
+  return callWithProxyPool(effective, pool, (routed) => getProviderExecutor(routed).call(routed, body, apiKey));
 }
 
 export async function listProviderModels(provider: ProviderConfig) {

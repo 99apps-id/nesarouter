@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { USAGE_RETENTION_ROWS, appendUsage, readStore, startOfTodayIso } from "@/lib/store";
 import { UsageLog } from "@/core/types";
 

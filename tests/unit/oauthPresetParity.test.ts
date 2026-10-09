@@ -55,11 +55,16 @@ describe("Grok OAuth preset parity", () => {
     expect(preset.deviceReferrer).toBe("grok-build");
   });
 
-  it("offers the current Grok OAuth model ids without dropping any existing one", () => {
-    for (const id of ["grok-4.5", "grok-4.5-high", "grok-4.5-medium", "grok-4.5-low", "grok-4.7", "grok-build-0.1"]) {
-      expect(preset.models).toContain(id);
-    }
-    expect(preset.defaultModel).toBe("grok-4.5");
+  it("targets xAI's own API as OpenAI-compatible chat completions", () => {
+    expect(preset.providerType).toBe("openai_compatible");
+    expect(preset.baseUrl).toBe("https://api.x.ai/v1");
+    // The CLI-proxy headers must not leak to api.x.ai.
+    expect(preset.upstreamHeaders).toEqual({});
+  });
+
+  it("offers the xai-oauth model ids with a default inside the list", () => {
+    expect(preset.models).toEqual(["grok-4.7", "grok-build-0.1"]);
+    expect(preset.defaultModel).toBe("grok-4.7");
     expect(preset.models).toContain(preset.defaultModel!);
   });
 });
