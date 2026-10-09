@@ -68,6 +68,22 @@ export function readBackupKeepCount(): number {
   return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : DEFAULT_BACKUP_KEEP;
 }
 
+/** Delay before the first backup after boot; keeps startup off the write lock. */
+export const DEFAULT_FIRST_BACKUP_DELAY_MS = 5 * 60_000;
+
+/**
+ * How long to wait before the first backup of a process. A first backup used to
+ * run immediately on boot, and better-sqlite3's backup API holds the database
+ * while it copies, so the very first request of a deploy could stall behind it.
+ * `0` restores the old immediate behaviour.
+ */
+export function readFirstBackupDelayMs(): number {
+  const raw = process.env.NESA_DB_BACKUP_FIRST_DELAY_MS?.trim();
+  if (!raw) return DEFAULT_FIRST_BACKUP_DELAY_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_FIRST_BACKUP_DELAY_MS;
+}
+
 let scheduled = false;
 
 /** Start the recurring backup timer once per process. No-op when the interval is 0 or already scheduled. */
@@ -88,7 +104,15 @@ export function startAutoBackupSchedule() {
         console.error("[backup] failed", error);
       });
   };
-  run();
+  // Defer the first run so server startup and the first requests are not
+  // competing with a full database copy.
+  const firstDelay = Math.min(readFirstBackupDelayMs(), hours * 60 * 60_000);
+  if (firstDelay > 0) {
+    const first = setTimeout(run, firstDelay);
+    first.unref?.();
+  } else {
+    run();
+  }
   const timer = setInterval(run, hours * 60 * 60_000);
   timer.unref?.();
 }

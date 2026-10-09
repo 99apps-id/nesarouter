@@ -1,4 +1,5 @@
 import { getPreset } from "@/core/oauthProviderPresets";
+import { antigravityRequestId, antigravitySessionId } from "@/core/antigravityCredentials";
 import { cloudCodeAssistProbeMetadata, loadAntigravityProjectId } from "@/core/oauthPkce";
 import { geminiStreamToOpenAiSse } from "@/core/streaming";
 import { ProviderConfig } from "@/core/types";
@@ -23,11 +24,22 @@ export class GeminiCliExecutor implements ProviderExecutor {
         400
       );
     }
-    const wrappedBody = { project, model: provider.model, request: geminiBody };
+    // Cloud Code requires a machine session id (a non-negative 63-bit integer)
+    // and echoes the same value in the body; the official IDE sends both, and a
+    // request without a session is rejected as an invalid session.
+    const session = antigravitySessionId(provider.oauthAccounts?.[0]?.id ?? provider.id);
+    const messageCount = Array.isArray(body?.messages) ? body.messages.length : 0;
+    const wrappedBody: Record<string, unknown> = { project, model: provider.model, request: geminiBody };
+    if (provider.oauthProfile === "antigravity") {
+      wrappedBody.sessionId = session;
+      wrappedBody.requestId = antigravityRequestId(session, provider.model, messageCount);
+    }
     const identityHeaders = preset?.upstreamHeaders ?? {
       "X-Goog-Api-Client": "google-genai-sdk/1.41.0 gl-node/v22.19.0",
       "User-Agent": "google-genai-sdk/1.41.0 gl-node/v22.19.0"
     };
+    const sessionHeaders: Record<string, string> =
+      provider.oauthProfile === "antigravity" ? { "X-Machine-Session-Id": session } : {};
 
     if (body?.stream) {
       const endpoint = `${baseUrl(provider)}:streamGenerateContent?alt=sse`;
@@ -37,7 +49,8 @@ export class GeminiCliExecutor implements ProviderExecutor {
           "content-type": "application/json",
           authorization: `Bearer ${token}`,
           accept: "text/event-stream",
-          ...identityHeaders
+          ...identityHeaders,
+          ...sessionHeaders
         },
         body: JSON.stringify(wrappedBody)
       });
@@ -53,7 +66,8 @@ export class GeminiCliExecutor implements ProviderExecutor {
         "content-type": "application/json",
         authorization: `Bearer ${token}`,
         accept: "application/json",
-        ...identityHeaders
+        ...identityHeaders,
+        ...sessionHeaders
       },
       body: JSON.stringify(wrappedBody)
     });

@@ -3,6 +3,7 @@ import { readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { ensureOauthLoopback } from "@/core/oauthLoopback";
 import { buildAuthorizeUrl, generatePkce, generateState } from "@/core/oauthPkce";
 import { getPreset, usesOAuthDeviceFlow } from "@/core/oauthProviderPresets";
+import { antigravityCredentialsError } from "@/core/antigravityCredentials";
 import { publicOrigin, publicUrl } from "@/core/publicUrl";
 import { readProviderById, readPublicBaseUrlSync } from "@/lib/store";
 import { saveOAuthPending } from "@/lib/oauthPendingPersistence";
@@ -21,6 +22,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!provider) return NextResponse.json({ error: "Provider not found." }, { status: 404 });
   const preset = getPreset(provider.oauthProfile);
   if (!preset) return NextResponse.json({ error: "Provider has no OAuth profile." }, { status: 400 });
+  // Antigravity's Google client pair is stamped by the deployment; without it the
+  // browser would be sent to Google with an empty client_id and fail as
+  // "invalid_client", which reads as a code bug rather than a missing stamp.
+  if (preset.profile === "antigravity") {
+    const stampError = antigravityCredentialsError();
+    if (stampError) return NextResponse.json({ error: stampError }, { status: 400 });
+  }
   if (usesOAuthDeviceFlow(preset) || preset.importTokenFlow) {
     return NextResponse.json({
       error: preset.importTokenFlow

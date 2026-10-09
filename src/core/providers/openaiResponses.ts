@@ -9,6 +9,7 @@ import {
   responsesSseToOpenAiSse
 } from "@/core/translatorReverse";
 import { baseUrl, cleanApiKey, ProviderExecutor, proxyFetch, UpstreamProviderError, upstreamError } from "@/core/providers/shared";
+import { museSessionId } from "@/core/museAuth";
 
 const CODEX_MODELS_URL = "https://chatgpt.com/backend-api/codex/models?client_version=1.0.0";
 
@@ -130,6 +131,9 @@ export class OpenAiResponsesExecutor implements ProviderExecutor {
       authorization: `Bearer ${token}`,
       ...(preset?.upstreamHeaders ?? {}),
       ...(accountId ? { "ChatGPT-Account-ID": accountId } : {}),
+      // Muse, like Codex, tags the turn with a session id; it is derived from the
+      // credential so one login keeps a stable feed across requests.
+      ...(preset?.profile === "muse" ? { session_id: museSessionId(token) } : {}),
       ...(isCodex
         ? {
             accept: "text/event-stream",

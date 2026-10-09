@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { finalizeAdminResponse, readAdminJson, requireAdmin } from "@/lib/adminApi";
 import { pollDeviceFlow, pollKiroDeviceFlow } from "@/core/oauthPkce";
+import { mintMuseKey } from "@/core/museAuth";
 import { getPreset, usesOAuthDeviceFlow } from "@/core/oauthProviderPresets";
 import { readProviderById } from "@/lib/store";
 import { saveProviderOAuthTokens } from "@/lib/providerOAuthPersistence";
@@ -49,14 +50,29 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         )
       : await pollDeviceFlow(preset!, pending.deviceCode, pending.codeVerifier);
 
-    const accessToken = tokens.access_token;
-    if (!accessToken) throw new Error("Device flow returned no access token.");
+    const deviceAccess = tokens.access_token;
+    if (!deviceAccess) throw new Error("Device flow returned no access token.");
     const refreshToken = tokens.refresh_token;
     const expiresAt = tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : undefined;
+
+    // Muse's device grant yields a "dca:" token the model endpoint rejects, so it
+    // is immediately exchanged for a durable API key: the key becomes the access
+    // token and the dca token is kept as the refresh, which lets a revoked key be
+    // re-minted later without sending the operator through another login.
+    let accessToken = deviceAccess;
+    let museAccountId: string | undefined;
+    if (preset!.museMintUrl) {
+      const minted = await mintMuseKey(deviceAccess, { mintUrl: preset!.museMintUrl });
+      accessToken = minted.apiKey;
+      museAccountId = minted.accountId || undefined;
+    }
+
     await saveProviderOAuthTokens(provider.id, {
       accessToken,
-      refreshToken,
-      expiresAt,
+      refreshToken: preset!.museMintUrl ? deviceAccess : refreshToken,
+      // A minted Muse key is stable for the account, so it must not be marked
+      // expired; an expiry here would make the dashboard renew it pointlessly.
+      expiresAt: preset!.museMintUrl ? undefined : expiresAt,
       ...(preset!.kiroDeviceFlow && pending.clientId && pending.clientSecret
         ? { deviceClientId: pending.clientId, deviceClientSecret: pending.clientSecret }
         : {})
@@ -65,7 +81,12 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       createNew: !pending.accountId
     });
     await deleteDevicePending(id, pendingId);
-    return finalizeAdminResponse(NextResponse.json({ status: "ok" }), request);
+    return finalizeAdminResponse(
+      // The minted key's user_email is the only field that says which Meta
+      // account was linked, so it is surfaced for the dashboard.
+      NextResponse.json(museAccountId ? { status: "ok", account: museAccountId } : { status: "ok" }),
+      request
+    );
   } catch (error) {
     const err = error as Error & { pending?: boolean; interval?: number };
     if (err.pending) {

@@ -276,7 +276,10 @@ export async function startDeviceFlow(preset: OAuthPreset, codeChallenge?: strin
   if (preset.kiloDeviceAuth) return startKiloDeviceFlow(preset);
   if (!preset.deviceCodeUrl) throw new Error("Preset does not support device flow.");
 
-  const body = new URLSearchParams({ client_id: preset.clientId, scope: preset.scope });
+  // An empty scope must be omitted, not sent as `scope=`: RFC 8628 servers
+  // answer a blank scope with invalid_scope (Meta's Muse login has no scope).
+  const body = new URLSearchParams({ client_id: preset.clientId });
+  if (preset.scope.trim()) body.set("scope", preset.scope);
   if (preset.deviceReferrer) body.set("referrer", preset.deviceReferrer);
   if (preset.devicePkce) {
     if (!codeChallenge) throw new Error("Device PKCE challenge required.");

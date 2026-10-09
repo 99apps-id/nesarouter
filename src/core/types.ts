@@ -93,7 +93,8 @@ export interface ProviderConfig {
     | "xiaomi_mimo"
     | "gitlab"
     | "windsurf"
-    | "zed";
+    | "zed"
+    | "muse";
   /** Multiple OAuth accounts per provider (round-robin + per-account cooldown). */
   oauthAccounts?: OAuthAccount[];
   oauthAccessToken?: string;

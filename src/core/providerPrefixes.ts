@@ -14,6 +14,8 @@ export const PROVIDER_PREFIXES: Record<string, string> = {
   gemicli: "oauth-gemini-cli",
   antigravity: "oauth-antigravity",
   ag: "oauth-antigravity",
+  muse: "oauth-muse",
+  musespark: "oauth-muse",
   copilot: "oauth-github-copilot",
   ghcp: "oauth-github-copilot",
   kiro: "oauth-kiro",

@@ -4,9 +4,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   backupDatabaseNow,
   backupsDir,
+  DEFAULT_FIRST_BACKUP_DELAY_MS,
   pruneOldBackups,
   readBackupIntervalHours,
-  readBackupKeepCount
+  readBackupKeepCount,
+  readFirstBackupDelayMs
 } from "@/lib/dbBackup";
 import { getDataDir } from "@/lib/store";
 
@@ -36,6 +38,32 @@ describe("readBackupIntervalHours / readBackupKeepCount", () => {
   it("falls back to the default on invalid input", () => {
     process.env.NESA_DB_BACKUP_INTERVAL_HOURS = "not-a-number";
     expect(readBackupIntervalHours()).toBe(24);
+  });
+});
+
+describe("readFirstBackupDelayMs", () => {
+  const prev = process.env.NESA_DB_BACKUP_FIRST_DELAY_MS;
+  afterEach(() => {
+    if (prev === undefined) delete process.env.NESA_DB_BACKUP_FIRST_DELAY_MS;
+    else process.env.NESA_DB_BACKUP_FIRST_DELAY_MS = prev;
+  });
+
+  it("defaults to a non-zero delay so the first backup cannot stall boot", () => {
+    delete process.env.NESA_DB_BACKUP_FIRST_DELAY_MS;
+    expect(readFirstBackupDelayMs()).toBe(DEFAULT_FIRST_BACKUP_DELAY_MS);
+    expect(readFirstBackupDelayMs()).toBeGreaterThan(0);
+  });
+
+  it("honors an explicit delay, including 0 to restore immediate backup", () => {
+    process.env.NESA_DB_BACKUP_FIRST_DELAY_MS = "0";
+    expect(readFirstBackupDelayMs()).toBe(0);
+    process.env.NESA_DB_BACKUP_FIRST_DELAY_MS = "1500";
+    expect(readFirstBackupDelayMs()).toBe(1500);
+  });
+
+  it("falls back to the default on invalid input", () => {
+    process.env.NESA_DB_BACKUP_FIRST_DELAY_MS = "soon";
+    expect(readFirstBackupDelayMs()).toBe(DEFAULT_FIRST_BACKUP_DELAY_MS);
   });
 });
 

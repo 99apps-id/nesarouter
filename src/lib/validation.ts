@@ -35,6 +35,7 @@ const oauthProfileSchema = z.enum([
   "codebuddy_cn",
   "cline",
   "kilocode",
+  "muse",
 ]);
 
 /** Coerce number inputs from the dashboard; blank/NaN → undefined. */

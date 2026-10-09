@@ -38,6 +38,7 @@ export const providerPresets: ProviderConfig[] = [
   oauthPreset("oauth-kiro", "kiro", 7),
   oauthPreset("oauth-antigravity", "antigravity", 8),
   oauthPreset("oauth-cursor", "cursor", 9),
+  oauthPreset("oauth-muse", "muse", 11),
   oauthPreset("anthropic_claude", "anthropic_claude", 10),
   oauthPreset("gemini_cli", "gemini_cli", 12),
   oauthPreset("oauth-qwen-code", "qwen_code", 13),
@@ -1215,6 +1216,7 @@ export type ProviderPreset =
   | "oauth-kiro"
   | "oauth-antigravity"
   | "oauth-cursor"
+  | "oauth-muse"
   | "oauth-qwen-code"
   | "oauth-grok-cli"
   | "oauth-kimchi"
@@ -1308,6 +1310,7 @@ export const providerPresetGroups: Array<{ label: string; ids: ProviderPreset[] 
       "oauth-kiro",
       "oauth-antigravity",
       "oauth-cursor",
+      "oauth-muse",
       "anthropic_claude",
       "gemini_cli",
       "oauth-qwen-code",

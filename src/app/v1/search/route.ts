@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest, readJsonBodyLimited, RequestBodyTooLargeError } from "@/core/auth";
+import { authorizeRequest, readJsonBodyLimited, readStreamBounded, RequestBodyTooLargeError } from "@/core/auth";
 import { readStore } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+/** DuckDuckGo instant answers are small; anything larger is a broken/hostile upstream. */
+const MAX_SEARCH_RESPONSE_BYTES = 512 * 1024;
 
 /**
  * Lightweight web search passthrough.
@@ -28,7 +31,10 @@ export async function POST(request: Request) {
   try {
     const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
     const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    const data = await response.json();
+    // Read with a byte cap: `response.json()` would buffer whatever the upstream
+    // chooses to send into memory.
+    const bytes = await readStreamBounded(response.body, MAX_SEARCH_RESPONSE_BYTES);
+    const data = JSON.parse(new TextDecoder().decode(bytes));
     return NextResponse.json({
       object: "search.results",
       query,

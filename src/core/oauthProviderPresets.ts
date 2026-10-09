@@ -1,7 +1,11 @@
+import { antigravityCredentials } from "@/core/antigravityCredentials";
+
 /**
  * OAuth presets for subscription-based providers (Claude, ChatGPT/Codex, Gemini CLI,
- * GitHub Copilot, Kiro Builder ID, Antigravity, Cursor, plus NesaRouter specialty flows).
- * Client IDs are the public CLI values; tokens are stored encrypted and refreshed automatically.
+ * GitHub Copilot, Kiro Builder ID, Antigravity, Cursor, Meta Muse, plus NesaRouter
+ * specialty flows). Client IDs are the public CLI values; tokens are stored encrypted
+ * and refreshed automatically. The Antigravity Google pair is stamped at deploy time
+ * (see antigravityCredentials.ts) and is never committed.
  */
 
 export type OAuthProfile =
@@ -28,7 +32,8 @@ export type OAuthProfile =
   | "xiaomi_mimo"
   | "gitlab"
   | "windsurf"
-  | "zed";
+  | "zed"
+  | "muse";
 
 export type OAuthProviderType =
   | "anthropic_messages"
@@ -143,6 +148,12 @@ export interface OAuthPreset {
   chatBaseUrl?: string;
   /** Quota / usage endpoint. */
   quotaUsageUrl?: string;
+  /**
+   * Muse: where a device-grant token is exchanged for the model API key. Meta's
+   * device grant yields a durable "dca:" token the model endpoint rejects, so
+   * the minted key becomes the stored access token and the dca token the refresh.
+   */
+  museMintUrl?: string;
 }
 
 export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
@@ -300,8 +311,9 @@ export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
   antigravity: {
     profile: "antigravity",
     displayName: "Antigravity (Google)",
-    clientId: "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com",
-    clientSecret: "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",
+    // Stamped at deploy time, never committed: see antigravityCredentials.ts.
+    clientId: "",
+    clientSecret: "",
     authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",
     scope: [
@@ -318,7 +330,7 @@ export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
     defaultModel: "gemini-3-flash",
     models: ["gemini-3-flash", "gemini-3-flash-agent", "gemini-3.1-pro-low", "gemini-pro-agent", "claude-sonnet-4-6"],
     upstreamHeaders: {
-      "User-Agent": "antigravity/ide/2.1.1",
+      "User-Agent": "antigravity/ide/2.11.0 darwin/arm64",
       "X-Goog-Api-Client": "google-cloud-sdk vscode_cloudshelleditor/0.1",
       "Client-Metadata": JSON.stringify({ ideType: 9, platform: 5, pluginType: 2 })
     },
@@ -394,7 +406,10 @@ export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
     providerType: "openai_responses",
     baseUrl: "https://cli-chat-proxy.grok.com/v1/responses",
     defaultModel: "grok-4.5",
-    models: ["grok-4.5", "grok-4.5-high", "grok-4.5-medium", "grok-4.5-low"],
+    // grok-4.7 and grok-build-0.1 are the ids the same OAuth client serves per
+    // the reference client's xai-oauth catalogue; the effort variants are the
+    // Grok CLI's own. Kept additive so every previously working id still works.
+    models: ["grok-4.5", "grok-4.5-high", "grok-4.5-medium", "grok-4.5-low", "grok-4.7", "grok-build-0.1"],
     upstreamHeaders: {
       "User-Agent": "grok-pager/0.2.93 grok-shell/0.2.93 (linux; x86_64)",
       "x-xai-token-auth": "xai-grok-cli",
@@ -771,12 +786,58 @@ export const OAUTH_PRESETS: Record<OAuthProfile, OAuthPreset> = {
     models: ["zed-default"],
     upstreamHeaders: {},
     refreshLeadMs: 10 * 60_000
+  },
+  /**
+   * Meta Muse Code. The device grant yields a durable "dca:" token that the
+   * model endpoint does not accept directly; it is minted into a long-lived LLM
+   * API key at museMintUrl, which becomes the stored access token (the dca token
+   * is kept as the refresh so a revoked key can be re-minted without a new login).
+   * The client id is the public one Meta's own Muse CLI ships, not a secret, and
+   * the minted key is stable for the account with no advertised expiry — so it is
+   * renewed on demand (401 remint) rather than on a timer.
+   */
+  muse: {
+    profile: "muse",
+    displayName: "Meta Muse Code",
+    clientId: "1031625952748946",
+    authorizeUrl: "",
+    tokenUrl: "https://auth.meta.com/oidc/device/token/",
+    scope: "",
+    codeChallengeMethod: "S256",
+    tokenEncoding: "form",
+    deviceFlow: true,
+    deviceCodeUrl: "https://auth.meta.com/oidc/device/authorization/",
+    providerType: "openai_responses",
+    baseUrl: "https://api.meta.ai/v1/responses",
+    defaultModel: "muse-spark-1.3",
+    // muse-image-1.0 and muse-voice-transcribe-1.0 are listed by the same
+    // endpoint for other modalities; only the chat/reasoning family is offered
+    // here. Model availability follows the account and the egress address.
+    models: ["muse-spark-1.3", "muse-spark-1.3-contributor", "muse-spark-1.2", "muse-spark-1.2-contributor"],
+    upstreamHeaders: {
+      "User-Agent": "muse-build/1.3.0 (interactive; macos-aarch64; build ac7280f2aca67769d1455a8847bb502b617d50f6)",
+      "X-Client-Id": "tbh:tui",
+      "x-api-version": "1.0.0"
+    },
+    museMintUrl: "https://api.meta.ai/muse-code/key"
   }
 };
 
+/**
+ * Resolve a profile to its preset. Antigravity's Google client pair is stamped
+ * by the deployment rather than committed, so it is filled in here — the single
+ * funnel every caller already goes through — instead of at each call site.
+ */
 export function getPreset(profile: OAuthProfile | undefined): OAuthPreset | undefined {
   if (!profile) return undefined;
-  return OAUTH_PRESETS[profile];
+  const preset = OAUTH_PRESETS[profile];
+  if (preset?.profile !== "antigravity") return preset;
+  const { clientId, clientSecret } = antigravityCredentials();
+  return {
+    ...preset,
+    clientId: preset.clientId || clientId,
+    clientSecret: preset.clientSecret || clientSecret
+  };
 }
 
 export function usesOAuthDeviceFlow(preset: OAuthPreset | undefined): boolean {

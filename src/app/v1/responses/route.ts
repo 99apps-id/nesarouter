@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleChat } from "@/core/chatHandler";
-import { openAiToResponses, responsesStreamFromOpenAiSse, responsesToOpenAi } from "@/core/translator";
+import { openAiToResponses, responsesErrorEnvelope, responsesStreamFromOpenAiSse, responsesToOpenAi } from "@/core/translator";
 import { authorizeClientRequest, readJsonBodyLimited, RequestBodyTooLargeError } from "@/core/auth";
 
 export const runtime = "nodejs";
@@ -19,7 +19,15 @@ export async function POST(request: Request) {
   const openAiBody = responsesToOpenAi(body);
   const { response } = await handleChat(openAiBody, request);
 
-  if (!response.ok) return response;
+  // The Responses API clients (Codex CLI) read `error.message`, and OpenAI's own
+  // envelope carries `type`/`code`/`param`. A bare upstream body leaves them
+  // guessing, so normalise it here instead of passing the raw response through.
+  if (!response.ok) {
+    return NextResponse.json(
+      responsesErrorEnvelope(await response.json().catch(() => null), response.status),
+      { status: response.status }
+    );
+  }
 
   const isStream = response.headers.get("content-type")?.includes("text/event-stream");
   if (isStream && response.body) {

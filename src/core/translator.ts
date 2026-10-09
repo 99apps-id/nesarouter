@@ -372,6 +372,41 @@ export function mapResponsesToolChoiceToOpenAi(toolChoice: unknown): unknown {
 
 /* --------------------------- OpenAI -> Responses --------------------------- */
 
+/**
+ * Normalise any upstream/NesaRouter failure into the OpenAI Responses error
+ * envelope. Clients (Codex CLI) print `error.message`; `type` and `code` let
+ * them branch on auth vs rate limit vs bad request without string matching.
+ */
+export function responsesErrorEnvelope(payload: unknown, status: number) {
+  const record = (payload && typeof payload === "object" ? payload : {}) as Record<string, any>;
+  const inner = (record.error && typeof record.error === "object" ? record.error : {}) as Record<string, any>;
+  const message =
+    (typeof inner.message === "string" && inner.message) ||
+    (typeof record.error === "string" && record.error) ||
+    (typeof record.message === "string" && record.message) ||
+    `NesaRouter upstream error (${status}).`;
+
+  const inferred =
+    status === 401 || status === 403
+      ? "invalid_request_error"
+      : status === 404
+        ? "invalid_request_error"
+        : status === 429
+          ? "rate_limit_exceeded"
+          : status >= 500
+            ? "server_error"
+            : "invalid_request_error";
+
+  return {
+    error: {
+      message,
+      type: typeof inner.type === "string" && inner.type ? inner.type : inferred,
+      code: typeof inner.code === "string" && inner.code ? inner.code : null,
+      param: typeof inner.param === "string" && inner.param ? inner.param : null
+    }
+  };
+}
+
 export function openAiToResponses(payload: any, model: string) {
   const choice = payload?.choices?.[0];
   const text = choice?.message?.content ?? "";

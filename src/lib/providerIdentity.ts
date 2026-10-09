@@ -176,6 +176,12 @@ export function providerIdentity(input: ProviderIdentityInput | ProviderConfig):
   if (has(providerText, /chutes/)) {
     return { key: "chutes", label: "CH", title, iconPath: "/icons/chutes.png" };
   }
+  // Muse is a Meta subscription (device login + minted key), not a Llama API
+  // model, so it is identified before the generic meta/Llama rule below. No icon
+  // asset ships with the repo, so it falls back to initials.
+  if (has(providerText, /\bmuse\b|muse-?spark/)) {
+    return { key: "muse", label: "MU", title };
+  }
   if (has(providerText, /meta\.ai|meta-llama|\bmeta\b/)) {
     return { key: "meta", label: "MA", title };
   }

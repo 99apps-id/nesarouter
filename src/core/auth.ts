@@ -35,24 +35,27 @@ export function isRequestBodyTooLarge(request: Request, maxBytes = 16 * 1024 * 1
 
 export class RequestBodyTooLargeError extends Error {
   constructor(readonly maxBytes: number) {
-    super(`Request body exceeds ${Math.floor(maxBytes / (1024 * 1024))} MB.`);
+    super(
+      maxBytes >= 1024 * 1024
+        ? `Request body exceeds ${Math.floor(maxBytes / (1024 * 1024))} MB.`
+        : `Request body exceeds ${Math.max(1, Math.floor(maxBytes / 1024))} KB.`
+    );
     this.name = "RequestBodyTooLargeError";
   }
 }
 
 /**
- * Read the whole body with an enforced byte limit. Like `readJsonBodyLimited`
- * this counts real bytes, so a `Transfer-Encoding: chunked` upload without a
- * Content-Length cannot slip past the limit.
+ * Read a byte stream with an enforced limit. Shared by request bodies and by
+ * upstream responses (a hostile or broken upstream must not be able to hand us
+ * an unbounded JSON document).
  */
-export async function readBodyBytesLimited(
-  request: Request,
+export async function readStreamBounded(
+  stream: ReadableStream<Uint8Array> | null | undefined,
   maxBytes: number
 ): Promise<Uint8Array<ArrayBuffer>> {
-  if (isRequestBodyTooLarge(request, maxBytes)) throw new RequestBodyTooLargeError(maxBytes);
-  if (!request.body) return new Uint8Array(new ArrayBuffer(0));
+  if (!stream) return new Uint8Array(new ArrayBuffer(0));
 
-  const reader = request.body.getReader();
+  const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
   let bytes = 0;
   try {
@@ -78,6 +81,19 @@ export async function readBodyBytesLimited(
     offset += chunk.byteLength;
   }
   return combined;
+}
+
+/**
+ * Read the whole body with an enforced byte limit. Like `readJsonBodyLimited`
+ * this counts real bytes, so a `Transfer-Encoding: chunked` upload without a
+ * Content-Length cannot slip past the limit.
+ */
+export async function readBodyBytesLimited(
+  request: Request,
+  maxBytes: number
+): Promise<Uint8Array<ArrayBuffer>> {
+  if (isRequestBodyTooLarge(request, maxBytes)) throw new RequestBodyTooLargeError(maxBytes);
+  return readStreamBounded(request.body, maxBytes);
 }
 
 /** Read JSON with an enforced byte limit, including chunked bodies without Content-Length. */

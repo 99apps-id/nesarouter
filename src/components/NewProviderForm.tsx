@@ -239,7 +239,7 @@ export default function NewProviderForm() {
       <div className="oauth-quick-add">
         <p className="subtle">OAuth subscription (Connect or device flow after add — no API key)</p>
         <div className="button-row">
-          {(["oauth-github-copilot", "oauth-chatgpt", "oauth-kiro", "oauth-antigravity", "oauth-cursor"] as const)
+          {(["oauth-github-copilot", "oauth-chatgpt", "oauth-kiro", "oauth-antigravity", "oauth-cursor", "oauth-muse"] as const)
             .map((id) => providerPresets.find((item) => item.id === id))
             .flatMap((item) => (item ? [item] : []))
             .map((item) => (

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleChat } from "@/core/chatHandler";
-import { openAiToResponses, responsesStreamFromOpenAiSse, responsesToOpenAi } from "@/core/translator";
+import { openAiToResponses, responsesErrorEnvelope, responsesStreamFromOpenAiSse, responsesToOpenAi } from "@/core/translator";
 import { authorizeClientRequest, readJsonBodyLimited, RequestBodyTooLargeError } from "@/core/auth";
 
 export const runtime = "nodejs";
@@ -23,7 +23,12 @@ export async function POST(request: Request) {
 
   const openAiBody = { ...responsesToOpenAi(body), stream: false };
   const { response } = await handleChat(openAiBody, request);
-  if (!response.ok) return response;
+  if (!response.ok) {
+    return NextResponse.json(
+      responsesErrorEnvelope(await response.json().catch(() => null), response.status),
+      { status: response.status }
+    );
+  }
 
   const payload = await response.json();
   return NextResponse.json(openAiToResponses(payload, body?.model ?? "responses"), {

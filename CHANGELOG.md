@@ -2,6 +2,36 @@
 
 All notable changes to NesaRouter are documented in this file.
 
+## Unreleased
+
+### Added
+
+- **Meta Muse Code as an OAuth provider** (`oauth-muse`, prefix `muse` / `musespark`). Muse uses a device login whose grant yields a durable `dca:` token the model endpoint rejects, so connecting now mints that token into a long-lived API key (`POST https://api.meta.ai/muse-code/key`, `onboard: true`) and stores the key as the access token with the device token kept as the refresh. Chat speaks the Responses API at `https://api.meta.ai/v1/responses` with the Muse CLI identity headers and a per-credential `session_id`, so it reuses the existing Responses executor. The minted key carries the account's `user_email`, which is surfaced after connect so a credential can name the Meta account behind it. Models: `muse-spark-1.3`, `muse-spark-1.3-contributor`, `muse-spark-1.2`, `muse-spark-1.2-contributor`.
+- Antigravity execution now sends the Cloud Code machine session id (`X-Machine-Session-Id` plus `sessionId` / `requestId` in the body), matching the official IDE. The id is derived stably per account and can be pinned with `NESA_ANTIGRAVITY_SESSION_ID`; the Antigravity user agent was updated to `antigravity/ide/2.11.0`.
+- `NESA_DB_BACKUP_FIRST_DELAY_MS` (default 300000) controls how long the first automatic backup waits after boot; `0` restores the old immediate backup.
+- `NESA_ANTIGRAVITY_CLIENT_ID` / `NESA_ANTIGRAVITY_CLIENT_SECRET` document the deployment stamp for the Google OAuth pair.
+
+### Security
+
+- **The Antigravity Google OAuth client pair is no longer committed.** The client id and secret are a confidential installed-app credential, so they are now injected by the deployment (`NESA_ANTIGRAVITY_CLIENT_ID` / `NESA_ANTIGRAVITY_CLIENT_SECRET`) and resolved in one place. An unstamped deployment now fails Connect with an actionable message instead of sending the browser to Google with an empty `client_id`. They are deliberately not baked through `next.config.mjs` `env`, which is inlined into the client bundle and would publish the secret to every visitor.
+- A device or mint token echoed in a Muse upstream error body is redacted before the message is shown, in addition to the generic shape-based sanitizer.
+- `/v1/search` reads its upstream response with a 512 KB cap instead of buffering whatever DuckDuckGo returns.
+
+### Changed
+
+- **GitHub Copilot now matches the reference client's request shape.** Claude models are served by Copilot's Anthropic-shaped `/v1/messages` (they are not reachable on `/chat/completions`), and a model Copilot answers with "not accessible via the /chat/completions endpoint" is retried once against `/responses` and remembered for the process, instead of failing on every call. Requests now also carry the Copilot `session_id` and `x-request-id` headers. The offered model list was refreshed to the current wire ids (`gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-6-luna`, `claude-sonnet-5.5`, `claude-sonnet-5`, `claude-haiku-4.5`, `gemini-3.8-flash`, `gemini-3.6-flash`, `gemini-3.5-flash`, `grok-4.7`, `kimi-k3`, `mai-code-1.1-flash`).
+- The Grok OAuth catalogue gained `grok-4.7` and `grok-build-0.1`. They are additive: every previously offered id (including the Grok CLI effort variants) still works and `grok-4.5` remains the default, because the working endpoint is unchanged.
+
+### Fixed
+
+- **Muse: an empty OAuth scope was sent as `scope=`.** The device-code start now omits the parameter when a preset has no scope (RFC 8628 servers answer a blank scope with `invalid_scope`).
+- `/v1/responses` and `/v1/responses/compact` now normalise upstream failures into the OpenAI Responses error envelope (`error.message` with `type`, `code`, `param`) instead of passing the raw body through, which left Codex CLI clients with nothing to print.
+- Antigravity is no longer mislabelled as the generic Meta/Llama provider in the dashboard: Muse gets its own identity (`MU`) and Llama API providers keep `MA`.
+
+### Validation
+
+- TypeScript validation, lint, production build, and the unit suite pass (472 tests).
+
 ## 0.2.1 - 2026-09-28
 
 ### Fixed
